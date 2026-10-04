@@ -1,22 +1,26 @@
 package docuconf
 
 import (
-	"github.com/knadh/koanf/parsers/dotenv"
-	"github.com/knadh/koanf/providers/file"
-	"github.com/knadh/koanf/v2"
-	"log"
+	"fmt"
+
+	"github.com/caarlos0/env/v11"
 )
 
-var k = koanf.New(".")
-
-func LoadDotEnv[T interface{}](filePath string, envStruct T) (T, error) {
-	f := file.Provider(filePath)
-	if err := k.Load(f, dotenv.Parser()); err != nil {
-		log.Fatalf("error loading config: %v", err)
-	}
-	err := k.UnmarshalWithConf("", &envStruct, koanf.UnmarshalConf{Tag: "env"})
+// LoadDotEnv reads the .env file at filePath into envStruct, whose fields
+// carry env tags, and returns the result. Fields the file does not set
+// keep their values. Only the file is read, not the process environment.
+//
+// Deprecated: use ParseWithOptions with Options.DotEnv, which also reads
+// the process environment (it wins over the file), checks docuconf
+// constraints and loads file inputs. LoadDotEnv remains for code generated
+// by the deprecated gen package.
+func LoadDotEnv[T any](filePath string, envStruct T) (T, error) {
+	vals, err := readDotEnv(filePath)
 	if err != nil {
-		return envStruct, err
+		return envStruct, fmt.Errorf("docuconf: loading %s: %w", filePath, err)
+	}
+	if err := env.ParseWithOptions(&envStruct, env.Options{Environment: vals}); err != nil {
+		return envStruct, fmt.Errorf("docuconf: loading %s: %w", filePath, err)
 	}
 	return envStruct, nil
 }

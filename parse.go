@@ -1,0 +1,323 @@
+package docuconf
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"time"
+
+	"github.com/caarlos0/env/v11"
+)
+
+// Environment variables that configure docuconf itself.
+const (
+	// EnvFileRoot remaps every file input's path under a directory, for
+	// local development and tests: with DOCUCONF_FILE_ROOT=./dev, the
+	// input at /etc/app/tls is read from ./dev/etc/app/tls.
+	EnvFileRoot = "DOCUCONF_FILE_ROOT"
+	// EnvTerminationLog overrides where boot violations are written. By
+	// default they go to /dev/termination-log when it exists, so
+	// `kubectl describe pod` shows why the container stopped.
+	EnvTerminationLog = "DOCUCONF_TERMINATION_LOG"
+)
+
+const defaultTerminationLog = "/dev/termination-log"
+
+// Options configure Parse. The zero value reads the process environment.
+type Options struct {
+	// Environment replaces the process environment, for tests.
+	Environment map[string]string
+	// DotEnv lists .env files to read, for local development. Variables
+	// already in the environment win over the files, and earlier files
+	// win over later ones. Missing files are skipped.
+	DotEnv []string
+	// Prefix and FuncMap are passed to caarlos0/env.
+	Prefix  string
+	FuncMap map[reflect.Type]env.ParserFunc
+	// FileRoot overrides DOCUCONF_FILE_ROOT.
+	FileRoot string
+	// TerminationLog overrides DOCUCONF_TERMINATION_LOG. "-" disables it.
+	TerminationLog string
+	// Now replaces time.Now for certificate checks, for tests.
+	Now func() time.Time
+	// WatchInterval is how often a file input with reload:"watch" checks
+	// for changes when it is read. The default is 10 seconds.
+	WatchInterval time.Duration
+	// Logger receives warnings (deprecated variables, rejected reloads).
+	// The default is slog.Default().
+	Logger *slog.Logger
+}
+
+// Parse reads configuration struct T from the process environment and
+// its file inputs. It is caarlos0/env's ParseAs plus docuconf's checks:
+// every violation is reported together in a *ValidationError, which is
+// also written to the container's termination log.
+//
+//	cfg, err := docuconf.Parse[Config]()
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+func Parse[T any]() (T, error) {
+	return ParseWithOptions[T](Options{})
+}
+
+// ParseWithOptions is Parse with options.
+func ParseWithOptions[T any](opts Options) (T, error) {
+	var cfg T
+	err := ParseInto(&cfg, opts)
+	return cfg, err
+}
+
+// ParseInto is Parse for an existing struct pointer.
+func ParseInto(ptr any, opts Options) error {
+	return load(ptr, opts, true)
+}
+
+// Validate checks a struct that the app has already parsed with
+// caarlos0/env: it applies docuconf's constraints to the same environment
+// and loads the struct's file inputs. It is for teams that keep calling
+// env.Parse themselves.
+func Validate(ptr any, opts Options) error {
+	return load(ptr, opts, false)
+}
+
+func load(ptr any, opts Options, parse bool) error {
+	rv := reflect.ValueOf(ptr)
+	if rv.Kind() != reflect.Pointer || rv.IsNil() || rv.Elem().Kind() != reflect.Struct {
+		return errors.New("docuconf: expected a non-nil pointer to a struct")
+	}
+	d, err := declare(rv.Elem().Type(), declOptions{prefix: opts.Prefix, funcMap: opts.FuncMap})
+	if err != nil {
+		return err
+	}
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	now := opts.Now
+	if now == nil {
+		now = time.Now
+	}
+	interval := opts.WatchInterval
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+
+	environ := opts.Environment
+	if environ == nil {
+		environ = env.ToMap(os.Environ())
+	}
+	environ = copyMap(environ)
+	for _, p := range opts.DotEnv {
+		vals, err := readDotEnv(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("docuconf: reading %s: %w", p, err)
+		}
+		for k, v := range vals {
+			if _, set := environ[k]; !set {
+				environ[k] = v
+			}
+		}
+	}
+
+	// Adapt the environment to the spec before caarlos0/env reads it: an
+	// empty value is unset for every type but string, and bools accept
+	// true and false in any case.
+	for _, v := range d.vars {
+		raw, ok := environ[v.name]
+		if !ok {
+			continue
+		}
+		if raw == "" && v.typ != typeString {
+			delete(environ, v.name)
+			continue
+		}
+		if v.typ == typeBool && (strings.EqualFold(raw, "true") || strings.EqualFold(raw, "false")) {
+			environ[v.name] = strings.ToLower(raw)
+		}
+	}
+
+	var viols []Violation
+	flagged := map[string]bool{} // env names with a violation
+	values := map[string]string{}
+	for _, v := range d.vars {
+		raw, ok := environ[v.name]
+		if ok && v.expand {
+			raw = os.Expand(raw, func(k string) string { return environ[k] })
+		}
+		if !ok {
+			if v.required {
+				viols = append(viols, Violation{Input: v.name, Code: CodeMissingRequired, Message: "is required but not set"})
+				flagged[v.name] = true
+			}
+			continue
+		}
+		if v.deprecated != "" {
+			logger.Warn("docuconf: deprecated variable is set", "name", v.name, "message", v.deprecated)
+		}
+		if v.loadFile {
+			data, err := os.ReadFile(raw)
+			if err != nil {
+				code := CodeFileMissing
+				if errors.Is(err, fs.ErrPermission) {
+					code = CodeFileUnreadable
+				}
+				viols = append(viols, Violation{Input: v.name, Code: code, Message: fmt.Sprintf("cannot read the file it names: %v", err)})
+				flagged[v.name] = true
+				continue
+			}
+			raw = string(data)
+		}
+		if v.notEmpty && raw == "" {
+			viols = append(viols, Violation{Input: v.name, Code: CodeMissingRequired, Message: "is set but empty"})
+			flagged[v.name] = true
+			continue
+		}
+		values[v.name] = raw
+		if vs := v.check(raw); len(vs) > 0 {
+			viols = append(viols, vs...)
+			flagged[v.name] = true
+		}
+	}
+
+	if parse {
+		err := env.ParseWithOptions(ptr, env.Options{Environment: environ, Prefix: opts.Prefix, FuncMap: opts.FuncMap})
+		var agg env.AggregateError
+		if errors.As(err, &agg) {
+			for _, e := range agg.Errors {
+				if v, ok := explainHostError(d, e, flagged); ok {
+					viols = append(viols, v)
+				}
+			}
+		} else if err != nil {
+			return fmt.Errorf("docuconf: %w", err)
+		}
+	}
+
+	root := opts.FileRoot
+	if root == "" {
+		root = environ[EnvFileRoot]
+	}
+	elem := rv.Elem()
+	for _, f := range d.files {
+		p := f.path
+		if f.pathEnv != "" && environ[f.pathEnv] != "" {
+			p = environ[f.pathEnv]
+		}
+		if root != "" {
+			p = filepath.Join(root, p)
+		}
+		field, err := elem.FieldByIndexErr(f.index)
+		if err != nil {
+			return fmt.Errorf("docuconf: %s: %w", f.goPath, err)
+		}
+		b := &fileBinding{
+			decl:     f,
+			path:     p,
+			now:      now,
+			interval: interval,
+			logger:   logger,
+			password: func() (string, bool) {
+				s, ok := values[f.passwordVar]
+				return s, ok
+			},
+		}
+		fv := field.Addr().Interface().(fileInput).bind(b)
+		viols = append(viols, fv...)
+		if f.deprecated != "" && len(fv) == 0 && field.Addr().Interface().(interface{ Present() bool }).Present() {
+			logger.Warn("docuconf: deprecated file input is present", "input", f.name, "message", f.deprecated)
+		}
+	}
+
+	if len(viols) == 0 {
+		return nil
+	}
+	verr := &ValidationError{Violations: viols}
+	writeTerminationLog(opts.TerminationLog, environ, verr, logger)
+	return verr
+}
+
+// explainHostError turns an error from caarlos0/env into a violation,
+// unless docuconf already reported the variable. It never includes the
+// host's message for a secret, since parser errors quote the value.
+func explainHostError(d *declaration, err error, flagged map[string]bool) (Violation, bool) {
+	var notSet env.VarIsNotSetError
+	var empty env.EmptyVarError
+	var loadFile env.LoadFileContentError
+	var parseErr env.ParseError
+	switch {
+	case errors.As(err, &notSet):
+		if flagged[notSet.Key] {
+			return Violation{}, false
+		}
+		return Violation{Input: notSet.Key, Code: CodeMissingRequired, Message: "is required but not set"}, true
+	case errors.As(err, &empty):
+		if flagged[empty.Key] {
+			return Violation{}, false
+		}
+		return Violation{Input: empty.Key, Code: CodeMissingRequired, Message: "is set but empty"}, true
+	case errors.As(err, &loadFile):
+		if flagged[loadFile.Key] {
+			return Violation{}, false
+		}
+		return Violation{Input: loadFile.Key, Code: CodeFileMissing, Message: "cannot read the file it names"}, true
+	case errors.As(err, &parseErr):
+		for _, v := range d.vars {
+			if v.field == parseErr.Name && flagged[v.name] {
+				return Violation{}, false
+			}
+		}
+		for _, v := range d.vars {
+			if v.field == parseErr.Name {
+				msg := fmt.Sprintf("cannot be parsed as %v", parseErr.Type)
+				if !v.secret {
+					msg += ": " + parseErr.Err.Error()
+				}
+				return Violation{Input: v.name, Code: CodeInvalidType, Message: msg}, true
+			}
+		}
+		return Violation{Input: parseErr.Name, Code: CodeInvalidType, Message: fmt.Sprintf("cannot be parsed as %v", parseErr.Type)}, true
+	}
+	return Violation{Input: "env", Code: CodeInvalidType, Message: err.Error()}, true
+}
+
+// writeTerminationLog writes the violations where Kubernetes reads a
+// container's termination message.
+func writeTerminationLog(override string, environ map[string]string, verr *ValidationError, logger *slog.Logger) {
+	p := override
+	if p == "" {
+		p = environ[EnvTerminationLog]
+	}
+	if p == "-" {
+		return
+	}
+	if p == "" {
+		if _, err := os.Stat(defaultTerminationLog); err != nil {
+			return
+		}
+		p = defaultTerminationLog
+	}
+	msg := verr.Error()
+	if len(msg) > 4096 { // Kubernetes keeps at most 4096 bytes
+		msg = msg[:4093] + "..."
+	}
+	if err := os.WriteFile(p, []byte(msg+"\n"), 0o644); err != nil {
+		logger.Warn("docuconf: cannot write termination log", "path", p, "error", err)
+	}
+}
+
+func copyMap(m map[string]string) map[string]string {
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
