@@ -3,8 +3,8 @@ package gen
 import (
 	"bytes"
 	"fmt"
-	"github.com/autoscalerhq/docuconf/gen/internal"
-	tmpl "github.com/autoscalerhq/docuconf/gen/internal/template"
+	"github.com/docuconf/docuconf-go/gen/internal"
+	tmpl "github.com/docuconf/docuconf-go/gen/internal/template"
 	"io"
 	"os"
 	"path/filepath"

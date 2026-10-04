@@ -1,4 +1,4 @@
-module github.com/autoscalerhq/docuconf
+module github.com/docuconf/docuconf-go
 
 go 1.22
 

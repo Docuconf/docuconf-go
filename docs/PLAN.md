@@ -191,7 +191,7 @@ This replaces the monorepo in the previous draft. Now that SDKs are thin layers 
    - PyPI `docuconf`
    - a NuGet `Docuconf.*` ID prefix reservation
    - a Maven Central namespace for `dev.docuconf`, which needs the domain to verify
-2. **Move this repository.** Transfer `bearbinary/docuconf-go` to the org; GitHub redirects old URLs and git remotes. Split `spec/` into `docuconf/spec` with `git filter-repo --subdirectory-filter spec`, which keeps its history. Change the Go module path from `github.com/autoscalerhq/docuconf` to `github.com/docuconf/docuconf-go`. That breaks imports, which is acceptable before v1.
+2. **Move this repository.** Transfer `bearbinary/docuconf-go` to the org; GitHub redirects old URLs and git remotes. The Go module path is already `github.com/docuconf/docuconf-go`. That breaks imports, which is acceptable before v1. Later, split `spec/` into `docuconf/spec` with `git filter-repo --subdirectory-filter spec`, which keeps its history.
 3. **Org settings.**
    - Require 2FA.
    - Create a team per SDK and give it CODEOWNERS on that repo.
