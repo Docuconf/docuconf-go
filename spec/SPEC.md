@@ -208,10 +208,14 @@ Lists and durations are different: the leading libraries disagree, and making an
 
 Encodings other than `go` carry at most millisecond precision, and `#Validate` rejects finer values. Platform authors never see encodings: they write `"90s"` and `["a", "b"]` for every app.
 
+Renderers MUST double every `$` in a literal value (`$` becomes `$$`). Kubernetes expands `$(NAME)` references inside env values and reduces `$$` to `$`, so this is the only way a literal containing `$` arrives unchanged.
+
 SDK parsing rules:
 
 - `bool` MUST accept `true` and `false`, case-insensitive. Host libraries that also accept `1`, `0`, `yes` and so on may keep doing so, since the platform only ever emits `true` / `false`.
 - `int` MUST reject non-integers and values outside the 64-bit signed range.
+- Values are never trimmed. A trailing newline is part of the value.
+- `float` MUST NOT be `NaN` or infinite, and SDKs MUST parse floats independently of the process locale.
 - An **empty string** is a present value for `string` (and fails `minLength` if set). For every other type, empty means *unset*, so a defaulted variable takes its default and a required one fails. Where a host library treats empty differently, the SDK adds a pre-check rather than changing the spec.
 
 ## 6. Secrets
@@ -248,6 +252,8 @@ goodProd: contract.#Validate & {contract: billing, values: goodValues & prodPoli
 ```
 
 The contract states what the app can accept. The policy states what an environment allows. A deploy must satisfy both, and neither side has to edit the other's file.
+
+Error output MUST NOT include the value of a `secret` variable, including a literal wrongly supplied where a secret reference was required. CUE's own messages print values, so the translator redacts them.
 
 Raw CUE errors for a failed disjunction are noisy, for example "8 errors in empty disjunction". The `docuconf` CLI and the Crossplane function MUST turn them into one line per variable using the `type` field, such as `PORT: 70000 is above max 65535`.
 
@@ -359,4 +365,10 @@ The `conformance/` directory is language-neutral:
 5. Should the spec cover build-time variables (section 11.1) with a separate `buildVars` section, so a CI build can be validated the same way?
 6. Should there be a file render target? Some .NET and Spring teams mount `appsettings.Production.json` or `application-prod.yml` from a ConfigMap instead of using env vars. `#Render` could emit that file from `configKey`. Replacing a baked-in file, though, would silently discard its profile defaults, so env vars, which layer on top, stay the recommended route.
 7. Spring can activate several profiles at once (`SPRING_PROFILES_ACTIVE=prod,eu`). Should `profiles` support an ordered list, with later profiles winning?
-8. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?
+8. Proposals arising from [`docs/EDGE_CASES.md`](../docs/EDGE_CASES.md):
+   - platform-declared **injected variables**, set by webhooks such as the OpenTelemetry operator;
+   - **roles**, for one image running several processes;
+   - **`requiredIf`**, for conditional requirements;
+   - **well-known fragments**, for variables read by frameworks and libraries;
+   - **platform-authored contracts**, for third-party images.
+9. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?

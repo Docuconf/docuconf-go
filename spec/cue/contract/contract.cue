@@ -307,23 +307,31 @@ import (
 	if var.secret {
 		out: [{name: N, valueFrom: V}]
 	}
+
+	// Kubernetes expands $(VAR) in env values and reduces $$ to $, so
+	// every literal $ is doubled to arrive unchanged.
+	let esc = {
+		in:  string
+		out: strings.Replace(in, "$", "$$", -1)
+	}
+
 	if !var.secret {
 		if var.type == "list" {
 			if var.encoding == "csv" {
-				out: [{name: N, value: strings.Join([for i in V {"\(i)"}], var.separator)}]
+				out: [{name: N, value: (esc & {in: strings.Join([for i in V {"\(i)"}], var.separator)}).out}]
 			}
 			if var.encoding == "json" {
-				out: [{name: N, value: json.Marshal(V)}]
+				out: [{name: N, value: (esc & {in: json.Marshal(V)}).out}]
 			}
 			if var.encoding == "indexed" {
-				out: [for i, x in V {name: "\(N)__\(i)", value: "\(x)"}]
+				out: [for i, x in V {name: "\(N)__\(i)", value: (esc & {in: "\(x)"}).out}]
 			}
 		}
 		if var.type == "duration" {
 			out: [{name: N, value: (#RenderDuration & {in: V, encoding: var.encoding}).out}]
 		}
 		if var.type != "list" && var.type != "duration" {
-			out: [{name: N, value: "\(V)"}]
+			out: [{name: N, value: (esc & {in: "\(V)"}).out}]
 		}
 	}
 }
