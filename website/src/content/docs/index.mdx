@@ -1,0 +1,110 @@
+---
+title: docuconf
+description: Typed environment contracts for every language, validated by your Kubernetes platform before anything deploys.
+template: splash
+hero:
+  title: Your environment variables are an API. Give them a contract.
+  tagline: docuconf turns the config your app already declares, in Go, TypeScript, Ruby or .NET, into a CUE contract that your Kubernetes platform checks before anything deploys.
+  image:
+    html: |
+      <div class="hero-terminal" role="img" aria-label="A deploy rejected by docuconf: PORT is above its maximum, a required variable is missing, and a secret was given as plain text.">
+        <header><span></span><span></span><span></span></header>
+        <pre><span class="cmd">$ kubectl get app billing-api</span>
+      <span class="muted">CONDITION      STATUS</span>
+      ContractValid  <span class="bad">False</span>
+
+      <span class="bad">✗</span> PORT: 70000 is above max 65535
+      <span class="bad">✗</span> ALLOWED_ORIGINS: required
+      <span class="bad">✗</span> DATABASE_URL: plain-text secret
+        <span class="muted">(value redacted)</span>
+
+      <span class="ok">Nothing was deployed.</span></pre>
+      </div>
+  actions:
+    - text: Read the vision
+      link: vision/
+      icon: right-arrow
+    - text: How it works
+      link: how-it-works/
+      variant: secondary
+    - text: GitHub
+      link: https://github.com/docuconf
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, Steps, Aside, LinkCard } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Early days">
+docuconf is a young open-source project. The contract specification is a draft (`v1alpha1`), and the CUE schema is prototyped and tested. The language SDKs are being built now. [See the roadmap](roadmap/), and [help shape it](community/).
+</Aside>
+
+## The problem
+
+<div class="compare">
+<div>
+
+### Today
+
+- Environment variables are undocumented, untyped strings.
+- A typo in `DATABSE_URL` is found by a crash loop, often in production.
+- Every service invents its own validation, in every language.
+- The platform team guesses what each app needs, from READMEs and Slack threads.
+
+</div>
+<div>
+
+### With docuconf
+
+- Every variable has a type, constraints and a description, declared in code.
+- A bad value is rejected **before a pod starts**, with a precise reason.
+- One contract format, whatever the app is written in.
+- Platform policy, such as "no debug logging in prod", is layered on top without editing the app.
+
+</div>
+</div>
+
+## How it works
+
+<Steps>
+
+1. **Declare** your variables in the env library you already use: caarlos0/env, T3 Env, anyway_config, .NET Options, pydantic-settings. docuconf adds descriptions, secrets and constraints.
+
+2. **Export** a contract. The SDK writes `contract.cue` at build time and publishes it next to your image, tied to its digest.
+
+3. **Validate** before deploy. Your platform (Crossplane and CUE) unifies the contract with the values for this environment and its policy. Anything wrong stops the rollout, with one clear line per problem.
+
+4. **Check again at boot.** The SDK validates the real environment, including secret contents the platform cannot see, and hands your code typed values.
+
+</Steps>
+
+## Principles
+
+<CardGrid>
+	<Card title="Your library, not ours" icon="puzzle">
+		docuconf extends the leading env library in each language rather than replacing it. Adopting it means adding a package and some metadata, not rewriting your config.
+	</Card>
+	<Card title="One contract, any language" icon="list-format">
+		A Rails app and a .NET service produce the same kind of contract, so the platform validates both the same way.
+	</Card>
+	<Card title="Fail before deploy" icon="approve-check">
+		Missing, mistyped and out-of-range values are caught at composition time, not at 2 a.m. by a crash loop.
+	</Card>
+	<Card title="Secrets stay secret" icon="warning">
+		Contracts never hold secret values. The platform supplies secrets only as references, and errors never print them.
+	</Card>
+</CardGrid>
+
+## Built for platform teams running many languages
+
+<CardGrid>
+	<Card title="Go" icon="seti:go">On caarlos0/env struct tags.</Card>
+	<Card title="TypeScript" icon="seti:typescript">On T3 Env, with Zod, Valibot or ArkType.</Card>
+	<Card title="Ruby on Rails" icon="seti:ruby">On anyway_config.</Card>
+	<Card title=".NET" icon="seti:c-sharp">On the Options pattern and appsettings.</Card>
+	<Card title="Python" icon="seti:python">On pydantic-settings. Planned.</Card>
+	<Card title="Java" icon="seti:java">On Spring Boot configuration properties. Planned.</Card>
+</CardGrid>
+
+<LinkCard title="See the code in each language" href="languages/" />
+<LinkCard title="Why feature flags are not part of this" href="feature-flags/" />
