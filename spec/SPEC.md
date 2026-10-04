@@ -151,6 +151,7 @@ An optional variable with no default is legal. The SDK exposes it as absent (`ni
 Rules:
 
 - `pattern` is RE2, the only regex dialect every SDK can match exactly (Go native, `re2` bindings or a compatible subset elsewhere). SDKs MUST reject patterns that use features outside RE2, such as lookaround or backreferences, at declaration time.
+- `pattern` matches **anywhere** in the value, as CUE's `=~` and JSON Schema's `pattern` do; anchor it with `^` and `$` to match the whole value. Some host libraries match the whole value instead (.NET `[RegularExpression]`, Java `@Pattern`); their SDKs MUST anchor such patterns on export, as `^(?:p)$`, so the platform and the app accept exactly the same values.
 - `default` MUST satisfy the variable's own constraints. SDKs MUST check this at declaration time.
 - A `json` variable carries a structured value, such as a rate-limit object. Its `schema` is a JSON Schema the SDK generates from the app's own type, so the platform checks the value against the same type the app deserializes into (section 4.6).
 - The type set is closed in v1alpha1. A new type needs a spec change, because every SDK must parse it identically.
@@ -442,9 +443,9 @@ A conforming SDK MUST:
 
 1. Offer an idiomatic declaration API covering every type and field in section 4.
 2. Validate the declaration itself at definition time: name format, description length, default against constraints, required without default, RE2-only patterns.
-3. Export a contract that matches the conformance golden file for the fixture declaration. `metadata.generator` and the `encoding` fields are set by the SDK, so they are excluded from the comparison; everything else must match exactly. Output order is fixed: metadata first, then variables sorted by name, then each variable's fields in the order of section 4.
+3. Export a contract that matches the conformance golden file for the fixture declaration, compared as data (`cue export` to JSON), so formatting does not matter. `metadata.generator` and the `encoding` fields are set by the SDK, so they are excluded from the comparison. Output MUST be deterministic: variables and file inputs sorted by name.
 4. Load from the **process environment** by default. Reading a `.env` file is an opt-in for development, and real environment variables override it.
-5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed.
+5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_unreadable`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed.
 6. Expose typed values: a struct, a class, or an inferred TypeScript type. Not a string map.
 7. Check every file input at boot, covering what the platform could not see:
    - the path exists and is readable, within `maxSize`;
