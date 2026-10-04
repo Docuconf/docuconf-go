@@ -130,7 +130,7 @@ Fields common to every type:
 | `group` | — | Free-form grouping for docs (`database`, `http`). |
 | `examples` | — | Example values, as strings, for docs. |
 | `deprecated` | — | `{message, replacedBy?}`. SDKs warn at boot when a deprecated variable is set. |
-| `configKey` | — | The app's own configuration key, where it differs from the env name: `Orders:CheckoutTimeout` in .NET, `orders.checkout-timeout` in Spring. Used in docs, so readers can find the setting in the app's config files. |
+| `configKey` | — | The app's own configuration key (SDKs MAY emit it even when it matches the env name): `Orders:CheckoutTimeout` in .NET, `orders.checkout-timeout` in Spring. Used in docs, so readers can find the setting in the app's config files. |
 
 An optional variable with no default is legal. The SDK exposes it as absent (`nil`, `undefined`, `null`, `Option`).
 
@@ -163,7 +163,7 @@ Many apps do not get their configuration only from the environment. .NET layers 
 
 - A value in an **always-loaded base file** (`appsettings.json`, `application.yml`) is an ordinary `default`. A `[Required]` property with a value in the base file is therefore exported as optional with that default.
 - A value in a **profile file** goes in `profiles.defaults`, keyed by profile name. It applies only when that profile is selected.
-- `profiles.selector` names the environment variable that picks the profile (`ASPNETCORE_ENVIRONMENT`, `DOTNET_ENVIRONMENT`, `SPRING_PROFILES_ACTIVE`). It MUST be a declared variable. `profiles.default` is the profile in effect when the selector is unset (`Production` in .NET).
+- `profiles.selector` names the environment variable that picks the profile (`ASPNETCORE_ENVIRONMENT`, `DOTNET_ENVIRONMENT`, `SPRING_PROFILES_ACTIVE`). It MUST be a declared variable; when the app does not declare it itself, the SDK adds it as an optional `string` variable whose default is `profiles.default`, as the .NET and Ruby SDKs do for `ASPNETCORE_ENVIRONMENT` and `RAILS_ENV`. `profiles.default` is the profile in effect when the selector is unset (`Production` in .NET, `development` in Rails).
 
 ```cue
 profiles: {
@@ -183,7 +183,7 @@ Rules, enforced by the meta-schema:
 - A required variable is satisfied if the platform sets it **or** the selected profile does. Selecting a profile with no file, or one whose file lacks the value, makes the platform responsible for it.
 - The platform's environment variables override file values. This is the default precedence in .NET and Spring, and SDKs for hosts with a different order MUST document it.
 
-Configuration from sources the platform does not control, such as Azure Key Vault, AWS Secrets Manager or Rails credentials, is outside the contract. SDKs MUST leave those keys out, or provide a way to exclude them. Settings that cannot be expressed in v1alpha1 types (arrays of objects, dictionaries) stay file-only, and the SDK warns that the platform cannot set them.
+Configuration from sources the platform does not control, such as Azure Key Vault, AWS Secrets Manager or Rails credentials, is outside the contract. SDKs MUST leave those keys out, or provide a way to exclude them. Exclusion is usually opt-in, since an SDK cannot always tell where a value comes from (Rails credentials are encrypted, for example). Settings that cannot be expressed in v1alpha1 types (arrays of objects, dictionaries) stay file-only, and the SDK warns that the platform cannot set them.
 
 ### 4.5 Value sources
 
@@ -315,7 +315,7 @@ SDK parsing rules:
 
 - `bool` MUST accept `true` and `false`, case-insensitive. Host libraries that also accept `1`, `0`, `yes` and so on may keep doing so, since the platform only ever emits `true` / `false`.
 - `int` MUST reject non-integers and values outside the 64-bit signed range.
-- Values are never trimmed. A trailing newline is part of the value.
+- Values are never trimmed. A trailing newline is part of the value. Host libraries that trim whitespace around `csv` separators may keep doing so: the renderer never emits it.
 - `float` MUST NOT be `NaN` or infinite, and SDKs MUST parse floats independently of the process locale.
 - An **empty string** is a present value for `string` (and fails `minLength` if set). For every other type, empty means *unset*, so a defaulted variable takes its default and a required one fails. Where a host library treats empty differently, the SDK adds a pre-check rather than changing the spec.
 
