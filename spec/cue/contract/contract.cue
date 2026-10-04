@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"list"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -293,7 +294,7 @@ import (
 		if var.type == "url" {
 			literal: =~"^[a-zA-Z][a-zA-Z0-9+.-]*://[^\\s]+$"
 			if var.schemes != _|_ {
-				literal: =~"^(\(strings.Join(var.schemes, "|")))://"
+				literal: =~"^(\(strings.Join([for x in var.schemes {regexp.QuoteMeta(x)}], "|")))://"
 			}
 		}
 		if var.type == "enum" {
