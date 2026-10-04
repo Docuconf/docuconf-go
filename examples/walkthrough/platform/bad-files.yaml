@@ -1,0 +1,12 @@
+# File sources with the mistakes docuconf exists to catch.
+serving-tls:
+  certificate:
+    name: orders-tls
+    secretName: orders-tls
+    dnsNames: [orders.example.com]               # does not cover orders.internal
+    duration: 2160h
+    renewBefore: 240h                            # renews with 10 days left; the app needs 30
+tax-rates:
+  inline:
+    default: 20                                  # a percentage, not a fraction
+    countries: {DE: 0.19}

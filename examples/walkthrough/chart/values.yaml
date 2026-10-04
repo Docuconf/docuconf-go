@@ -1,0 +1,19 @@
+image: registry.example.com/orders-api:2.3.0
+
+# The same inputs as ../platform/values.yaml and ../platform/files.yaml,
+# checked by values.schema.json and rendered by the docuconf library chart.
+docuconf:
+  values:
+    DATABASE_URL:
+      secretKeyRef: {name: orders-db, key: url}
+    KAFKA_BROKERS: [kafka-0.kafka:9092, kafka-1.kafka:9092]
+    PAYMENTS_TIMEOUT: 2s
+    LOG_LEVEL: warn
+    TRACE_SAMPLE_RATIO: 0.05
+  files:
+    serving-tls:
+      certificate: {name: orders-tls, secretName: orders-tls}
+    tax-rates:
+      inline:
+        default: 0.2
+        countries: {DE: 0.19, FR: 0.2, IE: 0.23}

@@ -1,0 +1,6 @@
+# A values file with the mistakes docuconf exists to catch.
+DATABASE_URL: mysql://orders:hunter2@db/orders   # a secret as a literal, wrong scheme
+PORT: 80800                                      # out of range
+PAYMENTS_TIMEOUT: 2 seconds                      # not a duration
+LOG_LEVL: warn                                   # typo
+TRACE_SAMPLE_RATIO: 1.5                          # above max

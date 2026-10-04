@@ -270,6 +270,8 @@ The platform chooses where each file comes from:
 | `csi` (Secrets Store CSI driver) | any | Nothing about the content; it is checked at boot. |
 | `image` (image volume) | non-secret files | Nothing about the content. For data too large for a ConfigMap's 1 MiB limit. Needs a cluster with image volumes enabled. |
 
+Inline content is a string, written to the file as given. For a `json` or `yaml` config file it may instead be structured data, which is checked against the file's `schema` and serialized in the file's `format`. The exact bytes of serialized content, and so the ConfigMap's hash, belong to the renderer: the CUE renderer keeps the order fields are written in, while Helm sorts object keys and indents lists differently. Two renderers MUST produce content that parses to the same data, and each MUST name the ConfigMap from a hash of the bytes it wrote; they need not agree on the bytes. A platform that needs byte-identical output across tools gives the content as a string.
+
 Fields described as **resolved** (a Secret's `type` and `keys`, a Certificate's spec) are filled in by the platform tooling from the cluster. They are metadata, never secret contents. When they are absent, those checks move to boot.
 
 #### 4.6.2 Rotation

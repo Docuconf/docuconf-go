@@ -1,0 +1,131 @@
+{
+  "apiVersion": "docuconf.dev/v1alpha1",
+  "kind": "ConfigContract",
+  "metadata": {
+    "name": "orders-api",
+    "appVersion": "2.3.0",
+    "generator": {
+      "language": "go",
+      "sdk": "docuconf-go",
+      "version": "0.1.0"
+    }
+  },
+  "vars": {
+    "DATABASE_URL": {
+      "name": "DATABASE_URL",
+      "description": "Primary Postgres connection string",
+      "required": true,
+      "secret": true,
+      "type": "url",
+      "schemes": [
+        "postgres",
+        "postgresql"
+      ]
+    },
+    "KAFKA_BROKERS": {
+      "name": "KAFKA_BROKERS",
+      "description": "Kafka brokers orders are published to",
+      "required": true,
+      "secret": false,
+      "separator": ",",
+      "type": "list",
+      "items": "string",
+      "encoding": "csv",
+      "minItems": 1
+    },
+    "LOG_LEVEL": {
+      "name": "LOG_LEVEL",
+      "description": "Minimum log level emitted",
+      "required": false,
+      "secret": false,
+      "type": "enum",
+      "values": [
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ],
+      "default": "info"
+    },
+    "PAYMENTS_TIMEOUT": {
+      "name": "PAYMENTS_TIMEOUT",
+      "description": "Timeout for calls to the payments service",
+      "required": false,
+      "secret": false,
+      "type": "duration",
+      "encoding": "go",
+      "default": "5s",
+      "min": "100ms",
+      "max": "30s"
+    },
+    "PORT": {
+      "name": "PORT",
+      "description": "HTTP listen port",
+      "required": false,
+      "secret": false,
+      "type": "int",
+      "default": 8080,
+      "min": 1,
+      "max": 65535
+    },
+    "TRACE_SAMPLE_RATIO": {
+      "name": "TRACE_SAMPLE_RATIO",
+      "description": "Fraction of requests traced",
+      "required": false,
+      "secret": false,
+      "type": "float",
+      "default": 0.1,
+      "min": 0,
+      "max": 1
+    }
+  },
+  "files": {
+    "serving-tls": {
+      "name": "serving-tls",
+      "description": "Certificate the API serves HTTPS with",
+      "required": true,
+      "type": "tls",
+      "secret": true,
+      "dnsNames": [
+        "orders.internal"
+      ],
+      "minRemaining": "720h",
+      "path": "/etc/orders/tls",
+      "reload": "watch",
+      "requireCA": false
+    },
+    "tax-rates": {
+      "name": "tax-rates",
+      "description": "Tax rates by country, loaded at boot",
+      "required": true,
+      "secret": false,
+      "path": "/etc/orders/tax/rates.yaml",
+      "reload": "restart",
+      "type": "config",
+      "format": "yaml",
+      "schema": {
+        "type": "object",
+        "required": [
+          "default",
+          "countries"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "default": {
+            "type": "number",
+            "description": "Rate used when a country is not listed",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "countries": {
+            "type": "object",
+            "description": "Rates by ISO 3166-1 alpha-2 country code",
+            "additionalProperties": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    }
+  }
+}

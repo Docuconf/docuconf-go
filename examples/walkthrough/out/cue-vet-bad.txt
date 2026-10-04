@@ -1,0 +1,11 @@
+check.fileChecks."serving-tls".coversDNSName."orders.internal": conflicting values false and true:
+check.fileChecks."serving-tls".renewsBeforeMinRemaining: conflicting values false and true:
+check.fileChecks."tax-rates".matchesSchema: 3 errors in empty disjunction:
+check.fileChecks."tax-rates".matchesSchema: conflicting values {default:20,countries:{DE:0.19}} and [...] (mismatched types struct and list):
+check.fileChecks."tax-rates".matchesSchema: conflicting values {default:20,countries:{DE:0.19}} and string (mismatched types struct and string):
+check.missingRequired.DATABASE_URL: field not allowed:
+check.missingRequired.KAFKA_BROKERS: field not allowed:
+_render.values.TRACE_SAMPLE_RATIO: invalid value 1.5 (out of bound <=0.1):
+_values.TRACE_SAMPLE_RATIO: invalid value 1.5 (out of bound <=0.1):
+check.values.TRACE_SAMPLE_RATIO: invalid value 1.5 (out of bound <=0.1):
+check.fileChecks."tax-rates".matchesSchema.default: invalid value 20 (out of bound <=1):

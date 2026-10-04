@@ -116,7 +116,7 @@ func (t *translator) add(format string, args ...any) {
 
 // lines returns the problems, sorted, with any secret value scrubbed.
 func (t *translator) lines() []string {
-	out := slices.Clone(t.out)
+	out := dropDisjunctionNoise(t.out)
 	for i, l := range out {
 		for _, s := range t.secrets {
 			l = strings.ReplaceAll(l, s, "<redacted>")
@@ -124,6 +124,31 @@ func (t *translator) lines() []string {
 		out[i] = l
 	}
 	slices.Sort(out)
+	return out
+}
+
+// dropDisjunctionNoise removes the lines CUE adds when inline content fails
+// its schema: inline content is a string, struct or list, so CUE also
+// reports the branches the content never meant to take. They are dropped
+// when the same input has a line about the content itself.
+func dropDisjunctionNoise(lines []string) []string {
+	const marker = ": inline content does not match its schema: "
+	noise := func(l string) bool {
+		return strings.Contains(l, "errors in empty disjunction") || strings.Contains(l, "(mismatched types ")
+	}
+	real := map[string]bool{}
+	for _, l := range lines {
+		if name, _, ok := strings.Cut(l, marker); ok && !noise(l) {
+			real[name] = true
+		}
+	}
+	var out []string
+	for _, l := range lines {
+		if name, _, ok := strings.Cut(l, marker); ok && noise(l) && real[name] {
+			continue
+		}
+		out = append(out, l)
+	}
 	return out
 }
 

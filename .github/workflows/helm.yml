@@ -24,4 +24,10 @@ jobs:
       - run: |
           examples/helm/gateway/generate.sh
           git diff --exit-code -- examples/helm/gateway
+      - run: pip install pyyaml
       - run: helm/test.sh
+      # The walkthrough's outputs must still be what the tools produce, and
+      # the CLI, plain CUE and Helm must still agree on them.
+      - run: |
+          examples/walkthrough/run.sh
+          git diff --exit-code -- examples/walkthrough

@@ -58,8 +58,10 @@ Helm-based platform the same guarantees as the CUE/Crossplane path:
 
    ```yaml
    metadata:
+     {{- with include "docuconf.reloaderAnnotations" . | trim }}
      annotations:
-       {{- include "docuconf.reloaderAnnotations" . | trim | nindent 4 }}
+       {{- . | nindent 4 }}
+     {{- end }}
    spec:
      template:
        spec:

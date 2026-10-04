@@ -23,6 +23,7 @@ content-hashed ConfigMaps.
   volumes:      {{ include "docuconf.volumes" . | trim | nindent 8 }}
   ConfigMaps:   {{ include "docuconf.configMaps" . }}   (in their own template)
   annotations:  {{ include "docuconf.reloaderAnnotations" . | trim | nindent 4 }}
+                (empty when no input restarts the pod; wrap it in `with`)
 
 Values are checked by the chart's values.schema.json, generated from the
 same contract; these helpers also refuse names the contract does not declare.
