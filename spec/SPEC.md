@@ -29,7 +29,7 @@ One contract format, one validation model, one SDK per language.
 - **Feature flags.** See [section 10](#10-feature-flags-are-not-environment-configuration).
 - Secret storage or rotation. docuconf validates that a secret is *referenced*; External Secrets, Vault or the CSI driver supply it.
 - Config files (YAML, JSON, `appsettings.json`). v1 covers environment variables only.
-- Replacing a language's config ecosystem. SDKs should feel native and may wrap existing libraries.
+- Replacing a language's config ecosystem. Each SDK extends that language's leading environment library rather than competing with it (section 11.1).
 
 ## 2. Terms
 
@@ -132,16 +132,16 @@ An optional variable with no default is legal. The SDK exposes it as absent (`ni
 
 ### 4.3 Types
 
-| `type` | Constraint fields | Platform value (CUE) | Canonical string |
+| `type` | Constraint fields | Platform value (CUE) | Wire string (section 5) |
 |---|---|---|---|
 | `string` | `minLength`, `maxLength`, `pattern` (RE2) | `string` | as is |
 | `int` | `min`, `max` | `int` | base-10, no leading `+` or zeros: `8080` |
 | `float` | `min`, `max` | `number` | shortest round-trip decimal: `0.5` |
 | `bool` | — | `bool` | `true` / `false` |
-| `duration` | `min`, `max` (durations) | duration string | `^([0-9]+(ns\|us\|ms\|s\|m\|h))+$`, e.g. `1m30s` |
+| `duration` | `min`, `max` (durations), `encoding` | Go-syntax duration, e.g. `1m30s` | depends on `encoding` |
 | `url` | `schemes` | string with a `scheme://` | as is |
 | `enum` | `values` (non-empty) | one of `values` | as is |
-| `list` | `items` (`string`\|`int`), `separator` (default `,`), `minItems`, `maxItems` | list | items joined by `separator` |
+| `list` | `items` (`string`\|`int`), `encoding`, `separator` (csv only, default `,`), `minItems`, `maxItems` | list | depends on `encoding` |
 
 Rules:
 
@@ -149,17 +149,41 @@ Rules:
 - `default` MUST satisfy the variable's own constraints. SDKs MUST check this at declaration time.
 - The type set is closed in v1alpha1. A new type needs a spec change, because every SDK must parse it identically.
 
-## 5. Canonical encoding and parsing
+## 5. Wire encoding and parsing
 
-Kubernetes env values are strings. The platform holds **typed** values in CUE, and `#Render` converts them to strings with the canonical encoding in 4.3. SDKs parse those strings back.
+Kubernetes env values are strings. The platform always holds **typed** values in CUE, written one way: lists as CUE lists, durations in Go syntax. `#Render` converts each value into the string form the application's library parses.
+
+For most types, every mainstream library already agrees, so there is one form:
+
+| Type | Wire form |
+|---|---|
+| `string`, `url`, `enum` | as is |
+| `int` | base-10, no leading `+` or zeros: `8080` |
+| `float` | shortest round-trip decimal: `0.5` |
+| `bool` | `true` / `false` |
+
+Lists and durations are different: the leading libraries disagree, and making an SDK fight its host library defeats the point of building on it. So the contract records the **encoding** the app actually parses, and the platform renders to it:
+
+| `list` encoding | Wire form | Native to |
+|---|---|---|
+| `csv` (default) | `a,b`, joined by `separator` | caarlos0/env, Spring Boot, anyway_config |
+| `json` | `["a","b"]` | pydantic-settings |
+| `indexed` | separate variables `NAME__0=a`, `NAME__1=b` | Microsoft.Extensions.Configuration |
+
+| `duration` encoding | Wire form for 90s | Native to |
+|---|---|---|
+| `go` (default) | `1m30s` | Go `time.ParseDuration`, Spring Boot |
+| `iso8601` | `PT90S` | pydantic `timedelta`, `ActiveSupport::Duration.parse` |
+| `seconds` | `90` | anything that takes a number |
+| `timespan` | `00:01:30` (`d.hh:mm:ss.fff` when needed) | .NET `TimeSpan.Parse` |
+
+Encodings other than `go` carry at most millisecond precision, and `#Validate` rejects finer values. Platform authors never see encodings: they write `"90s"` and `["a", "b"]` for every app.
 
 SDK parsing rules:
 
-- `bool` MUST accept `true`, `false`, `1`, `0`, case-insensitive. Anything else is an error. Renderers MUST emit only `true` / `false`.
-- `int` MUST reject values outside the platform's 64-bit signed range, and any non-integer.
-- `duration` MUST use the grammar in 4.3 and convert to the language's native duration type (`time.Duration`, `TimeSpan`, `ActiveSupport::Duration`, milliseconds `number` in TypeScript).
-- `list` splits on `separator` and trims no whitespace; an empty string is an empty list.
-- An **empty string** is a present value for `string` (and fails `minLength` if set). For every other type, empty means *unset*, so a defaulted variable takes its default and a required one fails.
+- `bool` MUST accept `true` and `false`, case-insensitive. Host libraries that also accept `1`, `0`, `yes` and so on may keep doing so, since the platform only ever emits `true` / `false`.
+- `int` MUST reject non-integers and values outside the 64-bit signed range.
+- An **empty string** is a present value for `string` (and fails `minLength` if set). For every other type, empty means *unset*, so a defaulted variable takes its default and a required one fails. Where a host library treats empty differently, the SDK adds a pre-check rather than changing the spec.
 
 ## 6. Secrets
 
@@ -245,11 +269,36 @@ Rules:
 
 ## 11. SDK requirements
 
+### 11.1 Build on the host library
+
+Every language already has an environment library that teams trust. A docuconf SDK MUST extend it, not replace it: the host library keeps loading, parsing and binding, and its users keep its API, its docs and its idioms. The SDK adds only what the host lacks:
+
+1. **Metadata the host cannot express:** descriptions where the host has none, `secret`, and constraints with no host equivalent.
+2. **Validation the host does not do,** run after the host has parsed.
+3. **Contract export,** read from the same declaration, so the contract cannot drift from the code.
+
+| Language | Host library | Declaration the team already writes | docuconf adds |
+|---|---|---|---|
+| Go | [caarlos0/env](https://github.com/caarlos0/env) v11 | struct with `env`, `envDefault`, `required` tags | `desc`, `secret`, constraint tags; export by static analysis of the struct |
+| TypeScript | [T3 Env](https://env.t3.gg) with any [Standard Schema](https://standardschema.dev) validator (Zod, Valibot, ArkType) | `createEnv({ server: {...} })` | export through Standard JSON Schema; `secret` via schema metadata |
+| Ruby | [anyway_config](https://github.com/palkan/anyway_config) | `Anyway::Config` subclass with `attr_config`, `required`, `coerce_types` | `describe`, `secret`, constraints, a `:duration` coercion; `rails docuconf:export` |
+| .NET | Microsoft.Extensions.Options with DataAnnotations and the `[OptionsValidator]` source generator | options class with `[Required]`, `[Range]`, `[RegularExpression]`, `[AllowedValues]` | a source generator that emits the contract at build; `[Secret]`; env names from the configuration path |
+| Python | [pydantic-settings](https://github.com/pydantic/pydantic-settings) | `BaseSettings` with `Field(description=..., ge=..., le=...)`, `SecretStr`, `Literal` | export through `model_json_schema()`; `SecretStr` maps to `secret` |
+| Java | Spring Boot `@ConfigurationProperties` with Jakarta Validation | properties class plus `spring-boot-configuration-processor` | export from the generated configuration metadata plus validation annotations |
+
+The SDK sets each variable's `encoding` (section 5) to whatever its host parses, so the host never needs a custom parser for platform-rendered values.
+
+Where the host library's behaviour conflicts with a MUST in this spec (for example, empty-string handling), the SDK adapts the host with a pre-check or a custom parser. Where the conflict is only a wire format, the contract records it instead.
+
+**Build-time variables are not part of the runtime contract.** Some frameworks inline variables into the bundle at build time: Next.js `NEXT_PUBLIC_*`, Vite `import.meta.env`, T3 Env's `client` section. Setting them on a pod does nothing, so SDKs MUST NOT export them as runtime variables.
+
+### 11.2 Conformance requirements
+
 A conforming SDK MUST:
 
 1. Offer an idiomatic declaration API covering every type and field in section 4.
 2. Validate the declaration itself at definition time: name format, description length, default against constraints, required without default, RE2-only patterns.
-3. Export a contract that is byte-identical to the conformance golden file for the conformance fixture declaration. Output order is fixed: metadata first, then variables sorted by name, then each variable's fields in the order of section 4.
+3. Export a contract that matches the conformance golden file for the fixture declaration. `metadata.generator` and the `encoding` fields are set by the SDK, so they are excluded from the comparison; everything else must match exactly. Output order is fixed: metadata first, then variables sorted by name, then each variable's fields in the order of section 4.
 4. Load from the **process environment** by default. Reading a `.env` file is an opt-in for development, and real environment variables override it.
 5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`). Secret values are never printed.
 6. Expose typed values: a struct, a class, or an inferred TypeScript type. Not a string map.
@@ -260,15 +309,15 @@ An SDK SHOULD also:
 
 - Generate Markdown documentation from the declaration.
 - Support a **contract-first** mode: load a `contract.cue` or `contract.json` at runtime, with no in-language declaration. The conformance runner uses this mode, and so can teams that want to author CUE by hand.
-- Integrate with the framework's config system: Rails initializers, .NET `IOptions<T>` with `ValidateOnStart`, NestJS `ConfigModule`.
+- Integrate with the framework around the host library: a Railtie, `ValidateOnStart` in .NET, a Next.js or NestJS adapter for T3 Env.
 
 ## 12. Conformance suite
 
 The `conformance/` directory is language-neutral:
 
 - `contracts/*.cue`: valid and invalid contracts. Each SDK's contract-first loader must accept or reject them.
-- `load/*.yaml`: each case pairs a contract, an environment map, and either the expected typed values (as JSON) or the expected error codes.
-- `export/`: a fixture declaration described in prose, plus `golden.cue`. Each SDK writes the fixture in its own language and must reproduce `golden.cue` byte for byte.
+- `load/*.yaml`: each case pairs a contract, typed platform values, and either the expected typed result (as JSON) or the expected error codes. The runner renders the values with `#Render` using the SDK's encodings, so one case tests every encoding.
+- `export/`: a fixture declaration described in prose, plus `golden.cue`. Each SDK writes the fixture in its own language, using its host library, and must reproduce `golden.cue` (see 11.2, item 3).
 
 ## 13. Open questions
 
@@ -276,4 +325,5 @@ The `conformance/` directory is language-neutral:
 2. Should `#Validate` support a non-strict mode where unknown variables are warnings, to ease removals?
 3. Should `configMapKeyRef` be allowed for non-secret values, or must the platform always supply literals?
 4. Is a `json` type (an opaque JSON blob with an optional JSON Schema) worth the cost for every SDK?
-5. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?
+5. Should the spec cover build-time variables (section 11.1) with a separate `buildVars` section, so a CI build can be validated the same way?
+6. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?

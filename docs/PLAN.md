@@ -1,220 +1,282 @@
 # docuconf: multi-language implementation plan
 
-Companion to [`spec/SPEC.md`](../spec/SPEC.md). This plan covers how to get from today's Go-only codegen library to a contract standard with SDKs for several languages, a platform integration, and a website.
+Companion to [`spec/SPEC.md`](../spec/SPEC.md). This plan covers how to get from today's Go-only code generator to a contract standard with an SDK for each language, a platform integration, a website, and a GitHub organization of its own.
 
-## 1. Where we are
+## 1. Principles
 
-The current repository, `github.com/autoscalerhq/docuconf`, is a Go code generator:
+1. **Extend each language's best env library; never replace it.** A Rails team already uses anyway_config, and a .NET team already uses the Options pattern. docuconf adds descriptions, secrets, constraints and contract export to the declaration they already write (SPEC §11.1). Adoption should be "add a package and some metadata", not "rewrite your config".
+2. **The CUE contract is the exchange format.** App teams never write CUE. Platform teams get one format for every language.
+3. **The contract is data.** Constraints are fields (`min: 1`), not CUE expressions, so every SDK can emit them without a CUE library. This is prototyped and tested in `spec/cue/`.
+4. **The contract records wire formats; it does not dictate them.** Each host library keeps its own list and duration parsing, and the platform renders to match (SPEC §5).
+5. **Conformance gates every SDK.** It is the only way independently maintained SDKs stay consistent.
+6. **Feature flags are out of scope** (SPEC §10). OpenFeature is the recommended route.
 
-- A builder API declares options and generates a Go struct plus a Markdown file.
-- `LoadDotEnv` fills the struct from a `.env` file through koanf.
+## 2. Host library per language
 
-What carries over: the idea that every option must have a description, the generated docs, and service-to-service sharing.
+| Language | Host library | Why this one | docuconf package |
+|---|---|---|---|
+| Go | [caarlos0/env](https://github.com/caarlos0/env) v11 | The most widely used struct-tag env parser. It has no dependencies, is feature-complete and is still maintained. It replaces koanf, which is a multi-source loader rather than an env library. | `github.com/docuconf/docuconf-go` |
+| TypeScript | [T3 Env](https://env.t3.gg) with Standard Schema (Zod 4, Valibot, ArkType) | The de facto typed env library. Standard Schema means teams keep the validator they already use, and Standard JSON Schema gives us a portable way to read it. | `@docuconf/t3` |
+| Ruby | [anyway_config](https://github.com/palkan/anyway_config) (Evil Martians) | Typed config classes with `required` and `coerce_types`, and Rails integration. It is the closest Ruby has to the others. | `docuconf-anyway` |
+| .NET | Microsoft.Extensions.Options with DataAnnotations and the `[OptionsValidator]` source generator | Built into the platform. Most attributes already exist (`[Required]`, `[Range]`, `[AllowedValues]`). | `Docuconf.Options` |
+| Python | [pydantic-settings](https://github.com/pydantic/pydantic-settings) | The clear standard, and `model_json_schema()` already exposes everything. | `docuconf-pydantic` |
+| Java | Spring Boot `@ConfigurationProperties` with Jakarta Validation | Spring's configuration processor already emits metadata at compile time. docuconf turns that metadata into a contract. | `dev.docuconf:docuconf-spring` |
 
-What has to change to meet the spec:
+Two related projects are worth knowing for positioning:
 
-| Today | Spec |
+- **[Varlock / @env-spec](https://varlock.dev/env-spec/overview/)** puts a schema in `.env.schema` comments, aimed at local development and secrets hygiene.
+- **Spring's configuration metadata** is the closest existing idea to a contract, but it only covers Spring.
+
+docuconf's difference is the platform side: a contract tied to the image digest and checked by Crossplane before deploy. An `@env-spec` importer is a cheap way to win Varlock users later.
+
+## 3. What each SDK looks like
+
+The examples below declare the same service as `spec/cue/examples/billing_contract.cue`. Each is the host library's normal code, plus small docuconf additions.
+
+**Go, on caarlos0/env.**
+
+```go
+type Config struct {
+    DatabaseURL string        `env:"DATABASE_URL,required" secret:"true" schemes:"postgres,postgresql" desc:"Primary Postgres connection string"`
+    Port        int           `env:"PORT" envDefault:"8080" min:"1" max:"65535" desc:"HTTP listen port"`
+    Timeout     time.Duration `env:"REQUEST_TIMEOUT" envDefault:"30s" max:"5m" desc:"Upstream request timeout"`
+}
+
+cfg, err := docuconf.ParseAs[Config]() // env.ParseAs, then docuconf's constraints; all violations in one error
+```
+
+- Teams already on caarlos0/env can keep calling `env.ParseAs` and add `docuconf.Validate(cfg)` afterwards.
+- `docuconf export ./internal/config.Config` reads the struct by static analysis (`go/packages`), so exporting needs no running program and no environment.
+
+**TypeScript, on T3 Env.**
+
+```ts
+import { createEnv } from "@docuconf/t3"; // re-exports T3's createEnv and records the schema
+import { secret, duration } from "@docuconf/t3";
+import { z } from "zod";
+
+export const env = createEnv({
+  server: {
+    DATABASE_URL: secret(z.url({ protocol: /^postgres(ql)?$/ }).describe("Primary Postgres connection string")),
+    PORT: z.coerce.number().int().min(1).max(65535).default(8080).describe("HTTP listen port"),
+    LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info").describe("Minimum log level emitted"),
+    REQUEST_TIMEOUT: duration().default("30s").describe("Upstream request timeout"),
+  },
+  runtimeEnv: process.env,
+});
+```
+
+- `npx docuconf export src/env.ts` loads the module in export mode, which skips validation, and converts each schema through Standard JSON Schema.
+- The `client` section is build-time and is not exported (SPEC §11.1).
+- **Lint:** `z.coerce.boolean()` turns the string `"false"` into `true`. The exporter rejects it and points to `z.stringbool()`.
+
+**Ruby, on anyway_config.**
+
+```ruby
+class BillingConfig < Anyway::Config
+  include Docuconf::Anyway
+  config_name :billing # anyway reads BILLING_* variables
+
+  attr_config :database_url, port: 8080, log_level: "info", request_timeout: "PT30S"
+  required :database_url
+  coerce_types port: :integer, request_timeout: :duration # docuconf supplies the :duration caster
+
+  describe database_url: "Primary Postgres connection string",
+           port: "HTTP listen port",
+           log_level: "Minimum log level emitted",
+           request_timeout: "Upstream request timeout"
+  secret :database_url, schemes: %w[postgres postgresql]
+  constrain port: {min: 1, max: 65535}, log_level: {values: %w[debug info warn error]}
+end
+```
+
+- `bin/rails docuconf:export` writes the contract. Durations use `ActiveSupport::Duration.parse`, so their encoding is `iso8601`.
+- anyway_config also reads YAML and Rails credentials. docuconf's `exclude` macro marks attributes that only come from credentials, and those are left out of the contract because the platform does not inject them.
+- **Rails gotcha:** `assets:precompile` boots the app without production env vars. Validation is on for `server` and `console`, off for asset tasks, with an explicit override.
+
+**.NET, on Options.**
+
+```csharp
+[EnvContract("billing-api", Section = "Billing")]
+public sealed class BillingOptions
+{
+    [Required, Secret, UrlSchemes("postgres", "postgresql"), Description("Primary Postgres connection string")]
+    public string DatabaseUrl { get; set; } = "";
+
+    [Range(1, 65535), Description("HTTP listen port")]
+    public int Port { get; set; } = 8080;
+
+    [Description("Upstream request timeout")]
+    public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(30);
+}
+
+[OptionsValidator]
+public partial class ValidateBillingOptions : IValidateOptions<BillingOptions> { }
+
+builder.Services.AddOptions<BillingOptions>().BindConfiguration("Billing").ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<BillingOptions>, ValidateBillingOptions>();
+```
+
+- The `Docuconf.Options` source generator emits `contract.cue` during `dotnet build`. It reads the same DataAnnotations the `[OptionsValidator]` generator uses. It needs no reflection and is AOT-safe.
+- Variable names follow .NET's configuration path rules (`BILLING__DATABASEURL`). Lists use the `indexed` encoding and durations use `timespan`, because that is what the binder parses.
+- A `[Required]` string's `= ""` initializer is not a default, so the generator does not export it as one.
+
+**Python, on pydantic-settings.**
+
+```python
+class Settings(BaseSettings):
+    database_url: SecretStr = Field(description="Primary Postgres connection string",
+                                    json_schema_extra={"x-docuconf": {"type": "url", "schemes": ["postgres", "postgresql"]}})
+    port: int = Field(8080, ge=1, le=65535, description="HTTP listen port")
+    log_level: Literal["debug", "info", "warn", "error"] = Field("info", description="Minimum log level emitted")
+    request_timeout: timedelta = Field(timedelta(seconds=30), description="Upstream request timeout")
+```
+
+- `docuconf export app.settings:Settings` converts `model_json_schema()`.
+- `SecretStr` maps to `secret`.
+- Lists use the `json` encoding, pydantic-settings' default. Fields annotated `NoDecode` with a splitting validator use `csv`.
+- `timedelta` uses `iso8601`.
+
+**Java, on Spring Boot (later).** An annotation processor runs next to `spring-boot-configuration-processor`. It reads `@ConfigurationProperties` classes, Javadoc descriptions and Jakarta constraints, and emits the contract with relaxed-binding env names (`BILLING_DATABASEURL`).
+
+## 4. The GitHub organization
+
+The project gets its own org. This keeps it neutral, which matters for outside contributors and for a later CNCF Sandbox application. It also lets each SDK have its own maintainers.
+
+**Layout:** follow OpenFeature's proven model. It has the same shape as docuconf: one spec, a conformance suite, and an SDK per language maintained by people from that ecosystem.
+
+| Repository | Contents |
 |---|---|
-| Reads only `.env` files. | Reads the process environment; `.env` is a dev-only opt-in (SPEC §11.4). |
-| `log.Fatalf` on load errors. | Returns every violation with error codes (§11.5). |
-| A global koanf instance, so repeated loads merge into each other. | No global state. |
-| `Required` is documentation only. | Enforced at boot and at deploy (§7, §11). |
-| Types: string, int, bool, float. | Adds duration, url, enum, list and constraints (§4.3). |
-| No CUE output. | The CUE contract is the primary artifact. |
-| The module path does not match the GitHub repo (`bearbinary/docuconf-go`). | Decide on the canonical org and module path before the first tagged release. |
+| `docuconf/spec` | `SPEC.md`, the CUE module `docuconf.dev/contract`, the conformance suite. Tagged releases that SDKs pin. |
+| `docuconf/docuconf` | The Go CLI (`export` for Go, `vet`, `render`, `diff`, `docs`, `push`/`pull`) and the shared Go library for CUE validation and error formatting. |
+| `docuconf/function-docuconf` | The Crossplane composition function. Named to match Crossplane's `function-*` convention. |
+| `docuconf/docuconf-go` | Go SDK on caarlos0/env. **This repository, transferred**, so its history and stars carry over. |
+| `docuconf/docuconf-js` | `@docuconf/t3` and the TypeScript export CLI. |
+| `docuconf/docuconf-ruby` | `docuconf-anyway` and its Railtie. |
+| `docuconf/docuconf-dotnet` | `Docuconf.Options` and its source generator. |
+| `docuconf/docuconf-python` | `docuconf-pydantic`. Later. |
+| `docuconf/docuconf-java` | `docuconf-spring`. Later. |
+| `docuconf/examples` | One sample app per language, plus the kind and Crossplane demo. |
+| `docuconf/docuconf.dev` | The website. |
+| `docuconf/.github` | Org profile README, and the default CONTRIBUTING, CODE_OF_CONDUCT, SECURITY and issue templates every repo inherits. |
 
-## 2. Key decisions (recommended)
+This replaces the monorepo in the previous draft. Now that SDKs are thin layers on separate ecosystems, each needs its own tooling (gem, npm, NuGet), release cadence and maintainers. The spec repo holds what must stay in step. Each SDK repo pins a spec release and runs its conformance suite in CI. A nightly workflow in `docuconf/spec` runs every SDK against the spec's main branch and publishes a compatibility matrix to the website.
 
-1. **Code-first declarations, CUE contract as the exchange format.** Rails and .NET teams will not write CUE, so they declare in their own language and the SDK exports CUE. A contract-first mode (SPEC §11) serves teams that prefer to write CUE.
-2. **The contract is data, not CUE expressions.** Constraints are fields (`min: 1`), not CUE syntax (`>=1`). Every SDK can emit them without a CUE library, the compatibility diff stays simple, and the meta-schema turns the data into real CUE constraints. This is prototyped and tested in `spec/cue/`.
-3. **One Go toolchain for everything platform-side.** CUE's only full implementation is Go, so the `docuconf` CLI (vet, render, diff, docs) and the Crossplane function share one Go library. Language SDKs never need CUE.
-4. **Monorepo.** The spec, the conformance suite, the SDKs and the website change together; one repo keeps them in step. Each SDK publishes to its own registry with its own version, managed by release-please in monorepo mode.
-5. **Conformance suite before the second SDK.** Without shared golden files, five SDKs will drift on edge cases such as empty strings and bool parsing.
-6. **Feature flags are out of scope** (SPEC §10), with OpenFeature as the recommended route and a possible `FlagContract` kind later.
+**Setup checklist:**
 
-## 3. Repository layout
+1. **Names.** Claim the org name, with `docuconf-dev` or `docuconfhq` as fallbacks. Check and reserve, in the same sitting:
+   - the domain `docuconf.dev` (used in the CUE module path and Maven `groupId`)
+   - the npm scope `@docuconf`
+   - RubyGems `docuconf`
+   - PyPI `docuconf`
+   - a NuGet `Docuconf.*` ID prefix reservation
+   - a Maven Central namespace for `dev.docuconf`, which needs the domain to verify
+2. **Move this repository.** Transfer `bearbinary/docuconf-go` to the org; GitHub redirects old URLs and git remotes. Split `spec/` into `docuconf/spec` with `git filter-repo --subdirectory-filter spec`, which keeps its history. Change the Go module path from `github.com/autoscalerhq/docuconf` to `github.com/docuconf/docuconf-go`. That breaks imports, which is acceptable before v1.
+3. **Org settings.**
+   - Require 2FA.
+   - Create a team per SDK and give it CODEOWNERS on that repo.
+   - Use org-wide rulesets: protected `main`, required reviews and status checks.
+   - Enable private vulnerability reporting.
+4. **Contribution terms.** Use the DCO (sign-off) rather than a CLA. It has less friction and is what CNCF projects use.
+5. **Licence.** Apache-2.0 everywhere.
+6. **Releases.**
+   - release-please in each repo.
+   - Trusted publishing (OIDC from GitHub Actions) wherever the registry supports it, so no long-lived tokens are stored.
+   - npm provenance.
+   - Signed tags.
+   - OpenSSF Scorecard on every repo.
+7. **Governance.** Start with a small maintainer group: you plus the SDK leads. Write `GOVERNANCE.md` early. A neutral org with written governance is a prerequisite for CNCF Sandbox.
 
-```
-docuconf/
-├── spec/                    SPEC.md, CUE meta-schema, examples (exists on this branch)
-├── conformance/             language-neutral test cases + golden files
-├── go/
-│   ├── docuconf/            Go SDK (struct tags, loader, export)
-│   ├── cue/                 shared Go library: validate, render, diff, error formatting
-│   ├── cmd/docuconf/        CLI
-│   └── function-docuconf/   Crossplane composition function
-├── sdks/
-│   ├── typescript/          @docuconf/core (+ adapters later)
-│   ├── ruby/                docuconf + docuconf-rails
-│   ├── dotnet/              Docuconf + Docuconf.SourceGenerator
-│   └── python/              later
-├── examples/                one sample app per language + a kind-based platform demo
-└── website/
-```
-
-## 4. Phases
+## 5. Phases
 
 Sizes are relative: S is about a week of one engineer's time, M two to three weeks, L more than a month.
 
-### Phase 0: Lock the contract (S)
+### Phase 0: Org and spec (S)
 
+- Complete the org checklist (section 4).
+- Create `docuconf/spec` from this branch's `spec/`.
 - Settle the open questions in SPEC §13.
-- Grow `spec/cue` into the published CUE module `docuconf.dev/contract`.
-- Write the conformance cases: about 15 contract cases (the `testdata/invalid` set is the start), about 40 load cases covering every type, every error code, empty strings and bool spellings, and the export fixture with its `golden.cue`.
-- CI runs `spec/cue/test.sh`.
+- Grow `spec/cue/testdata` into the conformance suite:
+  - about 20 contract cases
+  - about 40 load cases covering every type, encoding and error code
+  - the export fixture with `golden.cue`
+- Publish the CUE module.
 
-**Done when:** the conformance cases cover every rule in the spec, and the CUE module validates them.
+**Done when:** the spec repo has a tagged `v1alpha1` release that SDKs can pin.
 
-### Phase 1: Go reference SDK and CLI (M)
+### Phase 1: Go SDK and CLI (M)
 
-- Rewrite the Go SDK around struct tags, replacing the generator program:
+- Rebuild `docuconf-go` on caarlos0/env (section 3). Keep the old builder API for one release, marked deprecated.
+- Build the CLI:
+  - `vet` and `render`, with readable errors (SPEC §7)
+  - `diff` (SPEC §9)
+  - `docs`
+  - `push` and `pull` of contracts as OCI artifacts by image digest
+  - a conformance runner that other SDKs call. It renders each load case in the SDK's encodings and checks the SDK's results.
 
-  ```go
-  type Config struct {
-      DatabaseURL string        `env:"DATABASE_URL" required:"true" secret:"true" schemes:"postgres,postgresql" desc:"Primary Postgres connection string"`
-      Port        int           `env:"PORT" default:"8080" min:"1" max:"65535" desc:"HTTP listen port"`
-      Timeout     time.Duration `env:"REQUEST_TIMEOUT" default:"30s" max:"5m" desc:"Upstream request timeout"`
-  }
-
-  cfg, err := docuconf.Load[Config]()            // process env; docuconf.WithDotEnv(".env") for dev
-  //go:generate go run github.com/<org>/docuconf/go/cmd/docuconf export --type Config --name billing-api
-  ```
-
-  Keep the current builder API working for one release, marked deprecated.
-- Build the `docuconf` CLI:
-  - `export`: writes the contract.
-  - `vet`: validates values and policy, with readable errors (SPEC §7).
-  - `render`: produces a Kubernetes env list.
-  - `diff`: classifies changes (SPEC §9).
-  - `docs`: renders Markdown or HTML.
-  - `push` and `pull`: move the contract as an OCI artifact by image digest, using oras-go.
-- Add the conformance runner for Go.
-
-**Done when:** the Go SDK passes conformance, and `docuconf vet` runs in a GitHub Action against a sample GitOps repo.
+**Done when:** the Go SDK passes conformance, and a `docuconf vet` GitHub Action runs against a sample GitOps repo.
 
 ### Phase 2: Platform integration (M)
 
-- Build `function-docuconf`, a Crossplane composition function that:
-  1. reads `spec.image` (by digest) and `spec.env` from the composite resource,
-  2. pulls the contract from the registry and caches it by digest,
-  3. unifies it with the environment policy, supplied as an `EnvironmentConfig` or function input,
-  4. on failure, sets a `ContractValid=False` condition on the XR with one line per variable,
-  5. on success, emits the rendered `env` for the Deployment that later pipeline steps compose.
+- Build `function-docuconf`. It:
+  1. pulls the contract for the claim's image digest,
+  2. unifies it with the environment's policy,
+  3. sets a `ContractValid` condition with one line per bad variable,
+  4. emits the rendered `env`.
+- CI templates for `vet` and `diff`.
+- A kind demo in `docuconf/examples`: one claim deploys; one with a bad `PORT` is rejected.
 
-  It is a function rather than plain `function-cue` because composition-time OCI pulls and readable errors need Go code. Teams that already use `function-cue` can import the meta-schema and inline the contract instead.
-- Add a GitHub Action and a GitLab CI template for `docuconf vet` and `docuconf diff`.
-- Ship an example in `examples/platform`: a kind cluster, Crossplane, an `XApp` composite resource definition, and the composition. One claim deploys; a second, with a bad `PORT`, is rejected with a clear condition.
+**Done when:** the demo runs from one `make` target in CI.
 
-**Done when:** the kind demo runs from one `make` target in CI.
+### Phase 3: TypeScript, Ruby and .NET SDKs (L, in parallel)
 
-### Phase 3: Language SDKs (L, parallelisable)
+These can start as soon as Phase 0's conformance suite and Phase 1's runner exist. Ideally each has a lead from that ecosystem.
 
-These can run in parallel once Phase 0's conformance suite and Phase 1's CLI exist. Each SDK ships with framework integration, docs and an example app, and passes conformance.
+**Done when:** each SDK passes conformance, its example app deploys through the Phase 2 demo, and its README shows the host library's code first and docuconf's additions second.
 
-**TypeScript, `@docuconf/core`.** Type inference does the work:
+### Phase 4: Website, Python, Java, v1beta1 (M, then ongoing)
 
-```ts
-export const config = defineConfig({
-  name: "billing-api",
-  vars: {
-    DATABASE_URL: env.url({ description: "Primary Postgres connection string", required: true, secret: true, schemes: ["postgres", "postgresql"] }),
-    PORT: env.int({ description: "HTTP listen port", default: 8080, min: 1, max: 65535 }),
-    LOG_LEVEL: env.enum({ description: "Minimum log level emitted", values: ["debug", "info", "warn", "error"], default: "info" }),
-  },
-});
-const cfg = config.load(); // cfg.PORT: number, cfg.LOG_LEVEL: "debug" | "info" | "warn" | "error"
-```
+- Launch the website (section 6).
+- Build the Python SDK, then the Java SDK.
+- Move the spec to `v1beta1` after at least two languages are in real use.
 
-- Export with `npx docuconf export src/config.ts`.
-- Zero runtime dependencies.
-- Adapters later: Zod, NestJS `ConfigModule`, and Next.js, which must keep server-only variables out of the client bundle.
+## 6. Website
 
-**Ruby, `docuconf` and `docuconf-rails`.**
+**Stack:**
 
-```ruby
-# config/docuconf.rb
-Docuconf.define "billing-api" do
-  url  :DATABASE_URL, "Primary Postgres connection string", required: true, secret: true, schemes: %w[postgres postgresql]
-  int  :PORT, "HTTP listen port", default: 8080, min: 1, max: 65535
-  enum :LOG_LEVEL, "Minimum log level emitted", values: %w[debug info warn error], default: "info"
-end
-
-Docuconf.config.port # => 8080
-```
-
-- A Railtie validates in `before_initialize`.
-- Export with `bin/rails docuconf:export`.
-- **Rails gotcha:** `assets:precompile` and other build-time tasks boot the app without production env vars. Validation needs a documented skip: on by default for `rails server` and `console`, off for asset tasks, with an explicit override.
-
-**.NET, `Docuconf` and `Docuconf.SourceGenerator`.**
-
-```csharp
-[EnvContract("billing-api")]
-public sealed partial class BillingConfig
-{
-    [Env("DATABASE_URL", "Primary Postgres connection string", Required = true, Secret = true), UrlSchemes("postgres", "postgresql")]
-    public required Uri DatabaseUrl { get; init; }
-
-    [Env("PORT", "HTTP listen port"), Range(1, 65535)]
-    public int Port { get; init; } = 8080;
-}
-
-builder.Services.AddDocuconf<BillingConfig>(); // binds IOptions<BillingConfig>, ValidateOnStart
-```
-
-- A source generator emits `contract.cue` at compile time, so export needs no running app and works in `dotnet build`. It reads defaults from property initializers.
-- It is AOT- and trimming-safe because it uses no reflection.
-
-**Python (later), `docuconf`.** Pydantic-settings is the natural base; ship an adapter that exports a contract from a `BaseSettings` model, plus a minimal dependency-free core.
-
-**Java/Kotlin (later).** Use Spring `@ConfigurationProperties` with an annotation processor for export.
-
-**Done when:** each SDK passes conformance, and its example app deploys through the Phase 2 platform demo.
-
-### Phase 4: Website and v1beta1 (M)
-
-See section 5. In this phase the spec also moves to `v1beta1`, after feedback from at least two languages in real use.
-
-## 5. Website
-
-**Stack:** Astro Starlight.
-
-- It is static, fast and Markdown-first.
-- Its built-in synced tabs suit "show this in Go, TypeScript, Ruby, .NET", and the choice persists across pages.
-- It has search built in, through Pagefind. Versioned docs come from the community `starlight-versions` plugin.
-
-**Hosting:** Cloudflare Pages or GitHub Pages, built from `website/` on every merge, with previews on pull requests.
-
-**Domain:** the spec uses `docuconf.dev` as the CUE module path. Check it is available and register it before Phase 0 ends, because the module path is hard to change once published.
+- Astro Starlight in `docuconf/docuconf.dev`.
+- Synced code tabs, so one page shows Go, TypeScript, Ruby and .NET, and the reader's choice persists.
+- Pagefind search, built in.
+- Versioning through the community `starlight-versions` plugin.
+- Hosted on Cloudflare Pages or GitHub Pages, with pull request previews.
 
 | Section | Content |
 |---|---|
-| Home | One-paragraph pitch, the lifecycle diagram, a 60-second example showing a contract and a rejected deploy. |
-| Concepts | Contracts, values and policy; the three validation points; why feature flags are separate. |
-| Spec | `SPEC.md` rendered and versioned per `apiVersion`, plus a CUE meta-schema reference. |
-| Languages | One guide per SDK: install, declare, load, export, framework integration. Code tabs on shared pages. |
-| Platform | Crossplane function setup, the GitHub Action, policy recipes (prod hardening, secret-only database URLs), OCI distribution. |
-| CLI reference | Generated from the CLI's help text. |
-| Playground (later) | Paste a contract and values, and see validation and rendered env in the browser through CUE compiled to WebAssembly. |
-| Community | Contributing, the governance model, how to propose a new type, how to add an SDK. |
+| Home | The pitch, the lifecycle diagram, and "your existing env library + a few annotations = a deploy-time contract". |
+| Concepts | Contracts, values and policy; the three validation points; wire encodings; why feature flags are separate. |
+| Languages | One guide per SDK, each starting from the host library's own docs and adding docuconf. |
+| Platform | Crossplane function setup, CI actions, policy recipes, OCI distribution. |
+| Spec | `SPEC.md` per version, the CUE reference, and the live compatibility matrix from the nightly conformance run. |
+| Comparisons | Honest pages: docuconf versus T3 Env, Varlock, Spring metadata. Mostly "use them together". |
+| Playground (later) | Paste a contract and values; see validation and rendered env, using CUE compiled to WebAssembly. |
+| Community | Governance, contributing, "add an SDK for your language", the DCO. |
 
-The guide to adding an SDK matters most for an open-source project: the conformance suite turns "is this SDK correct?" into a mechanical check, so the community can maintain SDKs for other languages.
-
-## 6. Risks
+## 7. Risks
 
 | Risk | Mitigation |
 |---|---|
-| CUE's learning curve and noisy errors put off platform teams. | The CLI and the function translate errors (SPEC §7). App teams never write CUE. |
-| SDKs drift on parsing edge cases. | The conformance suite gates every SDK release. |
-| Contract and image skew in production. | Distribute contracts by image digest (SPEC §8). The function refuses an image with no contract unless a namespace opts out. |
-| A new required variable breaks deploys during rollout. | `docuconf diff` in app CI flags it, and the platform pull request lands values before the app ships. |
-| Teams cram feature flags into env. | A naming lint warning, clear docs, and a later `FlagContract`. |
-| Removing a variable breaks validation, because values still set it. | A deprecation workflow. A non-strict mode is an open question (SPEC §13.2). |
+| A host library changes behaviour or is abandoned. | The SDK is a thin layer, so swapping hosts is contained. Conformance catches regressions on the next upgrade. |
+| A host library cannot express something in the spec. | The SDK adds it as metadata (Ruby `constrain`, .NET `[Secret]`). If no clean way exists, the spec is the thing to reconsider. |
+| SDKs drift. | Pinned conformance in each repo, plus the nightly matrix across all of them. |
+| CUE errors put off platform teams. | The CLI and the function translate errors (SPEC §7). |
+| Contract and image version skew. | Distribution by image digest (SPEC §8). |
+| A new required variable breaks deploys. | `docuconf diff` in app CI. The platform pull request lands values first. |
+| Removing a variable breaks validation. | A deprecation workflow, or the non-strict mode in SPEC §13.2. |
 
-## 7. Decisions needed from you
+## 8. Decisions needed from you
 
-1. **Org, module path and domain.** `autoscalerhq` or `bearbinary`, and `docuconf.dev` or another domain.
-2. **Licence.** Apache-2.0 is recommended: it is standard for Kubernetes-adjacent projects and has a patent grant.
-3. **SDK order after Go.** The plan assumes TypeScript, then Ruby, then .NET, based on ecosystem size. Change it if your own services lean another way.
-4. **Distribution.** Whether your registries support the OCI 1.1 referrers API, or at least the tag-schema fallback that oras uses, or whether to start with GitOps-committed contracts. Support varies by registry and version, so test yours.
-5. **The SPEC §13 open questions**, especially strict unknown-variable handling and optional variables without defaults.
+1. **Org name.** Then reserve the names in section 4 the same day.
+2. **Phase 3 order.** If only one SDK can start at once: TypeScript (largest audience), Ruby or .NET.
+3. **Ruby host.** anyway_config is recommended. The alternative is building on plain `ENV` plus dotenv, if your Rails apps do not use anyway_config and you would rather avoid the dependency.
+4. **Distribution.** Whether your registries support OCI referrers (or the tag fallback oras uses), or whether to start with GitOps-committed contracts.
+5. **SPEC §13 open questions,** especially strict unknown-variable handling and build-time variables.

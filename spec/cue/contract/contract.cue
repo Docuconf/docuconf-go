@@ -7,6 +7,7 @@
 package contract
 
 import (
+	"encoding/json"
 	"list"
 	"strings"
 	"time"
@@ -88,11 +89,21 @@ import (
 	default?: bool
 })
 
+// Durations are always written in Go syntax in contracts and platform
+// values. The encoding says what the app's host library parses, and
+// #Render converts to it.
 #Duration: =~"^([0-9]+(ns|us|ms|s|m|h))+$"
+
+// go:       1m30s     (Go time.ParseDuration, Spring Boot)
+// iso8601:  PT90S     (pydantic timedelta, ActiveSupport::Duration.parse)
+// seconds:  90        (plain number of seconds)
+// timespan: 00:01:30  (.NET TimeSpan.Parse)
+#DurationEncoding: "go" | "iso8601" | "seconds" | "timespan"
 
 #DurationVar: close({
 	#Common
 	type:     "duration"
+	encoding: *"go" | #DurationEncoding
 	default?: #Duration
 	min?:     #Duration
 	max?:     #Duration
@@ -112,11 +123,19 @@ import (
 	default?: or(values)
 })
 
+// csv:     a,b          (caarlos0/env, Spring Boot, anyway_config)
+// json:    ["a","b"]    (pydantic-settings)
+// indexed: NAME__0=a, NAME__1=b  (Microsoft.Extensions.Configuration)
+#ListEncoding: "csv" | "json" | "indexed"
+
 #ListVar: close({
 	#Common
-	type:      "list"
-	items:     "string" | "int"
-	separator: *"," | string
+	type:     "list"
+	items:    "string" | "int"
+	encoding: *"csv" | #ListEncoding
+	if encoding == "csv" {
+		separator: *"," | string
+	}
 	minItems?: int & >=0
 	maxItems?: int & >=0
 	default?: [...]
@@ -162,6 +181,10 @@ import (
 		}
 		if var.type == "duration" {
 			value: #Duration
+			if var.encoding != "go" {
+				// Only the go encoding can express sub-millisecond durations.
+				wholeMilliseconds: true & mod(time.ParseDuration(value), 1000000) == 0
+			}
 			if var.min != _|_ {
 				atLeastMin: true & time.ParseDuration(value) >= time.ParseDuration(var.min)
 			}
@@ -206,26 +229,79 @@ import (
 }
 
 // #Render turns validated values into a Kubernetes container env list,
-// using the canonical string encoding every SDK parses.
+// in the wire encoding each variable declares.
 #Render: {
 	contract: #Contract
 	values: [string]: _
-	env: [
+	env: list.FlattenN([
 		for n, v in contract.vars if values[n] != _|_ {
-			let x = values[n]
-			if v.secret {
-				name:      n
-				valueFrom: x
-			}
-			if !v.secret {
-				name: n
-				if v.type == "list" {
-					value: strings.Join([for i in x {"\(i)"}], v.separator)
-				}
-				if v.type != "list" {
-					value: "\(x)"
-				}
-			}
+			(#RenderVar & {name: n, var: v, value: values[n]}).out
 		},
-	]
+	], 1)
+}
+
+#RenderVar: {
+	name:  string
+	var:   #Var
+	value: _
+	out: [...{...}]
+
+	// Aliases: inside {name: ..., value: ...} the bare names would refer
+	// to the new struct's own fields.
+	let N = name
+	let V = value
+
+	if var.secret {
+		out: [{name: N, valueFrom: V}]
+	}
+	if !var.secret {
+		if var.type == "list" {
+			if var.encoding == "csv" {
+				out: [{name: N, value: strings.Join([for i in V {"\(i)"}], var.separator)}]
+			}
+			if var.encoding == "json" {
+				out: [{name: N, value: json.Marshal(V)}]
+			}
+			if var.encoding == "indexed" {
+				out: [for i, x in V {name: "\(N)__\(i)", value: "\(x)"}]
+			}
+		}
+		if var.type == "duration" {
+			out: [{name: N, value: (#RenderDuration & {in: V, encoding: var.encoding}).out}]
+		}
+		if var.type != "list" && var.type != "duration" {
+			out: [{name: N, value: "\(V)"}]
+		}
+	}
+}
+
+#RenderDuration: {
+	in:       #Duration
+	encoding: #DurationEncoding
+	out:      string
+
+	let ms = div(time.ParseDuration(in), 1000000)
+	let secs = div(ms, 1000)
+	let frac = mod(ms, 1000)
+	let fracDigits = strings.TrimRight([
+		if frac < 10 {"00\(frac)"},
+		if frac < 100 {"0\(frac)"},
+		"\(frac)",
+	][0], "0")
+	let fracStr = [if frac == 0 {""}, ".\(fracDigits)"][0]
+	let pad = {
+		n: int
+		out: [if n < 10 {"0\(n)"}, "\(n)"][0]
+	}
+	let days = div(secs, 86400)
+	let hh = (pad & {n: div(mod(secs, 86400), 3600)}).out
+	let mm = (pad & {n: div(mod(secs, 3600), 60)}).out
+	let ss = (pad & {n: mod(secs, 60)}).out
+
+	if encoding == "go" {out: in}
+	if encoding == "seconds" {out: "\(secs)\(fracStr)"}
+	if encoding == "iso8601" {out: "PT\(secs)\(fracStr)S"}
+	if encoding == "timespan" {
+		out: [if days > 0 {"\(days)."}, ""][0] + "\(hh):\(mm):\(ss)\(fracStr)"
+	}
 }

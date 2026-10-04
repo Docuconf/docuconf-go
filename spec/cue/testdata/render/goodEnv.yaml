@@ -1,0 +1,13 @@
+- name: DATABASE_URL
+  valueFrom:
+    secretKeyRef:
+      name: billing-db
+      key: url
+- name: PORT
+  value: "9090"
+- name: LOG_LEVEL
+  value: warn
+- name: REQUEST_TIMEOUT
+  value: 45s
+- name: ALLOWED_ORIGINS
+  value: https://app.example.com,https://admin.example.com
