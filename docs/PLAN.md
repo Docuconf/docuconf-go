@@ -102,7 +102,7 @@ end
 **.NET, on Options.**
 
 ```csharp
-[EnvContract("billing-api", Section = "Billing")]
+[ConfigContract("billing-api", Section = "Billing")]
 public sealed class BillingOptions
 {
     [Required, Secret, UrlSchemes("postgres", "postgresql"), Description("Primary Postgres connection string")]
@@ -138,11 +138,11 @@ builder.Services.AddSingleton<IValidateOptions<BillingOptions>, ValidateBillingO
 
   The schema enforces both too (`spec/cue/testdata/invalid/profile_*`).
 - **Not in the contract:**
-  - sections no `[EnvContract]` class binds (`Logging`, `Kestrel`, `AllowedHosts`, `Serilog`);
+  - sections no `[ConfigContract]` class binds (`Logging`, `Kestrel`, `AllowedHosts`, `Serilog`);
   - values from Key Vault or other external providers (`[External]`);
   - shapes env vars cannot carry in v1alpha1 (arrays of objects, dictionaries). The generator warns about these, because the platform cannot set them.
 - **Framework settings platforms commonly override** ship as opt-in fragments: `Logging__LogLevel__Default` as an enum, `ASPNETCORE_HTTP_PORTS`, `ASPNETCORE_URLS`.
-- **Mounting `appsettings.Production.json` from a ConfigMap** is discouraged. It replaces the baked-in file and silently drops its values. Env vars layer instead. A file render target for teams that insist is an open question (SPEC §13.6).
+- **Mounting `appsettings.Production.json` from a ConfigMap** is discouraged. It replaces the baked-in file and silently drops its values. Env vars layer instead. A file render target for teams that insist is an open question (SPEC §13.4).
 
 `spec/cue/examples/inventory_contract.cue` is a worked example: Production is satisfied by its appsettings file, and Staging overrides its file's value from the platform.
 

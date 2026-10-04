@@ -1,25 +1,25 @@
-# docuconf Environment Contract Specification
+# docuconf Configuration Contract Specification
 
 Status: **Draft, v1alpha1**
 Reference schema: [`cue/contract/contract.cue`](cue/contract/contract.cue) (run `cue/test.sh` to check it)
 
 ## 1. Purpose
 
-An application's environment variables are an API between the application and the platform that runs it. Today that API is usually undocumented, untyped, and checked only when the process crashes.
+An application's configuration inputs are an API between the application and the platform that runs it: environment variables, config files, TLS certificates, CA bundles, keystores and other files it reads. Today that API is usually undocumented, untyped, and checked only when the process crashes.
 
 docuconf makes the API explicit:
 
-1. The application declares every environment variable it reads, in its own language, with a type, constraints and a description.
+1. The application declares every input it reads, in its own language, with a type, constraints and a description.
 2. A docuconf SDK exports that declaration as a **contract**: a CUE document.
-3. The platform (Kubernetes, composed by Crossplane and CUE) validates the values it intends to inject against the contract **before** anything is deployed.
-4. At boot, the SDK validates the real environment against the same declaration and exposes typed values to the application.
+3. The platform (Kubernetes, composed by Crossplane and CUE) validates what it intends to supply against the contract **before** anything is deployed.
+4. At boot, the SDK validates the real environment and files against the same declaration and exposes typed values to the application.
 
 One contract format, one validation model, one SDK per language.
 
 ### 1.1 Goals
 
-- A deploy with a missing, mistyped or out-of-range variable fails at composition time, not at runtime.
-- Every variable is documented, because the contract requires a description.
+- A deploy with a missing, mistyped or out-of-range variable, or a missing or malformed file, fails at composition time, not at runtime.
+- Every input is documented, because the contract requires a description.
 - The contract is language-neutral. A Rails app and a .NET app produce documents with the same shape.
 - Platform teams can add environment-specific policy (for example, "no debug logging in prod") on top of an app contract without editing it.
 - Secret material never appears in a contract or in the values document.
@@ -28,16 +28,19 @@ One contract format, one validation model, one SDK per language.
 
 - **Feature flags.** See [section 10](#10-feature-flags-are-not-environment-configuration).
 - Secret storage or rotation. docuconf validates that a secret is *referenced*; External Secrets, Vault or the CSI driver supply it.
-- Config files (YAML, JSON, `appsettings.json`). v1 covers environment variables only.
+- Provisioning the things an app depends on (databases, queues, DNS, buckets). That is the job of Crossplane composite resources or a workload spec such as [Score](https://score.dev). docuconf types how their outputs reach the app: a connection string Secret, a CA bundle, a credentials file.
+- Command-line arguments. Twelve-factor apps take configuration from the environment and files; arguments may be added later.
 - Replacing a language's config ecosystem. Each SDK extends that language's leading environment library rather than competing with it (section 11.1).
 
 ## 2. Terms
 
 | Term | Meaning |
 |---|---|
-| **Declaration** | The in-language definition of a service's variables (Go struct tags, a Ruby DSL, a TypeScript object, .NET attributes). |
-| **Contract** | The CUE document exported from a declaration. Kind `EnvContract`. |
+| **Declaration** | The in-language definition of a service's inputs (Go struct tags, a Ruby DSL, a TypeScript object, .NET attributes). |
+| **Input** | Anything the app reads from its environment: a variable (`vars`) or a file (`files`). |
+| **Contract** | The CUE document exported from a declaration. Kind `ConfigContract`. |
 | **Values** | The typed values a platform intends to inject for one deployment of one service. |
+| **Sources** | Where the platform gets each file input: inline content, a ConfigMap, a Secret, a cert-manager Certificate, a CSI volume or an image. |
 | **Policy** | Extra CUE constraints a platform unifies with values for a given environment. |
 | **SDK** | A docuconf library for one language: declaration API, export, boot-time loader. |
 | **Canonical encoding** | The single string form each type takes inside a Kubernetes `env` entry. |
@@ -51,7 +54,7 @@ The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
  ─────────────                               ──────────────────────────────
  declaration ──export──▶ contract.cue ──publish (OCI, by image digest)──┐
                                                                          ▼
-                                   values (claim) + policy ──▶ #Validate ──▶ #Render ──▶ Pod env
+                                   values + sources + policy ──▶ #Validate ──▶ #Render ──▶ env, volumes
                                                                                            │
  SDK loader at boot ◀──────────────────────── process environment ◀────────────────────────┘
 ```
@@ -62,7 +65,7 @@ Validation happens three times, each catching what the earlier step cannot:
 |---|---|---|
 | CI of the platform repo | `docuconf vet` | Bad values before merge. |
 | Composition | Crossplane function | Bad values that reached the cluster anyway, and contract/image version skew. |
-| Boot | Language SDK | Secret contents, values set outside the platform, local development. |
+| Boot | Language SDK | Secret contents, certificate expiry and key match, values set outside the platform, local development. |
 
 ## 4. The contract document
 
@@ -76,7 +79,7 @@ import "docuconf.dev/contract"
 
 contract.#Contract & {
 	apiVersion: "docuconf.dev/v1alpha1"
-	kind:       "EnvContract"
+	kind:       "ConfigContract"
 	metadata: {
 		name:       "billing-api"
 		appVersion: "1.4.0"
@@ -143,11 +146,13 @@ An optional variable with no default is legal. The SDK exposes it as absent (`ni
 | `url` | `schemes` | string with a `scheme://` | as is |
 | `enum` | `values` (non-empty) | one of `values` | as is |
 | `list` | `items` (`string`\|`int`), `encoding`, `separator` (csv only, default `,`), `minItems`, `maxItems` | list | depends on `encoding` |
+| `json` | `schema` (JSON Schema) | any JSON value | compact JSON |
 
 Rules:
 
 - `pattern` is RE2, the only regex dialect every SDK can match exactly (Go native, `re2` bindings or a compatible subset elsewhere). SDKs MUST reject patterns that use features outside RE2, such as lookaround or backreferences, at declaration time.
 - `default` MUST satisfy the variable's own constraints. SDKs MUST check this at declaration time.
+- A `json` variable carries a structured value, such as a rate-limit object. Its `schema` is a JSON Schema the SDK generates from the app's own type, so the platform checks the value against the same type the app deserializes into (section 4.6).
 - The type set is closed in v1alpha1. A new type needs a spec change, because every SDK must parse it identically.
 
 ### 4.4 Config files and profiles
@@ -177,6 +182,100 @@ Rules, enforced by the meta-schema:
 - The platform's environment variables override file values. This is the default precedence in .NET and Spring, and SDKs for hosts with a different order MUST document it.
 
 Configuration from sources the platform does not control, such as Azure Key Vault, AWS Secrets Manager or Rails credentials, is outside the contract. SDKs MUST leave those keys out, or provide a way to exclude them. Settings that cannot be expressed in v1alpha1 types (arrays of objects, dictionaries) stay file-only, and the SDK warns that the platform cannot set them.
+
+### 4.5 Value sources
+
+A non-secret variable's value is usually a literal. Some values only exist in the cluster, so the platform may supply them by reference instead:
+
+| Source | Example | Allowed for | Checked |
+|---|---|---|---|
+| literal | `PORT: 9090` | every non-secret type | before deploy |
+| `configMapKeyRef` | `{configMapKeyRef: {name: "limits", key: "rate"}}` | every non-secret type except `list` | at boot |
+| `fieldRef` (Downward API) | `{fieldRef: fieldPath: "metadata.namespace"}` | `string` | always valid |
+| `resourceFieldRef` | `{resourceFieldRef: resource: "limits.memory"}` | `int` | always valid |
+| `secretKeyRef` | `{secretKeyRef: {name: "db", key: "url"}}` | secret variables only, and required for them | at boot |
+
+The Downward API always yields a string, and resource fields an integer, so the meta-schema rejects a `fieldRef` for an `int` variable. Typical uses are a pod's namespace for metrics labels, and `GOMEMLIMIT` or `DOTNET_GCHeapHardLimit` from the container's memory limit.
+
+### 4.6 File inputs
+
+Many inputs are files, not variables: a structured config file, a TLS key pair, a CA bundle, a keystore, a licence key, a data file. `files` is a map keyed by input name (a DNS label, since it names a volume):
+
+```cue
+files: {
+	routes: {
+		type:        "config"
+		format:      "yaml"
+		description: "Routing table: path prefixes and their upstreams"
+		required:    true
+		path:        "/etc/gateway/routes/routes.yaml"
+		pathEnv:     "ROUTES_FILE"
+		reload:      "watch"
+		schema: {...} // JSON Schema generated from the app's Routes type
+	}
+	"serving-tls": {
+		type:        "tls"
+		description: "Certificate the gateway serves HTTPS with"
+		path:        "/etc/gateway/tls"
+		dnsNames: ["gateway.internal", "api.example.com"]
+		keyAlgorithms: ["ECDSA", "RSA"]
+		minRemaining: "720h"
+	}
+}
+```
+
+Fields common to every file input:
+
+| Field | Default | Rule |
+|---|---|---|
+| `type` | — | One of the file types below. |
+| `description`, `required`, `group`, `deprecated` | | As for variables. |
+| `secret` | `false` | Content must come from a secret store. Forced to `true` for `tls` and `keystore`. |
+| `path` | — | Where the app reads the input: a directory for `tls`, a file otherwise. Absolute and normalised. |
+| `pathEnv` | — | An environment variable the platform sets to `path`, for apps that read the location from the environment (`SSL_CERT_FILE`, `ROUTES_FILE`). It MUST NOT also be declared in `vars`. |
+| `reload` | `restart` | `restart`: the app reads the file once, so a changed source needs a rollout. `watch`: the app reloads the file itself. |
+| `maxSize` | — | Upper bound in bytes. |
+
+| `type` | Content | Constraint fields |
+|---|---|---|
+| `config` | A structured file in `format` `json`, `yaml` or `toml`. | `schema`: a JSON Schema the SDK generates from the type the app binds the file to. |
+| `tls` | A key pair in the `kubernetes.io/tls` layout: `tls.crt`, `tls.key`, and `ca.crt` when `requireCA` is set. | `dnsNames`, `keyAlgorithms` (`RSA`, `ECDSA`, `Ed25519`), `minRemaining`, `requireCA`. |
+| `caBundle` | One or more PEM CA certificates. | `minCertificates` (default 1). |
+| `keystore` | A PKCS#12 or JKS keystore. | `format`; `passwordVar`, which MUST name a declared secret variable. |
+| `text` | A text file, such as a licence key. | `pattern` (RE2), `minLength`, `maxLength`. |
+| `binary` | Opaque bytes, such as a GeoIP database. | `maxSize` only. |
+
+**Schemas come from code.** A config file or `json` variable is only type-safe if the platform checks it against the same type the app deserializes into. SDKs therefore generate `schema` from that type, using each ecosystem's own JSON Schema support: `JsonSchemaExporter` in .NET, `model_json_schema()` in pydantic, Standard JSON Schema in TypeScript, reflection-based generators in Go and Java. The platform tooling compiles the JSON Schema to CUE (`cuelang.org/go/encoding/jsonschema`) and passes it to `#Validate` as `#schemas`.
+
+**Mount rules**, enforced by the meta-schema:
+
+- A file is mounted at its parent directory, and a TLS key pair at its own directory. Mounting hides whatever the image had there, so no two inputs may share a mount directory, and none may be mounted at a reserved directory such as `/`, `/etc`, `/etc/ssl/certs`, `/usr`, `/var` or `/app`. A CA bundle at `/etc/ssl/certs/private.pem` would otherwise hide the system trust store.
+- Files are projected with `items`, never `subPath`. A `subPath` mount does not receive updates, which would silently break certificate rotation.
+- Secret files are mounted read-only with mode `0400`; other files `0444`.
+
+#### 4.6.1 File sources
+
+The platform chooses where each file comes from:
+
+| Source | For | Checked before deploy |
+|---|---|---|
+| `inline` | non-secret files | Everything: format, `schema`, `pattern`, size, certificate count. Rendered as an immutable ConfigMap named with a hash of its content, so any change causes a rollout. |
+| `configMap` | non-secret files | That a key is given for single files. trust-manager writes CA bundles to ConfigMaps. |
+| `secret` | any | That a key is given for single files, and none for a TLS directory. With resolved metadata: the Secret's type is `kubernetes.io/tls` and it has the required keys. |
+| `certificate` (cert-manager) | `tls` | From the Certificate's spec, which is not secret: it covers every name in `dnsNames` (wildcards count for one label), uses an allowed key algorithm, and its `renewBefore` is at least `minRemaining`, since cert-manager renews when that much validity is left. |
+| `csi` (Secrets Store CSI driver) | any | Nothing about the content; it is checked at boot. |
+| `image` (image volume) | non-secret files | Nothing about the content. For data too large for a ConfigMap's 1 MiB limit. Needs a cluster with image volumes enabled. |
+
+Fields described as **resolved** (a Secret's `type` and `keys`, a Certificate's spec) are filled in by the platform tooling from the cluster. They are metadata, never secret contents. When they are absent, those checks move to boot.
+
+#### 4.6.2 Rotation
+
+A source that changes after deploy (a renewed certificate, an updated ConfigMap) only reaches an app that rereads it. `reload` makes this part of the contract:
+
+- `watch`: the app reloads the file. The platform does nothing more.
+- `restart`: `#Render` lists the source under `restartTriggers`, and the platform MUST roll the pods when it changes (for example with a reloader controller, or by hashing the source into a pod annotation).
+
+Inline content is content-hashed, so it always rolls the pods when it changes.
 
 ## 5. Wire encoding and parsing
 
@@ -228,17 +327,20 @@ DATABASE_URL: secretKeyRef: {name: "billing-db", key: "url"}
 
 `#Render` emits it as a `valueFrom.secretKeyRef` entry. CUE cannot see the secret's contents, so its type and constraints (scheme, pattern, length) are enforced by the SDK at boot. SDKs MUST NOT include a secret's value in error messages, logs or docs.
 
+A secret file input (`secret: true`, and always `tls` and `keystore`) MUST come from a `secret`, `certificate` or `csi` source, never `inline` or a ConfigMap. Neither a contract nor a values document ever contains private keys or passwords.
+
 ## 7. Platform validation
 
 The meta-schema provides two definitions, both exercised by `cue/test.sh`:
 
-**`#Validate`**: given `contract` and `values`,
+**`#Validate`**: given `contract`, `values`, `files` (sources) and the compiled `#schemas`,
 
 - every `required` variable must be set by the platform or by the selected profile (section 4.4), and any that are not are listed in `missingRequired`,
-- every value must satisfy its variable's type and constraints (`checks.<NAME>`),
-- any value not declared in the contract is rejected. A typo like `DATABSE_URL` is the most common environment bug, so this check is on by default.
+- every value must satisfy its variable's type and constraints (`checks.<NAME>`), and every file source must pass the checks in section 4.6.1 (`fileChecks.<name>`),
+- every required file input must have a source,
+- any value or file source not declared in the contract is rejected. A typo like `DATABSE_URL` is the most common environment bug, so this check is on by default.
 
-**`#Render`**: produces the Kubernetes `env` list from validated values, using the canonical encoding.
+**`#Render`**: produces the container's `env` entries (in each variable's wire encoding, plus every `pathEnv`), the `volumes` and `volumeMounts` for file inputs, the ConfigMaps for inline content, and the `restartTriggers` (section 4.6.2).
 
 **Policy** is plain CUE unified with the values:
 
@@ -280,6 +382,11 @@ A contract describes a specific build of an application. It MUST travel with the
 | Tighten a constraint (narrower range, fewer enum values, new pattern) | **breaking** | |
 | Loosen a constraint | compatible | |
 | Change `description`, `group`, `examples` or `default` | compatible | `default` changes alter behaviour, so diff reports them as notable. |
+| Add a required file input, or make one required | **breaking** | Existing sources no longer validate. |
+| Change a file input's `path`, `type` or `format` | **breaking** for the app image only | The platform re-renders the mount; nothing in the values changes. Reported as notable. |
+| Tighten a `schema` (new required property, narrower type) | **breaking** | Existing config files may no longer validate. Compared structurally after compiling both schemas. |
+| Add `dnsNames`, raise `minRemaining`, narrow `keyAlgorithms` | **breaking** | The existing certificate may no longer qualify. |
+| `reload: restart` → `watch` | compatible | |
 
 The contract format itself is versioned by `apiVersion`: `v1alpha1` (fields may change), then `v1beta1` (additive only), then `v1`.
 
@@ -337,10 +444,16 @@ A conforming SDK MUST:
 2. Validate the declaration itself at definition time: name format, description length, default against constraints, required without default, RE2-only patterns.
 3. Export a contract that matches the conformance golden file for the fixture declaration. `metadata.generator` and the `encoding` fields are set by the SDK, so they are excluded from the comparison; everything else must match exactly. Output order is fixed: metadata first, then variables sorted by name, then each variable's fields in the order of section 4.
 4. Load from the **process environment** by default. Reading a `.env` file is an opt-in for development, and real environment variables override it.
-5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`). Secret values are never printed.
+5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed.
 6. Expose typed values: a struct, a class, or an inferred TypeScript type. Not a string map.
-7. Ignore environment variables not in the declaration. A real process has many (`HOSTNAME`, `KUBERNETES_*`), so the unknown-variable check is only applied to platform values.
-8. Pass the shared conformance suite (section 12).
+7. Check every file input at boot, covering what the platform could not see:
+   - the path exists and is readable, within `maxSize`;
+   - `config` files parse in their `format` and bind to the app's type, which is the type their `schema` came from;
+   - `tls`: the certificate and key parse and match, the certificate is currently valid with at least `minRemaining` left, covers every name in `dnsNames`, uses an allowed key algorithm, and chains to `ca.crt` when `requireCA` is set;
+   - `caBundle` holds at least `minCertificates` parseable certificates; `keystore` opens with its password variable; `text` matches its constraints.
+8. Honour `reload: watch` for every file input that declares it, typically by watching the mount directory, since Kubernetes updates projected files by swapping a symlink.
+9. Ignore environment variables not in the declaration. A real process has many (`HOSTNAME`, `KUBERNETES_*`), so the unknown-variable check is only applied to platform values.
+10. Pass the shared conformance suite (section 12).
 
 An SDK SHOULD also:
 
@@ -360,15 +473,17 @@ The `conformance/` directory is language-neutral:
 
 1. Should optional variables with no default be allowed at all, or should every variable be required or defaulted?
 2. Should `#Validate` support a non-strict mode where unknown variables are warnings, to ease removals?
-3. Should `configMapKeyRef` be allowed for non-secret values, or must the platform always supply literals?
-4. Is a `json` type (an opaque JSON blob with an optional JSON Schema) worth the cost for every SDK?
-5. Should the spec cover build-time variables (section 11.1) with a separate `buildVars` section, so a CI build can be validated the same way?
-6. Should there be a file render target? Some .NET and Spring teams mount `appsettings.Production.json` or `application-prod.yml` from a ConfigMap instead of using env vars. `#Render` could emit that file from `configKey`. Replacing a baked-in file, though, would silently discard its profile defaults, so env vars, which layer on top, stay the recommended route.
-7. Spring can activate several profiles at once (`SPRING_PROFILES_ACTIVE=prod,eu`). Should `profiles` support an ordered list, with later profiles winning?
-8. Proposals arising from [`docs/EDGE_CASES.md`](../docs/EDGE_CASES.md):
+3. Should the spec cover build-time variables (section 11.1) with a separate `buildVars` section, so a CI build can be validated the same way?
+4. Should there be a file render target? Some .NET and Spring teams mount `appsettings.Production.json` or `application-prod.yml` from a ConfigMap instead of using env vars. `#Render` could emit that file from `configKey`. Replacing a baked-in file, though, would silently discard its profile defaults, so env vars, which layer on top, stay the recommended route.
+5. Spring can activate several profiles at once (`SPRING_PROFILES_ACTIVE=prod,eu`). Should `profiles` support an ordered list, with later profiles winning?
+6. Proposals arising from [`docs/EDGE_CASES.md`](../docs/EDGE_CASES.md):
    - platform-declared **injected variables**, set by webhooks such as the OpenTelemetry operator;
    - **roles**, for one image running several processes;
    - **`requiredIf`**, for conditional requirements;
    - **well-known fragments**, for variables read by frameworks and libraries;
    - **platform-authored contracts**, for third-party images.
-9. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?
+7. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?
+8. Should a file input be able to take a whole directory of arbitrary files (for example, every `*.crt` in a trust directory), rather than one file or a TLS key pair?
+9. Should file inputs support profiles, so a baked-in `routes.yaml` can be the default for some environments, as `appsettings.{Environment}.json` is for variables?
+
+Resolved in this draft: non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
