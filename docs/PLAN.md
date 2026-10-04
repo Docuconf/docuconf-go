@@ -37,16 +37,21 @@ The examples below declare the same service as `spec/cue/examples/billing_contra
 
 ```go
 type Config struct {
-    DatabaseURL string        `env:"DATABASE_URL,required" secret:"true" schemes:"postgres,postgresql" desc:"Primary Postgres connection string"`
-    Port        int           `env:"PORT" envDefault:"8080" min:"1" max:"65535" desc:"HTTP listen port"`
-    Timeout     time.Duration `env:"REQUEST_TIMEOUT" envDefault:"30s" max:"5m" desc:"Upstream request timeout"`
+    // Primary Postgres connection string.
+    DatabaseURL string `env:"DATABASE_URL,required" secret:"true" schemes:"postgres,postgresql"`
+
+    // HTTP listen port.
+    Port int `env:"PORT" envDefault:"8080" min:"1" max:"65535"`
+
+    // Upstream request timeout.
+    Timeout time.Duration `env:"REQUEST_TIMEOUT" envDefault:"30s" max:"5m"`
 }
 
 cfg, err := docuconf.ParseAs[Config]() // env.ParseAs, then docuconf's constraints; all violations in one error
 ```
 
 - Teams already on caarlos0/env can keep calling `env.ParseAs` and add `docuconf.Validate(cfg)` afterwards.
-- `docuconf export ./internal/config.Config` reads the struct by static analysis (`go/packages`), so exporting needs no running program and no environment.
+- `docuconf export ./internal/config.Config` reads the struct by static analysis (`go/packages`), so exporting needs no running program and no environment. Descriptions come from each field's doc comment, the idiomatic place in Go, with a `desc` tag as a fallback.
 
 **TypeScript, on T3 Env.**
 
