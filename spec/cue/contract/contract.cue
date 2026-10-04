@@ -24,7 +24,7 @@ import (
 		// Application version the contract was exported from, e.g. a git SHA or semver.
 		appVersion?: string
 		generator: {
-			language: "go" | "typescript" | "ruby" | "dotnet" | "python" | "java"
+			language: "go" | "typescript" | "ruby" | "dotnet" | "python" | "java" | "kotlin" | "rust" | "swift" | "elixir" | "gleam"
 			sdk:      string
 			version:  string
 		}

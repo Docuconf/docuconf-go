@@ -112,7 +112,7 @@ A full example is in [`cue/examples/billing_contract.cue`](cue/examples/billing_
 |---|---|---|
 | `metadata.name` | yes | DNS label (`[a-z0-9-]`, at most 63 characters). Identifies the service. |
 | `metadata.appVersion` | no | The version or git SHA the contract was exported from. |
-| `metadata.generator.language` | yes | One of `go`, `typescript`, `ruby`, `dotnet`, `python`, `java`. |
+| `metadata.generator.language` | yes | One of `go`, `typescript`, `ruby`, `dotnet`, `python`, `java`, `kotlin`, `rust`, `swift`, `elixir`, `gleam`. |
 | `metadata.generator.sdk`, `.version` | yes | The SDK package name and version, for debugging and compatibility. |
 
 ### 4.2 Variables
