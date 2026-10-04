@@ -176,6 +176,8 @@ profiles: {
 }
 ```
 
+Profile names in `profiles.defaults` are case-sensitive. Where the host treats them case-insensitively (figment), the SDK exports the names as the app's config files spell them.
+
 Rules, enforced by the meta-schema:
 
 - Every profile default MUST name a declared variable and satisfy its constraints. A bad value in `appsettings.Production.json` fails the same way as a bad value from the platform.
@@ -455,7 +457,7 @@ A conforming SDK MUST:
    - `config` files parse in their `format` and bind to the app's type, which is the type their `schema` came from;
    - `tls`: the certificate and key parse and match, the certificate is currently valid with at least `minRemaining` left, covers every name in `dnsNames`, uses an allowed key algorithm, and chains to `ca.crt` when `requireCA` is set;
    - `caBundle` holds at least `minCertificates` parseable certificates; `keystore` opens with its password variable; `text` matches its constraints.
-8. Honour `reload: watch` for every file input that declares it, typically by watching the mount directory, since Kubernetes updates projected files by swapping a symlink.
+8. Honour `reload: watch` for every file input that declares it, typically by watching (or polling) the mount directory, since Kubernetes updates projected files by swapping a symlink. An SDK that cannot reload an input type MUST reject `watch` for it at declaration time rather than export a promise it does not keep.
 9. Ignore environment variables not in the declaration. A real process has many (`HOSTNAME`, `KUBERNETES_*`), so the unknown-variable check is only applied to platform values.
 10. Pass the shared conformance suite (section 12).
 
