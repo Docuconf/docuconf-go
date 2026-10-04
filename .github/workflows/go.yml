@@ -1,0 +1,30 @@
+name: go
+
+on:
+  push:
+    paths-ignore: ["website/**", "docs/**"]
+  pull_request:
+    paths-ignore: ["website/**", "docs/**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      # The SDK's export test runs cue vet against the meta-schema.
+      - run: go install cuelang.org/go/cmd/cue@v0.17.1
+      - name: SDK
+        run: |
+          test -z "$(gofmt -l $(git ls-files '*.go'))"
+          go build ./...
+          go vet ./...
+          go test -race ./...
+      - name: CLI
+        working-directory: cmd/docuconf
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...

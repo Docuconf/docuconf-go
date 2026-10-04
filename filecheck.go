@@ -180,7 +180,7 @@ func loadCABundle(b *fileBinding) ([]*x509.Certificate, bool, []Violation) {
 		return nil, false, []Violation{b.violation(CodeFileMalformed, "holds no PEM certificates")}
 	}
 	if len(certs) < b.decl.minCertificates {
-		return nil, false, []Violation{b.violation(CodeCertificateInvalid, "holds %s, need at least %d", plural(len(certs), "certificate"), b.decl.minCertificates)}
+		return nil, false, []Violation{b.violation(CodeFileMalformed, "holds %s, need at least %d", plural(len(certs), "certificate"), b.decl.minCertificates)}
 	}
 	return certs, false, nil
 }

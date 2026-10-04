@@ -1,0 +1,270 @@
+package main
+
+import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+const (
+	examples = "../../spec/cue/examples"
+	gateway  = examples + "/gateway_contract.cue"
+	billing  = examples + "/billing_contract.cue"
+)
+
+func docuconf(t *testing.T, args ...string) (stdout, stderr string, code int) {
+	t.Helper()
+	var o, e bytes.Buffer
+	code = run(args, &o, &e)
+	return o.String(), e.String(), code
+}
+
+// write puts content in a temporary file and returns its path.
+func write(t *testing.T, name, content string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func read(t *testing.T, p string) string {
+	t.Helper()
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// requireLines checks that vet failed and printed exactly want.
+func requireLines(t *testing.T, out string, code int, want ...string) {
+	t.Helper()
+	if code != 1 {
+		t.Fatalf("exit code %d, want 1; output:\n%s", code, out)
+	}
+	got := strings.Split(strings.TrimSpace(out), "\n")
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("vet output:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestVetGatewayValid(t *testing.T) {
+	out, errOut, code := docuconf(t, "vet", "-contract", gateway,
+		"-values", "testdata/gateway/values.yaml", "-files", "testdata/gateway/files.yaml",
+		"-policy", "testdata/gateway/policy.cue")
+	if code != 0 || out != "gateway: ok\n" {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+	}
+}
+
+func TestVetGatewayCertificateMissingDNSName(t *testing.T) {
+	files := strings.Replace(read(t, "testdata/gateway/files.yaml"), `"*.example.com"`, `"*.example.org"`, 1)
+	out, _, code := docuconf(t, "vet", "-contract", gateway,
+		"-values", "testdata/gateway/values.yaml", "-files", write(t, "files.yaml", files))
+	requireLines(t, out, code, "serving-tls: certificate does not cover api.example.com")
+}
+
+func TestVetGatewayProblems(t *testing.T) {
+	values := `LOG_LEVEL: debug
+LOG_LEVLE: info
+POD_NAMESPACE: {fieldRef: {fieldPath: metadata.namespace}}
+GOMEMLIMIT: {fieldRef: {fieldPath: metadata.name}}
+RATE_LIMITS: {perMinute: 0, extra: 1}
+PARTNER_KEYSTORE_PASSWORD: "hunter2-pasted-literal"
+`
+	files := read(t, "testdata/gateway/files.yaml") +
+		"unknown-file: {inline: x}\n"
+	files = strings.Replace(files, "algorithm: ECDSA", "algorithm: Ed25519", 1)
+	files = strings.Replace(files, "renewBefore: 720h", "renewBefore: 240h", 1)
+	files = strings.Replace(files, "ABCDE-12345-FGHIJ-67890", "bad licence", 1)
+	out, _, code := docuconf(t, "vet", "-contract", gateway,
+		"-values", write(t, "values.yaml", values), "-files", write(t, "files.yaml", files),
+		"-policy", "testdata/gateway/policy.cue")
+	requireLines(t, out, code,
+		"GOMEMLIMIT: a fieldRef always yields a string, but GOMEMLIMIT is an integer",
+		`LOG_LEVEL: "debug" is not allowed by policy`,
+		"LOG_LEVLE: is not declared in the contract (check the spelling)",
+		"PARTNER_KEYSTORE_PASSWORD: is secret, so it must come from a secretKeyRef, never a literal or another reference",
+		"RATE_LIMITS: does not match its schema: at perMinute: invalid value 0 (out of bound >=1)",
+		"license: inline text does not match pattern ^[A-Z0-9]{5}(-[A-Z0-9]{5}){3}\\n?$",
+		"serving-tls: certificate key algorithm Ed25519 is not one of ECDSA, RSA",
+		"serving-tls: certificate renewBefore 240h is less than minRemaining 720h, so the app could see a certificate with too little time left",
+		"unknown-file: is not a file input declared in the contract",
+	)
+	if strings.Contains(out, "hunter2") {
+		t.Fatal("secret value printed")
+	}
+}
+
+func TestVetBilling(t *testing.T) {
+	values := `DATABASE_URL: "postgres://app:hunter2@db/billing"
+PORT: 70000
+REQUEST_TIMEOUT: 10m
+ALLOWED_ORIGINS: []
+STRIPE_API_BASE: "http://api.stripe.com"
+LOG_LEVEL: 3
+`
+	out, _, code := docuconf(t, "vet", "-contract", billing, "-values", write(t, "values.yaml", values))
+	requireLines(t, out, code,
+		"ALLOWED_ORIGINS: has 0 items, below minItems 1",
+		"DATABASE_URL: is secret, so it must come from a secretKeyRef, never a literal or another reference",
+		"LOG_LEVEL: 3 is not one of debug, info, warn, error",
+		"PORT: 70000 is above max 65535",
+		"REQUEST_TIMEOUT: 10m is above max 5m",
+		"STRIPE_API_BASE: scheme \"http\" is not one of https",
+	)
+	if strings.Contains(out, "hunter2") {
+		t.Fatal("secret value printed")
+	}
+
+	// A required variable left out.
+	out, _, code = docuconf(t, "vet", "-contract", billing, "-values", write(t, "v.yaml", "PORT: 8080\n"))
+	requireLines(t, out, code,
+		"ALLOWED_ORIGINS: is required, and set neither by the platform nor by the selected profile",
+		"DATABASE_URL: is required, and set neither by the platform nor by the selected profile",
+	)
+}
+
+func TestRenderGateway(t *testing.T) {
+	out, errOut, code := docuconf(t, "render", "-contract", gateway,
+		"-values", "testdata/gateway/values.yaml", "-files", "testdata/gateway/files.yaml")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if want := read(t, "../../spec/cue/testdata/render/gatewayOut.yaml"); out != want {
+		t.Fatalf("render output differs from spec/cue/testdata/render/gatewayOut.yaml:\n%s", out)
+	}
+}
+
+func TestRenderRefusesInvalidValues(t *testing.T) {
+	out, errOut, code := docuconf(t, "render", "-contract", billing, "-values", write(t, "v.yaml", "PORT: 0\n"))
+	if code != 1 || out != "" || !strings.Contains(errOut, "PORT: 0 is below min 1") {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+	}
+}
+
+func TestBadContract(t *testing.T) {
+	_, errOut, code := docuconf(t, "vet", "-contract", write(t, "c.cue", `
+import "docuconf.dev/contract"
+contract.#Contract & {
+	apiVersion: "docuconf.dev/v1alpha1"
+	kind: "ConfigContract"
+	metadata: {name: "svc", generator: {language: "go", sdk: "x", version: "1"}}
+	vars: PORT: {type: "int", description: "port"}
+}`))
+	want := `vars.PORT.description: invalid value "port" (does not satisfy strings.MinRunes(5))`
+	if code != 2 || !strings.Contains(errOut, "is not a valid contract") || !strings.Contains(errOut, want) ||
+		strings.Contains(errOut, "disjunction") {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+}
+
+// TestVetSDKContract validates the Go SDK's exported golden contract,
+// so the SDK's output and the platform tooling are checked together.
+func TestVetSDKContract(t *testing.T) {
+	contract := "../../testdata/gateway.golden.cue"
+	values := `POD_NAMESPACE: {fieldRef: {fieldPath: metadata.namespace}}
+PARTNER_KEYSTORE_PASSWORD: {secretKeyRef: {name: partner, key: password}}
+DATABASE_URL: {secretKeyRef: {name: db, key: url}}
+ALLOWED_ORIGINS: [https://app.example.com]
+EXTRA_PORTS: [9090, 9091]
+REQUEST_TIMEOUT: 45s
+RATE_LIMITS: {perMinute: 100}
+WORKER_COUNT: 8
+`
+	out, errOut, code := docuconf(t, "vet", "-contract", contract,
+		"-values", write(t, "values.yaml", values), "-files", "testdata/gateway/files.yaml")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out, errOut)
+	}
+	out, _, code = docuconf(t, "vet", "-contract", contract,
+		"-values", write(t, "values.yaml", strings.Replace(values, "WORKER_COUNT: 8", "WORKER_COUNT: 300", 1)),
+		"-files", "testdata/gateway/files.yaml")
+	requireLines(t, out, code, "WORKER_COUNT: 300 is above max 127")
+
+	out, errOut, code = docuconf(t, "render", "-contract", contract,
+		"-values", write(t, "values.yaml", values), "-files", "testdata/gateway/files.yaml")
+	if code != 0 || !strings.Contains(out, "- name: EXTRA_PORTS\n    value: 9090;9091\n") {
+		t.Fatalf("exit %d\n%s%s", code, out, errOut)
+	}
+}
+
+// TestExport runs docuconf export against a throwaway module that uses
+// the SDK from this repository.
+func TestExport(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs go run")
+	}
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go not on PATH")
+	}
+	sdk, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	files := map[string]string{
+		"go.mod": "module example.com/app\n\ngo 1.24\n\nrequire github.com/docuconf/docuconf-go v0.0.0\n\nreplace github.com/docuconf/docuconf-go => " + sdk + "\n",
+		"config/config.go": `package config
+
+import "github.com/docuconf/docuconf-go"
+
+// Config is the app's configuration.
+type Config struct {
+	// HTTP listen port.
+	Port int ` + "`env:\"PORT\" envDefault:\"8080\" min:\"1\" max:\"65535\"`" + `
+
+	// Licence key for the app.
+	License docuconf.TextFile ` + "`file:\"license\" path:\"/etc/app/license/key.txt\"`" + `
+}
+`,
+		"main.go": "package main\n\nimport _ \"example.com/app/config\"\n\nfunc main() {}\n",
+	}
+	for name, content := range files {
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tidy := exec.Command("go", "mod", "tidy")
+	tidy.Dir = dir
+	if out, err := tidy.CombinedOutput(); err != nil {
+		t.Skipf("go mod tidy failed (offline?): %v\n%s", err, out)
+	}
+
+	out := filepath.Join(dir, "contract.cue")
+	_, errOut, code := docuconf(t, "export", "-C", dir, "-pkg", "./config", "-type", "Config",
+		"-name", "app", "-app-version", "1.0.0", "-o", out)
+	if code != 0 {
+		t.Fatalf("export: exit %d: %s", code, errOut)
+	}
+	got := read(t, out)
+	for _, want := range []string{
+		"// Code generated by docuconf. DO NOT EDIT.\npackage app\n",
+		`description: "HTTP listen port"`,
+		`description: "Licence key for the app"`,
+		`appVersion: "1.0.0"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("contract lacks %q:\n%s", want, got)
+		}
+	}
+	vo, ve, code := docuconf(t, "vet", "-contract", out, "-values", write(t, "v.yaml", "PORT: 9090\n"))
+	if code != 0 {
+		t.Fatalf("vet of exported contract: exit %d\n%s%s", code, vo, ve)
+	}
+
+	// package main cannot be imported.
+	_, errOut, code = docuconf(t, "export", "-C", dir, "-pkg", ".", "-name", "app")
+	if code != 2 || !strings.Contains(errOut, "package main") {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+}
