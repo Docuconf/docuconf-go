@@ -127,6 +127,7 @@ Fields common to every type:
 | `group` | — | Free-form grouping for docs (`database`, `http`). |
 | `examples` | — | Example values, as strings, for docs. |
 | `deprecated` | — | `{message, replacedBy?}`. SDKs warn at boot when a deprecated variable is set. |
+| `configKey` | — | The app's own configuration key, where it differs from the env name: `Orders:CheckoutTimeout` in .NET, `orders.checkout-timeout` in Spring. Used in docs, so readers can find the setting in the app's config files. |
 
 An optional variable with no default is legal. The SDK exposes it as absent (`nil`, `undefined`, `null`, `Option`).
 
@@ -148,6 +149,34 @@ Rules:
 - `pattern` is RE2, the only regex dialect every SDK can match exactly (Go native, `re2` bindings or a compatible subset elsewhere). SDKs MUST reject patterns that use features outside RE2, such as lookaround or backreferences, at declaration time.
 - `default` MUST satisfy the variable's own constraints. SDKs MUST check this at declaration time.
 - The type set is closed in v1alpha1. A new type needs a spec change, because every SDK must parse it identically.
+
+### 4.4 Config files and profiles
+
+Many apps do not get their configuration only from the environment. .NET layers `appsettings.json`, then `appsettings.{Environment}.json`, then environment variables. Spring layers `application.yml` and `application-{profile}.yml`. anyway_config reads per-environment YAML in Rails. Files baked into the image are part of what the app will actually run with, so the contract describes them:
+
+- A value in an **always-loaded base file** (`appsettings.json`, `application.yml`) is an ordinary `default`. A `[Required]` property with a value in the base file is therefore exported as optional with that default.
+- A value in a **profile file** goes in `profiles.defaults`, keyed by profile name. It applies only when that profile is selected.
+- `profiles.selector` names the environment variable that picks the profile (`ASPNETCORE_ENVIRONMENT`, `DOTNET_ENVIRONMENT`, `SPRING_PROFILES_ACTIVE`). It MUST be a declared variable. `profiles.default` is the profile in effect when the selector is unset (`Production` in .NET).
+
+```cue
+profiles: {
+	selector: "DOTNET_ENVIRONMENT"
+	default:  "Production"
+	defaults: {
+		Production: INVENTORY__WAREHOUSEAPI: "https://warehouse.internal"
+		Staging: INVENTORY__WAREHOUSEAPI:    "https://warehouse.staging.internal"
+	}
+}
+```
+
+Rules, enforced by the meta-schema:
+
+- Every profile default MUST name a declared variable and satisfy its constraints. A bad value in `appsettings.Production.json` fails the same way as a bad value from the platform.
+- A secret MUST NOT have a value in any config file. That would ship the secret inside the image.
+- A required variable is satisfied if the platform sets it **or** the selected profile does. Selecting a profile with no file, or one whose file lacks the value, makes the platform responsible for it.
+- The platform's environment variables override file values. This is the default precedence in .NET and Spring, and SDKs for hosts with a different order MUST document it.
+
+Configuration from sources the platform does not control, such as Azure Key Vault, AWS Secrets Manager or Rails credentials, is outside the contract. SDKs MUST leave those keys out, or provide a way to exclude them. Settings that cannot be expressed in v1alpha1 types (arrays of objects, dictionaries) stay file-only, and the SDK warns that the platform cannot set them.
 
 ## 5. Wire encoding and parsing
 
@@ -201,7 +230,7 @@ The meta-schema provides two definitions, both exercised by `cue/test.sh`:
 
 **`#Validate`**: given `contract` and `values`,
 
-- every `required` variable must be present (CUE required field `!`),
+- every `required` variable must be set by the platform or by the selected profile (section 4.4), and any that are not are listed in `missingRequired`,
 - every value must satisfy its variable's type and constraints (`checks.<NAME>`),
 - any value not declared in the contract is rejected. A typo like `DATABSE_URL` is the most common environment bug, so this check is on by default.
 
@@ -290,6 +319,8 @@ The SDK sets each variable's `encoding` (section 5) to whatever its host parses,
 
 Where the host library's behaviour conflicts with a MUST in this spec (for example, empty-string handling), the SDK adapts the host with a pre-check or a custom parser. Where the conflict is only a wire format, the contract records it instead.
 
+**Hosts that read config files** export them as section 4.4 describes. The SDK reads the files that ship in the image (the publish output, not the whole repo) at export time.
+
 **Build-time variables are not part of the runtime contract.** Some frameworks inline variables into the bundle at build time: Next.js `NEXT_PUBLIC_*`, Vite `import.meta.env`, T3 Env's `client` section. Setting them on a pod does nothing, so SDKs MUST NOT export them as runtime variables.
 
 ### 11.2 Conformance requirements
@@ -326,4 +357,6 @@ The `conformance/` directory is language-neutral:
 3. Should `configMapKeyRef` be allowed for non-secret values, or must the platform always supply literals?
 4. Is a `json` type (an opaque JSON blob with an optional JSON Schema) worth the cost for every SDK?
 5. Should the spec cover build-time variables (section 11.1) with a separate `buildVars` section, so a CI build can be validated the same way?
-6. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?
+6. Should there be a file render target? Some .NET and Spring teams mount `appsettings.Production.json` or `application-prod.yml` from a ConfigMap instead of using env vars. `#Render` could emit that file from `configKey`. Replacing a baked-in file, though, would silently discard its profile defaults, so env vars, which layer on top, stay the recommended route.
+7. Spring can activate several profiles at once (`SPRING_PROFILES_ACTIVE=prod,eu`). Should `profiles` support an ordered list, with later profiles winning?
+8. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?

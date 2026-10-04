@@ -121,6 +121,26 @@ builder.Services.AddSingleton<IValidateOptions<BillingOptions>, ValidateBillingO
 - Variable names follow .NET's configuration path rules (`BILLING__DATABASEURL`). Lists use the `indexed` encoding and durations use `timespan`, because that is what the binder parses.
 - A `[Required]` string's `= ""` initializer is not a default, so the generator does not export it as one.
 
+*appsettings.json.* Most .NET teams keep much of their configuration in appsettings files, so the SDK treats them as part of the contract (SPEC §4.4). The default host's precedence decides the design: `appsettings.json` < `appsettings.{Environment}.json` < user secrets (Development only) < environment variables < command line.
+
+- The generator reads the appsettings files in the publish output. These are the files that ship in the image, so they are what the app will really run with.
+- **`appsettings.json`** values become `default`s. A `[Required]` property set there is exported as optional with that default, because the platform no longer has to supply it.
+- **`appsettings.{Environment}.json`** values become `profiles.defaults.{Environment}`. The selector is `ASPNETCORE_ENVIRONMENT` for web projects, where it overrides `DOTNET_ENVIRONMENT`, and `DOTNET_ENVIRONMENT` for worker services. The default profile is `Production`, which is .NET's own default.
+- **Platform values always win,** because environment variables layer on top of the files. So a team can keep sensible values in `appsettings.Production.json` and let the platform override one of them per cluster without touching the image.
+- **Build errors:**
+  - a `[Secret]` property with a value in any appsettings file, since that would ship the secret in the image;
+  - a file value that breaks the property's own attributes, such as a `Port` of 70000 against `[Range(1, 65535)]`.
+
+  The schema enforces both too (`spec/cue/testdata/invalid/profile_*`).
+- **Not in the contract:**
+  - sections no `[EnvContract]` class binds (`Logging`, `Kestrel`, `AllowedHosts`, `Serilog`);
+  - values from Key Vault or other external providers (`[External]`);
+  - shapes env vars cannot carry in v1alpha1 (arrays of objects, dictionaries). The generator warns about these, because the platform cannot set them.
+- **Framework settings platforms commonly override** ship as opt-in fragments: `Logging__LogLevel__Default` as an enum, `ASPNETCORE_HTTP_PORTS`, `ASPNETCORE_URLS`.
+- **Mounting `appsettings.Production.json` from a ConfigMap** is discouraged. It replaces the baked-in file and silently drops its values. Env vars layer instead. A file render target for teams that insist is an open question (SPEC §13.6).
+
+`spec/cue/examples/inventory_contract.cue` is a worked example: Production is satisfied by its appsettings file, and Staging overrides its file's value from the platform.
+
 **Python, on pydantic-settings.**
 
 ```python

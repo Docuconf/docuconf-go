@@ -29,6 +29,37 @@ import (
 		}
 	}
 	vars: [N=#EnvName]: #Var & {name: N}
+
+	// Profiles describe config files baked into the image and selected by
+	// an environment variable at runtime: appsettings.{Environment}.json
+	// in .NET, application-{profile}.yml in Spring, per-environment YAML
+	// in Rails. Values from the always-loaded base file are ordinary
+	// defaults; values from a profile file apply only when that profile
+	// is selected.
+	profiles?: {
+		selector: #EnvName // e.g. DOTNET_ENVIRONMENT
+		default:  string   // profile in effect when the selector is unset
+		defaults: [string]: [#EnvName]: _
+	}
+
+	// Every profile default must name a declared variable and satisfy
+	// its constraints. A secret can never have one, because #Check only
+	// accepts a secret reference.
+	if profiles != _|_ {
+		// The selector is itself an environment variable the platform sets,
+		// and profiles can only set declared variables. vars has a name
+		// pattern, so a plain lookup of an unknown name is merely
+		// incomplete, not an error; test membership explicitly.
+		_declared: "\(profiles.selector)": true & vars[profiles.selector] != _|_
+		for p, m in profiles.defaults for n, _ in m {
+			_declared: "\(p)/\(n)": true & vars[n] != _|_
+		}
+		_profileChecks: {
+			for p, m in profiles.defaults for n, x in m if vars[n] != _|_ {
+				"\(p)/\(n)": #Check & {var: vars[n], value: x}
+			}
+		}
+	}
 }
 
 #EnvName: =~"^[A-Z][A-Z0-9_]*$"
@@ -40,6 +71,10 @@ import (
 	secret:      *false | bool
 	group?:      string
 	examples?: [...string]
+	// The app's own configuration key, where it differs from the env
+	// name: "Orders:CheckoutTimeout" in .NET, "orders.checkout-timeout"
+	// in Spring. Used for docs and for file-based rendering.
+	configKey?: string
 	deprecated?: {
 		message:     string
 		replacedBy?: #EnvName
@@ -211,19 +246,37 @@ import (
 }
 
 // #Validate unifies a contract with the values the platform will inject.
-// Required variables must be present, unknown variables are rejected,
-// and every value must satisfy its variable's constraints.
+// Unknown variables are rejected, every value must satisfy its
+// variable's constraints, and every required variable must be set,
+// either directly or by the selected profile.
 #Validate: {
 	contract: #Contract
 	values: close({
-		for n, v in contract.vars {
-			if v.required {(n)!: _}
-			if !v.required {(n)?: _}
-		}
+		for n, _ in contract.vars {(n)?: _}
 	})
 	checks: {
 		for n, v in contract.vars if values[n] != _|_ {
 			(n): #Check & {var: v, value: values[n]}
+		}
+	}
+
+	// Kept separate from values: making a field of values required based
+	// on another field of values (the profile selector) is a cycle.
+	missingRequired: close({
+		for n, v in contract.vars
+		if v.required && values[n] == _|_ && _fromProfile[n] == _|_ {
+			(n): "required, and not set by the platform or the selected profile"
+		}
+	})
+	missingRequired: close({})
+
+	// A required variable is satisfied by the selected profile's file.
+	_fromProfile: {...}
+	if contract.profiles != _|_ {
+		let P = contract.profiles
+		let selected = [if values[P.selector] != _|_ {values[P.selector]}, P.default][0]
+		if P.defaults[selected] != _|_ {
+			_fromProfile: P.defaults[selected]
 		}
 	}
 }

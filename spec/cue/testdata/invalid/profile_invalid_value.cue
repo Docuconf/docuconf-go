@@ -1,0 +1,17 @@
+package examples
+
+import "docuconf.dev/contract"
+
+// want: out of bound <=65535
+// A value in an appsettings file must satisfy the same constraints as one from the platform.
+bad: contract.#Contract & {
+	apiVersion: "docuconf.dev/v1alpha1"
+	kind:       "EnvContract"
+	metadata: {name: "x", generator: {language: "dotnet", sdk: "Docuconf.Options", version: "0.1.0"}}
+	vars: {
+		DOTNET_ENVIRONMENT: {type: "string", description: "Hosting environment", default: "Production"}
+		APP__PORT: {type: "int", description: "HTTP listen port", max: 65535}
+		APP__DBPASSWORD: {type: "string", description: "Database password", required: true, secret: true}
+	}
+	profiles: {selector: "DOTNET_ENVIRONMENT", default: "Production", defaults: Production: APP__PORT: 70000}
+}
