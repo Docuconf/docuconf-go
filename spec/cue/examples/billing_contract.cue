@@ -6,7 +6,7 @@ import "docuconf.dev/contract"
 
 billing: contract.#Contract & {
 	apiVersion: "docuconf.dev/v1alpha1"
-	kind:       "EnvContract"
+	kind:       "ConfigContract"
 	metadata: {
 		name:       "billing-api"
 		appVersion: "1.4.0"

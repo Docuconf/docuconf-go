@@ -6,7 +6,7 @@ import "docuconf.dev/contract"
 // A value in an appsettings file must satisfy the same constraints as one from the platform.
 bad: contract.#Contract & {
 	apiVersion: "docuconf.dev/v1alpha1"
-	kind:       "EnvContract"
+	kind:       "ConfigContract"
 	metadata: {name: "x", generator: {language: "dotnet", sdk: "Docuconf.Options", version: "0.1.0"}}
 	vars: {
 		DOTNET_ENVIRONMENT: {type: "string", description: "Hosting environment", default: "Production"}

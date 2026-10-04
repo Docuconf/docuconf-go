@@ -1,0 +1,103 @@
+env:
+  - name: LOG_LEVEL
+    value: warn
+  - name: POD_NAMESPACE
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
+  - name: GOMEMLIMIT
+    valueFrom:
+      resourceFieldRef:
+        resource: limits.memory
+  - name: RATE_LIMITS
+    value: '{"perMinute":600,"burst":50}'
+  - name: PARTNER_KEYSTORE_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: partner-keystore
+        key: password
+  - name: ROUTES_FILE
+    value: /etc/gateway/routes/routes.yaml
+  - name: SSL_CERT_FILE
+    value: /etc/gateway/ca/bundle.pem
+volumes:
+  - configMap:
+      name: gateway-routes-a17716c0e3
+      defaultMode: 292
+      items:
+        - key: routes.yaml
+          path: routes.yaml
+    name: dc-routes
+  - name: dc-serving-tls
+    secret:
+      secretName: gateway-tls
+      defaultMode: 256
+  - configMap:
+      name: internal-ca-bundle
+      defaultMode: 292
+      items:
+        - key: ca.crt
+          path: bundle.pem
+    name: dc-upstream-ca
+  - csi:
+      driver: secrets-store.csi.k8s.io
+      readOnly: true
+      volumeAttributes:
+        secretProviderClass: partner-keystore
+    name: dc-partner-keystore
+  - configMap:
+      name: gateway-license-8fdcfc1f39
+      defaultMode: 292
+      items:
+        - key: license.key
+          path: license.key
+    name: dc-license
+  - image:
+      reference: registry.example.com/data/geoip@sha256:0f2b5c8d3e4a1b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c
+    name: dc-geoip
+volumeMounts:
+  - name: dc-routes
+    mountPath: /etc/gateway/routes
+    readOnly: true
+  - name: dc-serving-tls
+    mountPath: /etc/gateway/tls
+    readOnly: true
+  - name: dc-upstream-ca
+    mountPath: /etc/gateway/ca
+    readOnly: true
+  - name: dc-partner-keystore
+    mountPath: /etc/gateway/partner
+    readOnly: true
+  - name: dc-license
+    mountPath: /etc/gateway/license
+    readOnly: true
+  - name: dc-geoip
+    mountPath: /data/geoip
+    readOnly: true
+configMaps:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: gateway-routes-a17716c0e3
+    immutable: true
+    data:
+      routes.yaml: |
+        routes:
+          - match: /billing
+            upstream: http://billing-api.billing.svc:8080
+            timeout: 5s
+          - match: /orders
+            upstream: http://orders-api.orders.svc:8080
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: gateway-license-8fdcfc1f39
+    immutable: true
+    data:
+      license.key: |
+        ABCDE-12345-FGHIJ-67890
+restartTriggers:
+  - kind: ConfigMap
+    name: internal-ca-bundle
+  - kind: SecretProviderClass
+    name: partner-keystore

@@ -6,7 +6,7 @@ import "docuconf.dev/contract"
 // A password committed to appsettings.Production.json would ship inside the image.
 bad: contract.#Contract & {
 	apiVersion: "docuconf.dev/v1alpha1"
-	kind:       "EnvContract"
+	kind:       "ConfigContract"
 	metadata: {name: "x", generator: {language: "dotnet", sdk: "Docuconf.Options", version: "0.1.0"}}
 	vars: {
 		DOTNET_ENVIRONMENT: {type: "string", description: "Hosting environment", default: "Production"}

@@ -6,7 +6,7 @@ import "docuconf.dev/contract"
 // Env names are UPPER_SNAKE_CASE.
 bad: contract.#Contract & {
 	apiVersion: "docuconf.dev/v1alpha1"
-	kind:       "EnvContract"
+	kind:       "ConfigContract"
 	metadata: {name: "x", generator: {language: "go", sdk: "docuconf-go", version: "0.1.0"}}
 	vars: port: {type: "int", description: "HTTP listen port"}
 }

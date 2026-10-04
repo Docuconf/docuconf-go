@@ -2,7 +2,7 @@ package examples
 
 import "docuconf.dev/contract"
 
-// want: STRIPE_API_BASE.value
+// want: STRIPE_API_BASE.literal
 // STRIPE_API_BASE must be https.
 bad: contract.#Validate & {contract: billing, values: {
 DATABASE_URL: secretKeyRef: {name: "db", key: "url"}

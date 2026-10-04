@@ -15,7 +15,7 @@ import "docuconf.dev/contract"
 
 inventory: contract.#Contract & {
 	apiVersion: "docuconf.dev/v1alpha1"
-	kind:       "EnvContract"
+	kind:       "ConfigContract"
 	metadata: {
 		name: "inventory-api"
 		generator: {language: "dotnet", sdk: "Docuconf.Options", version: "0.1.0"}

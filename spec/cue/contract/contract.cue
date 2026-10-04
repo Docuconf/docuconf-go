@@ -1,14 +1,15 @@
-// Package contract is the docuconf environment contract meta-schema.
+// Package contract is the docuconf configuration contract meta-schema.
 //
-// An application's SDK emits a #Contract describing every environment
-// variable it reads. The platform validates the values it intends to
-// inject with #Validate, then turns them into a Kubernetes env list
-// with #Render.
+// An application's SDK emits a #Contract describing every input it reads:
+// environment variables (vars) and files (files.cue). The platform
+// validates what it intends to supply with #Validate, then turns it into
+// Kubernetes env entries, volumes and mounts with #Render.
 package contract
 
 import (
 	"encoding/json"
 	"list"
+	"path"
 	"strings"
 	"time"
 )
@@ -16,7 +17,7 @@ import (
 // #Contract is the document every language SDK emits.
 #Contract: {
 	apiVersion: "docuconf.dev/v1alpha1"
-	kind:       "EnvContract"
+	kind:       "ConfigContract"
 	metadata: {
 		// Service name, as a DNS label so it can name Kubernetes objects.
 		name: =~"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"
@@ -29,6 +30,7 @@ import (
 		}
 	}
 	vars: [N=#EnvName]: #Var & {name: N}
+	files?: [N=#InputName]: #File & {name: N}
 
 	// Profiles describe config files baked into the image and selected by
 	// an environment variable at runtime: appsettings.{Environment}.json
@@ -57,6 +59,23 @@ import (
 		_profileChecks: {
 			for p, m in profiles.defaults for n, x in m if vars[n] != _|_ {
 				"\(p)/\(n)": #Check & {var: vars[n], value: x}
+			}
+		}
+	}
+
+	if files != _|_ {
+		for n, f in files {
+			let mountDir = [if f.type == "tls" {f.path}, path.Dir(f.path, path.Unix)][0]
+
+			// Two inputs mounted at the same directory would hide each other.
+			_mountDirs: "\(mountDir)": n
+			_mountNotReserved: "\(n)": true & !list.Contains(#ReservedDirs, mountDir)
+			if f.pathEnv != _|_ {
+				_pathEnvs: "\(f.pathEnv)":         n
+				_pathEnvNotInVars: "\(f.pathEnv)": true & vars[f.pathEnv] == _|_
+			}
+			if f.type == "keystore" && f.passwordVar != _|_ {
+				_passwordIsSecretVar: "\(f.passwordVar)": true & vars[f.passwordVar] != _|_ && vars[f.passwordVar].secret == true
 			}
 		}
 	}
@@ -91,7 +110,7 @@ import (
 	}
 }
 
-#Var: #StringVar | #IntVar | #FloatVar | #BoolVar | #DurationVar | #URLVar | #EnumVar | #ListVar
+#Var: #StringVar | #IntVar | #FloatVar | #BoolVar | #DurationVar | #URLVar | #EnumVar | #ListVar | #JSONVar
 
 #StringVar: close({
 	#Common
@@ -176,6 +195,15 @@ import (
 	default?: [...]
 })
 
+// A structured value in one variable, sent as JSON. As with config files,
+// `schema` is a JSON Schema generated from the app's own type.
+#JSONVar: close({
+	#Common
+	type: "json"
+	schema?: {...}
+	default?: _
+})
+
 // #SecretRef is the only accepted value for a secret variable. The
 // platform never puts secret material in the values document.
 #SecretRef: close({
@@ -185,78 +213,133 @@ import (
 	}
 })
 
+// Non-secret values the platform supplies by reference rather than as a
+// literal. Their content is not known before deploy, so the SDK checks it
+// at boot.
+#ValueRef: #ConfigMapKeyRef | #FieldRef | #ResourceFieldRef
+
+#ConfigMapKeyRef: close({configMapKeyRef: {
+	name: string
+	key:  string
+}})
+
+// The Downward API. Every field yields a string.
+#FieldRef: close({fieldRef: fieldPath: "metadata.name" | "metadata.namespace" | "metadata.uid" | "spec.nodeName" | "spec.serviceAccountName" | "status.hostIP" | "status.podIP" | =~"^metadata\\.(labels|annotations)\\['[^']+'\\]$"})
+
+// Container resources. Every field yields an integer.
+#ResourceFieldRef: close({resourceFieldRef: {
+	resource:       "limits.cpu" | "limits.memory" | "limits.ephemeral-storage" | "requests.cpu" | "requests.memory" | "requests.ephemeral-storage"
+	divisor?:       string
+	containerName?: string
+}})
+
 // #Check binds one contract variable to the value the platform supplies
 // and fails if the value violates the variable's constraints.
 #Check: {
-	var:   #Var
-	value: _
+	var:      #Var
+	value:    _
+	#schema?: _ // a json variable's JSON Schema, compiled to CUE by the toolchain
+
+	// Constraints go on `literal`, a copy of value, so that whether value
+	// is a reference can be decided from value without a cycle.
+	let isRef = (value & #ValueRef) != _|_
 
 	if var.secret {
 		value: #SecretRef
 	}
-	if !var.secret {
+	if !var.secret && isRef {
+		if value.fieldRef != _|_ {
+			fieldRefIsString: true & var.type == "string"
+		}
+		if value.resourceFieldRef != _|_ {
+			resourceFieldRefIsInt: true & var.type == "int"
+		}
+		listCannotBeRef: true & var.type != "list"
+	}
+	if !var.secret && !isRef {
+		literal: value
 		if var.type == "string" {
-			value: string
-			if var.minLength != _|_ {value: strings.MinRunes(var.minLength)}
-			if var.maxLength != _|_ {value: strings.MaxRunes(var.maxLength)}
-			if var.pattern != _|_ {value: =~var.pattern}
+			literal: string
+			if var.minLength != _|_ {literal: strings.MinRunes(var.minLength)}
+			if var.maxLength != _|_ {literal: strings.MaxRunes(var.maxLength)}
+			if var.pattern != _|_ {literal: =~var.pattern}
 		}
 		if var.type == "int" {
-			value: int
-			if var.min != _|_ {value: >=var.min}
-			if var.max != _|_ {value: <=var.max}
+			literal: int
+			if var.min != _|_ {literal: >=var.min}
+			if var.max != _|_ {literal: <=var.max}
 		}
 		if var.type == "float" {
-			value: number
-			if var.min != _|_ {value: >=var.min}
-			if var.max != _|_ {value: <=var.max}
+			literal: number
+			if var.min != _|_ {literal: >=var.min}
+			if var.max != _|_ {literal: <=var.max}
 		}
 		if var.type == "bool" {
-			value: bool
+			literal: bool
 		}
 		if var.type == "duration" {
-			value: #Duration
+			literal: #Duration
 			if var.encoding != "go" {
 				// Only the go encoding can express sub-millisecond durations.
-				wholeMilliseconds: true & mod(time.ParseDuration(value), 1000000) == 0
+				wholeMilliseconds: true & mod(time.ParseDuration(literal), 1000000) == 0
 			}
 			if var.min != _|_ {
-				atLeastMin: true & time.ParseDuration(value) >= time.ParseDuration(var.min)
+				atLeastMin: true & time.ParseDuration(literal) >= time.ParseDuration(var.min)
 			}
 			if var.max != _|_ {
-				atMostMax: true & time.ParseDuration(value) <= time.ParseDuration(var.max)
+				atMostMax: true & time.ParseDuration(literal) <= time.ParseDuration(var.max)
 			}
 		}
 		if var.type == "url" {
-			value: =~"^[a-zA-Z][a-zA-Z0-9+.-]*://[^\\s]+$"
+			literal: =~"^[a-zA-Z][a-zA-Z0-9+.-]*://[^\\s]+$"
 			if var.schemes != _|_ {
-				value: =~"^(\(strings.Join(var.schemes, "|")))://"
+				literal: =~"^(\(strings.Join(var.schemes, "|")))://"
 			}
 		}
 		if var.type == "enum" {
-			value: or(var.values)
+			literal: or(var.values)
+		}
+		if var.type == "json" && #schema != _|_ {
+			literal: #schema
 		}
 		if var.type == "list" {
-			if var.items == "string" {value: [...string]}
-			if var.items == "int" {value: [...int]}
-			if var.minItems != _|_ {value: list.MinItems(var.minItems)}
-			if var.maxItems != _|_ {value: list.MaxItems(var.maxItems)}
+			if var.items == "string" {literal: [...string]}
+			if var.items == "int" {literal: [...int]}
+			if var.minItems != _|_ {literal: list.MinItems(var.minItems)}
+			if var.maxItems != _|_ {literal: list.MaxItems(var.maxItems)}
 		}
 	}
 }
 
-// #Validate unifies a contract with the values the platform will inject.
-// Unknown variables are rejected, every value must satisfy its
-// variable's constraints, and every required variable must be set,
-// either directly or by the selected profile.
+// #Validate unifies a contract with what the platform will supply.
+// Unknown variables and inputs are rejected, every value must satisfy its
+// constraints, and every required variable must be set, directly or by
+// the selected profile, and every required file input given a source.
 #Validate: {
 	contract: #Contract
 	values: close({
 		for n, _ in contract.vars {(n)?: _}
 	})
+	// The source of each file input, keyed by input name.
+	files: close({
+		if contract.files != _|_ {
+			for n, _ in contract.files {(n)?: #FileSource}
+		}
+	})
+	// JSON Schemas from the contract, compiled to CUE by the toolchain
+	// (cuelang.org/go/encoding/jsonschema), keyed by variable or input name.
+	#schemas: [string]: _
+
 	checks: {
 		for n, v in contract.vars if values[n] != _|_ {
-			(n): #Check & {var: v, value: values[n]}
+			(n): #Check & {var: v, value: values[n], if #schemas[n] != _|_ {#schema: #schemas[n]}}
+		}
+	}
+	fileChecks: {
+		if contract.files != _|_ {
+			for n, f in contract.files if files[n] != _|_ {
+				(n): #CheckFile & {file: f, source: files[n], if #schemas[n] != _|_ {#schema: #schemas[n]}}
+			}
 		}
 	}
 
@@ -266,6 +349,11 @@ import (
 		for n, v in contract.vars
 		if v.required && values[n] == _|_ && _fromProfile[n] == _|_ {
 			(n): "required, and not set by the platform or the selected profile"
+		}
+		if contract.files != _|_ {
+			for n, f in contract.files if f.required && files[n] == _|_ {
+				(n): "required file input, and no source given"
+			}
 		}
 	})
 	missingRequired: close({})
@@ -281,16 +369,31 @@ import (
 	}
 }
 
-// #Render turns validated values into a Kubernetes container env list,
-// in the wire encoding each variable declares.
+// #Render turns validated values into the container's env entries and,
+// for file inputs, the volumes, mounts and ConfigMaps that deliver them.
+// restartTriggers lists the objects whose changes must roll the pods,
+// for inputs the app reads only at startup.
 #Render: {
 	contract: #Contract
 	values: [string]: _
+	files: [string]:  #FileSource
+
+	let _files = [
+		if contract.files != _|_ for n, f in contract.files if files[n] != _|_ {
+			#RenderFile & {service: contract.metadata.name, name: n, file: f, source: files[n]}
+		},
+	]
+
 	env: list.FlattenN([
 		for n, v in contract.vars if values[n] != _|_ {
 			(#RenderVar & {name: n, var: v, value: values[n]}).out
 		},
+		for r in _files {r.env},
 	], 1)
+	volumes: [for r in _files {r.volume}]
+	volumeMounts: [for r in _files {r.volumeMount}]
+	configMaps: list.FlattenN([for r in _files {r.configMaps}], 1)
+	restartTriggers: list.FlattenN([for r in _files {r.restartTriggers}], 1)
 }
 
 #RenderVar: {
@@ -304,7 +407,9 @@ import (
 	let N = name
 	let V = value
 
-	if var.secret {
+	let isRef = (V & #ValueRef) != _|_
+
+	if var.secret || isRef {
 		out: [{name: N, valueFrom: V}]
 	}
 
@@ -315,7 +420,10 @@ import (
 		out: strings.Replace(in, "$", "$$", -1)
 	}
 
-	if !var.secret {
+	if !var.secret && !isRef {
+		if var.type == "json" {
+			out: [{name: N, value: (esc & {in: json.Marshal(V)}).out}]
+		}
 		if var.type == "list" {
 			if var.encoding == "csv" {
 				out: [{name: N, value: (esc & {in: strings.Join([for i in V {"\(i)"}], var.separator)}).out}]
@@ -330,7 +438,7 @@ import (
 		if var.type == "duration" {
 			out: [{name: N, value: (#RenderDuration & {in: V, encoding: var.encoding}).out}]
 		}
-		if var.type != "list" && var.type != "duration" {
+		if var.type != "list" && var.type != "duration" && var.type != "json" {
 			out: [{name: N, value: (esc & {in: "\(V)"}).out}]
 		}
 	}

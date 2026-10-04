@@ -7,7 +7,7 @@ import "docuconf.dev/contract"
 
 reports: contract.#Contract & {
 	apiVersion: "docuconf.dev/v1alpha1"
-	kind:       "EnvContract"
+	kind:       "ConfigContract"
 	metadata: {
 		name: "reports-worker"
 		generator: {language: "python", sdk: "docuconf-pydantic", version: "0.1.0"}

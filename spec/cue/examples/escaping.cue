@@ -6,7 +6,7 @@ import "docuconf.dev/contract"
 // literal is only delivered intact if every $ is doubled.
 escaping: contract.#Contract & {
 	apiVersion: "docuconf.dev/v1alpha1"
-	kind:       "EnvContract"
+	kind:       "ConfigContract"
 	metadata: {name: "escaping", generator: {language: "go", sdk: "docuconf-go", version: "0.1.0"}}
 	vars: {
 		GREETING_TEMPLATE: {type: "string", description: "Template with literal dollar signs"}

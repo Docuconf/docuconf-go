@@ -7,7 +7,7 @@ import "docuconf.dev/contract"
 
 orders: contract.#Contract & {
 	apiVersion: "docuconf.dev/v1alpha1"
-	kind:       "EnvContract"
+	kind:       "ConfigContract"
 	metadata: {
 		name: "orders-api"
 		generator: {language: "dotnet", sdk: "Docuconf.Options", version: "0.1.0"}

@@ -2,7 +2,7 @@ package examples
 
 import "docuconf.dev/contract"
 
-// want: REQUEST_TIMEOUT.value
+// want: REQUEST_TIMEOUT.literal
 // REQUEST_TIMEOUT not a duration.
 bad: contract.#Validate & {contract: billing, values: {
 DATABASE_URL: secretKeyRef: {name: "db", key: "url"}
