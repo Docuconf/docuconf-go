@@ -314,7 +314,7 @@ Renderers MUST double every `$` in a literal value (`$` becomes `$$`). Kubernete
 SDK parsing rules:
 
 - `bool` MUST accept `true` and `false`, case-insensitive. Host libraries that also accept `1`, `0`, `yes` and so on may keep doing so, since the platform only ever emits `true` / `false`.
-- `int` MUST reject non-integers and values outside the 64-bit signed range.
+- `int` MUST reject non-integers and values outside the 64-bit signed range. When the app's field is narrower (a 32-bit `Int`, an `int8`, an unsigned type, a JavaScript `number` beyond 2^53), the SDK MUST export `min`/`max` within that range, so the platform never accepts a value the app cannot hold.
 - Values are never trimmed. A trailing newline is part of the value. Host libraries that trim whitespace around `csv` separators may keep doing so: the renderer never emits it.
 - `float` MUST NOT be `NaN` or infinite, and SDKs MUST parse floats independently of the process locale.
 - An **empty string** is a present value for `string` (and fails `minLength` if set). For every other type, empty means *unset*, so a defaulted variable takes its default and a required one fails. Where a host library treats empty differently, the SDK adds a pre-check rather than changing the spec.
