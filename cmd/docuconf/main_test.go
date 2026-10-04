@@ -141,6 +141,24 @@ func TestRenderGateway(t *testing.T) {
 	}
 }
 
+// The example chart's generated files must be what the CLI writes, so
+// the chart cannot drift from the contract or the meta-schema.
+func TestHelmMatchesExampleChart(t *testing.T) {
+	dir := t.TempDir()
+	out, errOut, code := docuconf(t, "helm", "-contract", gateway, "-chart", dir)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	for _, f := range []string{"values.schema.json", "files/docuconf/contract.json"} {
+		if !strings.Contains(out, filepath.Join(dir, f)) {
+			t.Errorf("output does not mention %s:\n%s", f, out)
+		}
+		if got, want := read(t, filepath.Join(dir, f)), read(t, "../../examples/helm/gateway/"+f); got != want {
+			t.Errorf("%s differs from examples/helm/gateway/%s; run examples/helm/gateway/generate.sh", f, f)
+		}
+	}
+}
+
 func TestRenderRefusesInvalidValues(t *testing.T) {
 	out, errOut, code := docuconf(t, "render", "-contract", billing, "-values", write(t, "v.yaml", "PORT: 0\n"))
 	if code != 1 || out != "" || !strings.Contains(errOut, "PORT: 0 is below min 1") {

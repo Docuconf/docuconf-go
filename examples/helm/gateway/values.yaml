@@ -1,0 +1,35 @@
+image: registry.example.com/gateway@sha256:6b1c0f6f2d3e4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b
+replicas: 2
+
+# The gateway's inputs, checked by values.schema.json (generated from its
+# docuconf contract) and rendered by the docuconf library chart.
+docuconf:
+  values:
+    LOG_LEVEL: warn
+    POD_NAMESPACE:
+      fieldRef: {fieldPath: metadata.namespace}
+    GOMEMLIMIT:
+      resourceFieldRef: {resource: limits.memory}
+    RATE_LIMITS: {perMinute: 600, burst: 50}
+    PARTNER_KEYSTORE_PASSWORD:
+      secretKeyRef: {name: partner-keystore, key: password}
+  files:
+    routes:
+      # Structured content: checked against the routes schema by Helm itself.
+      inline:
+        routes:
+          - match: /billing
+            upstream: http://billing-api.billing.svc:8080
+            timeout: 5s
+          - match: /orders
+            upstream: http://orders-api.orders.svc:8080
+    serving-tls:
+      certificate: {name: gateway-tls, secretName: gateway-tls}
+    upstream-ca:
+      configMap: {name: internal-ca-bundle, key: ca.crt}
+    partner-keystore:
+      csi: {secretProviderClass: partner-keystore}
+    license:
+      inline: "ABCDE-12345-FGHIJ-67890\n"
+    geoip:
+      image: {reference: "registry.example.com/data/geoip@sha256:0f2b5c8d3e4a1b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c"}

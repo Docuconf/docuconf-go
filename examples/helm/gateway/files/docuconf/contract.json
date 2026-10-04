@@ -1,0 +1,184 @@
+{
+  "apiVersion": "docuconf.dev/v1alpha1",
+  "kind": "ConfigContract",
+  "metadata": {
+    "name": "gateway",
+    "generator": {
+      "language": "go",
+      "sdk": "docuconf-go",
+      "version": "0.1.0"
+    }
+  },
+  "vars": {
+    "LOG_LEVEL": {
+      "name": "LOG_LEVEL",
+      "description": "Minimum log level emitted",
+      "required": false,
+      "secret": false,
+      "type": "enum",
+      "values": [
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ],
+      "default": "info"
+    },
+    "POD_NAMESPACE": {
+      "name": "POD_NAMESPACE",
+      "description": "Namespace the gateway runs in, for metrics labels",
+      "required": true,
+      "secret": false,
+      "type": "string"
+    },
+    "GOMEMLIMIT": {
+      "name": "GOMEMLIMIT",
+      "description": "Go runtime soft memory limit, in bytes",
+      "required": false,
+      "secret": false,
+      "type": "int",
+      "min": 1
+    },
+    "RATE_LIMITS": {
+      "name": "RATE_LIMITS",
+      "description": "Default per-client rate limits",
+      "required": false,
+      "secret": false,
+      "type": "json",
+      "schema": {
+        "type": "object",
+        "required": [
+          "perMinute"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "perMinute": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "burst": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "PARTNER_KEYSTORE_PASSWORD": {
+      "name": "PARTNER_KEYSTORE_PASSWORD",
+      "description": "Password for the partner mTLS keystore",
+      "required": true,
+      "secret": true,
+      "type": "string"
+    }
+  },
+  "files": {
+    "routes": {
+      "name": "routes",
+      "description": "Routing table: path prefixes and their upstreams",
+      "required": true,
+      "secret": false,
+      "path": "/etc/gateway/routes/routes.yaml",
+      "pathEnv": "ROUTES_FILE",
+      "reload": "watch",
+      "maxSize": 65536,
+      "type": "config",
+      "format": "yaml",
+      "schema": {
+        "type": "object",
+        "required": [
+          "routes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "routes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "match",
+                "upstream"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "match": {
+                  "type": "string",
+                  "pattern": "^/"
+                },
+                "upstream": {
+                  "type": "string",
+                  "pattern": "^https?://"
+                },
+                "timeout": {
+                  "type": "string",
+                  "pattern": "^([0-9]+(ms|s|m))+$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "serving-tls": {
+      "name": "serving-tls",
+      "description": "Certificate the gateway serves HTTPS with",
+      "required": true,
+      "type": "tls",
+      "secret": true,
+      "dnsNames": [
+        "gateway.internal",
+        "api.example.com"
+      ],
+      "keyAlgorithms": [
+        "ECDSA",
+        "RSA"
+      ],
+      "minRemaining": "720h",
+      "path": "/etc/gateway/tls",
+      "reload": "watch",
+      "requireCA": false
+    },
+    "upstream-ca": {
+      "name": "upstream-ca",
+      "description": "Private CAs the gateway trusts for upstream TLS",
+      "required": false,
+      "secret": false,
+      "path": "/etc/gateway/ca/bundle.pem",
+      "pathEnv": "SSL_CERT_FILE",
+      "reload": "restart",
+      "type": "caBundle",
+      "minCertificates": 1
+    },
+    "partner-keystore": {
+      "name": "partner-keystore",
+      "description": "Client certificate for mTLS to the partner API",
+      "required": false,
+      "type": "keystore",
+      "secret": true,
+      "format": "pkcs12",
+      "passwordVar": "PARTNER_KEYSTORE_PASSWORD",
+      "path": "/etc/gateway/partner/keystore.p12",
+      "reload": "restart"
+    },
+    "license": {
+      "name": "license",
+      "description": "Gateway licence key",
+      "required": true,
+      "secret": false,
+      "path": "/etc/gateway/license/license.key",
+      "reload": "restart",
+      "type": "text",
+      "pattern": "^[A-Z0-9]{5}(-[A-Z0-9]{5}){3}\\n?$"
+    },
+    "geoip": {
+      "name": "geoip",
+      "description": "GeoIP database for country-based routing",
+      "required": false,
+      "secret": false,
+      "path": "/data/geoip/GeoLite2-City.mmdb",
+      "reload": "restart",
+      "maxSize": 134217728,
+      "type": "binary"
+    }
+  }
+}

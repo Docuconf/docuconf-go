@@ -125,8 +125,23 @@ import (
 
 // Content written into the platform repository. Only for non-secret
 // inputs; the renderer turns it into an immutable, content-hashed
-// ConfigMap.
-#InlineSource: close({inline: string})
+// ConfigMap. A config file's content may also be given as structured
+// data (as in a Helm values file); it is checked against the file's
+// schema directly and serialised in the file's format.
+#InlineSource: close({inline: string | {...} | [...]})
+
+// #InlineContent is the text an inline source puts in the file.
+#InlineContent: {
+	file:   #File
+	inline: _
+	out:    string
+	if (inline & string) != _|_ {out: inline}
+	if (inline & string) == _|_ && file.type == "config" {
+		if file.format == "json" {out: json.Marshal(inline)}
+		if file.format == "yaml" {out: yaml.Marshal(inline)}
+		if file.format == "toml" {out: toml.Marshal(inline)}
+	}
+}
 
 #ConfigMapSource: close({configMap: {
 	name: string
@@ -242,22 +257,30 @@ import (
 	}
 
 	if kind == "inline" {
-		let content = source.inline
+		let isText = (source.inline & string) != _|_
+		if !isText {
+			structuredOnlyForConfig: true & F.type == "config"
+			if #schema != _|_ {matchesSchema: source.inline & #schema}
+		}
+	}
+	if kind == "inline" && ((source.inline & string) != _|_ || F.type == "config") {
+		let content = (#InlineContent & {file: F, inline: source.inline}).out
+		let isText = (source.inline & string) != _|_
 		if F.maxSize != _|_ {
 			withinMaxSize: true & len(content) <= F.maxSize
 		}
 		if F.type == "config" {
 			if F.format == "json" {
 				wellFormed: true & json.Valid(content)
-				if #schema != _|_ {matchesSchema: json.Validate(content, #schema)}
+				if isText && #schema != _|_ {matchesSchema: json.Validate(content, #schema)}
 			}
 			if F.format == "yaml" {
 				wellFormed: yaml.Validate(content, _)
-				if #schema != _|_ {matchesSchema: yaml.Validate(content, #schema)}
+				if isText && #schema != _|_ {matchesSchema: yaml.Validate(content, #schema)}
 			}
 			if F.format == "toml" {
 				wellFormed: toml.Unmarshal(content)
-				if #schema != _|_ {matchesSchema: toml.Unmarshal(content) & #schema}
+				if isText && #schema != _|_ {matchesSchema: toml.Unmarshal(content) & #schema}
 			}
 		}
 		if F.type == "text" {
@@ -300,7 +323,8 @@ import (
 	if S.inline != _|_ {
 		// Content-hashed and immutable: a change creates a new ConfigMap and
 		// therefore a rollout, whatever the reload setting.
-		let hash = strings.SliceRunes(hex.Encode(sha256.Sum256(S.inline)), 0, 10)
+		let content = (#InlineContent & {file: F, inline: S.inline}).out
+		let hash = strings.SliceRunes(hex.Encode(sha256.Sum256(content)), 0, 10)
 		let cm = "\(service)-\(N)-\(hash)"
 		volume: configMap: {name: cm, defaultMode: mode, items: [{key: fileName, path: fileName}]}
 		configMaps: [{
@@ -308,7 +332,7 @@ import (
 			kind:       "ConfigMap"
 			metadata: name: cm
 			immutable: true
-			data: (fileName): S.inline
+			data: (fileName): content
 		}]
 	}
 	if S.configMap != _|_ {

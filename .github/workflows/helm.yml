@@ -1,0 +1,27 @@
+name: helm
+
+on:
+  push:
+    paths: ["helm/**", "examples/helm/**", "spec/**", "cmd/docuconf/**", ".github/workflows/helm.yml"]
+  pull_request:
+    paths: ["helm/**", "examples/helm/**", "spec/**", "cmd/docuconf/**", ".github/workflows/helm.yml"]
+
+jobs:
+  chart:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        helm: ["helm.sh/helm/v3/cmd/helm", "helm.sh/helm/v4/cmd/helm"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go install cuelang.org/go/cmd/cue@v0.17.1
+      - run: go install ${{ matrix.helm }}@latest
+      # The example chart's generated files must match what the CLI writes.
+      - run: |
+          examples/helm/gateway/generate.sh
+          git diff --exit-code -- examples/helm/gateway
+      - run: helm/test.sh

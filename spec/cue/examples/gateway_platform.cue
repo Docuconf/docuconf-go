@@ -66,3 +66,6 @@ gatewayOut: {
 	configMaps:      gatewayRendered.configMaps
 	restartTriggers: gatewayRendered.restartTriggers
 }
+
+// values.schema.json for a Helm chart that deploys the gateway.
+gatewayHelmSchema: (contract.#HelmValuesSchema & {contract: gateway}).out

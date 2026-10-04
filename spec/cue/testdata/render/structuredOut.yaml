@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-routes-91c9be5389
+immutable: true
+data:
+  routes.yaml: |
+    routes:
+      - match: /billing
+        upstream: http://billing-api.billing.svc:8080
+        timeout: 5s

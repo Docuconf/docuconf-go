@@ -1,0 +1,7 @@
+apiVersion: v2
+name: docuconf
+description: Renders an app's docuconf contract inputs (env vars, file volumes, ConfigMaps) from typed Helm values.
+type: library
+version: 0.1.0
+home: https://github.com/docuconf/docuconf-go
+keywords: [configuration, contract, validation]

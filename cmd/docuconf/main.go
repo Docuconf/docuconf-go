@@ -4,6 +4,7 @@
 //	docuconf export -pkg ./internal/config -type Config -name billing-api -o contract.cue
 //	docuconf vet    -contract contract.cue -values values.yaml [-files files.yaml] [-policy policy.cue]
 //	docuconf render -contract contract.cue -values values.yaml [-files files.yaml]
+//	docuconf helm   -contract contract.cue -chart ./chart
 //
 // vet prints one line per problem and exits 1 if there is any. Secret
 // values are never printed. The contract meta-schema is built in.
@@ -15,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"cuelang.org/go/cue"
 
@@ -27,6 +29,7 @@ Usage:
   docuconf export -pkg <package> -type <Type> -name <service> [-o contract.cue]
   docuconf vet    -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-policy policy.cue]
   docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml]
+  docuconf helm   -contract <contract.cue> -chart <chart directory>
 
 Run "docuconf <command> -h" for a command's flags.
 `
@@ -53,6 +56,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runVet(args[1:], stdout, stderr)
 	case "render":
 		err = runRender(args[1:], stdout, stderr)
+	case "helm":
+		err = runHelm(args[1:], stdout, stderr)
 	case "help", "-h", "-help", "--help":
 		fmt.Fprint(stdout, usage)
 		return 0
@@ -169,4 +174,51 @@ func runRender(args []string, stdout, stderr io.Writer) error {
 	}
 	_, err = stdout.Write(out)
 	return err
+}
+
+// runHelm writes what a chart using the docuconf library chart needs:
+// files/docuconf/contract.json, which the library renders from, and
+// values.schema.json, which Helm checks values against on every lint,
+// template, install and upgrade.
+func runHelm(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("helm", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	contract := fs.String("contract", "contract.cue", "the service's contract")
+	chart := fs.String("chart", ".", "the chart directory to write into")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	p, err := platform.New()
+	if err != nil {
+		return err
+	}
+	c, err := p.LoadContract(*contract)
+	if err != nil {
+		return err
+	}
+	schema, err := p.HelmValuesSchema(c)
+	if err != nil {
+		return err
+	}
+	doc, err := p.ContractJSON(c)
+	if err != nil {
+		return err
+	}
+	for _, out := range []struct {
+		name string
+		data []byte
+	}{
+		{filepath.Join("files", "docuconf", "contract.json"), doc},
+		{"values.schema.json", schema},
+	} {
+		path, data := filepath.Join(*chart, out.name), out.data
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "wrote %s\n", path)
+	}
+	return nil
 }

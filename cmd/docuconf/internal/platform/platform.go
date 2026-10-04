@@ -253,6 +253,37 @@ func (p *Platform) Render(c *Contract, values, files cue.Value) ([]byte, error) 
 	return buf.Bytes(), nil
 }
 
+// HelmValuesSchema runs #HelmValuesSchema and returns a values.schema.json
+// for a chart that renders the contract with the docuconf library chart.
+func (p *Platform) HelmValuesSchema(c *Contract) ([]byte, error) {
+	v := p.meta.LookupPath(cue.ParsePath("#HelmValuesSchema")).
+		FillPath(cue.ParsePath("contract"), c.Value).
+		LookupPath(cue.ParsePath("out"))
+	if err := v.Validate(cue.Concrete(true)); err != nil {
+		return nil, fmt.Errorf("helm values schema: %s", errorLines(err))
+	}
+	return indentJSON(v)
+}
+
+// ContractJSON returns the contract as indented JSON, the form the
+// docuconf library chart reads from files/docuconf/contract.json.
+func (p *Platform) ContractJSON(c *Contract) ([]byte, error) {
+	return indentJSON(c.Value)
+}
+
+func indentJSON(v cue.Value) ([]byte, error) {
+	raw, err := v.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("%s", errorLines(err))
+	}
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, raw, "", "  "); err != nil {
+		return nil, err
+	}
+	buf.WriteByte('\n')
+	return buf.Bytes(), nil
+}
+
 // contractError explains why a contract does not unify with #Contract.
 // A variable is a disjunction of one definition per type, so CUE reports
 // a conflict with every other type; those lines are dropped, leaving the

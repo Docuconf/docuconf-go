@@ -1,0 +1,6 @@
+dependencies:
+- name: docuconf
+  repository: file://../../../helm/docuconf
+  version: 0.1.0
+digest: sha256:dd6a066b748c7a5f825cbff2d756b7c315c4da704cfd37ce3e0e9b74e4c6e5b9
+generated: "2026-10-04T22:35:26.553130888Z"
