@@ -435,7 +435,9 @@ Where the host library's behaviour conflicts with a MUST in this spec (for examp
 
 **Hosts that read config files** export them as section 4.4 describes. The SDK reads the files that ship in the image (the publish output, not the whole repo) at export time.
 
-**Build-time variables are not part of the runtime contract.** Some frameworks inline variables into the bundle at build time: Next.js `NEXT_PUBLIC_*`, Vite `import.meta.env`, T3 Env's `client` section. Setting them on a pod does nothing, so SDKs MUST NOT export them as runtime variables.
+**Build-time variables are not part of the runtime contract.** Some frameworks inline variables into the bundle at build time: Next.js `NEXT_PUBLIC_*`, Vite `import.meta.env`, T3 Env's `client` section. Setting them on a pod does nothing, so SDKs MUST NOT export them as runtime variables. T3 Env's `shared` section (such as `NODE_ENV`) is also left out: it is read in both bundles and is a framework concern, covered by the well-known fragments proposed in section 13.
+
+**Local file roots.** For development and tests, SDKs MUST support `DOCUCONF_FILE_ROOT`, a directory prepended to every absolute file input path, including a path read from a `pathEnv` variable.
 
 ### 11.2 Conformance requirements
 
@@ -443,9 +445,9 @@ A conforming SDK MUST:
 
 1. Offer an idiomatic declaration API covering every type and field in section 4.
 2. Validate the declaration itself at definition time: name format, description length, default against constraints, required without default, RE2-only patterns.
-3. Export a contract that matches the conformance golden file for the fixture declaration, compared as data (`cue export` to JSON), so formatting does not matter. `metadata.generator` and the `encoding` fields are set by the SDK, so they are excluded from the comparison. Output MUST be deterministic: variables and file inputs sorted by name.
+3. Export a contract that matches the conformance golden file for the fixture declaration, compared as data (`cue export` to JSON), so formatting does not matter. Fields equal to their meta-schema default (`required: false`, `reload: "restart"`, `minCertificates: 1`) MAY be omitted; the comparison is made after unifying with the meta-schema. Durations are written in canonical Go form (`1h30m`, not `90m` or `1.5h`). `metadata.generator` and the `encoding` fields are set by the SDK, so they are excluded from the comparison. Output MUST be deterministic: variables and file inputs sorted by name.
 4. Load from the **process environment** by default. Reading a `.env` file is an opt-in for development, and real environment variables override it.
-5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_unreadable`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed.
+5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_unreadable`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed. Length limits on strings and text files use `out_of_range`. An expired or not-yet-valid certificate, a disallowed key algorithm or a broken chain is `certificate_invalid`; a CA bundle with too few certificates is `file_malformed`.
 6. Expose typed values: a struct, a class, or an inferred TypeScript type. Not a string map.
 7. Check every file input at boot, covering what the platform could not see:
    - the path exists and is readable, within `maxSize`;
