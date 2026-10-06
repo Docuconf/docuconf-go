@@ -1,0 +1,37 @@
+description: Float variables (SPEC §4.3, §5).
+vars:
+  RATIO:
+    type: float
+    description: Fraction of traffic to sample
+    min: 0
+    max: 1
+    default: 0.25
+  SCALE:
+    type: float
+    description: Multiplier applied to every score
+cases:
+  - name: typed values
+    values: {RATIO: 0.5, SCALE: -1.75}
+  - name: defaults and absent optionals
+    values: {}
+  - name: exponent form
+    env: {SCALE: "1e3"}
+    expect: {SCALE: 1000}
+  - name: an integer is a float
+    env: {SCALE: "3"}
+    expect: {SCALE: 3}
+  - name: above max
+    env: {RATIO: "1.5"}
+    errors: [{var: RATIO, code: out_of_range}]
+  - name: NaN is not a number
+    env: {SCALE: "NaN"}
+    errors: [{var: SCALE, code: invalid_type}]
+  - name: infinity is not finite
+    env: {SCALE: "Inf"}
+    errors: [{var: SCALE, code: invalid_type}]
+  - name: not a number
+    env: {SCALE: "high"}
+    errors: [{var: SCALE, code: invalid_type}]
+  - name: a decimal comma is not a decimal point, whatever the locale
+    env: {SCALE: "0,5"}
+    errors: [{var: SCALE, code: invalid_type}]

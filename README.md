@@ -36,7 +36,7 @@ type Config struct {
 }
 ```
 
-Doc comments are the descriptions (a `desc` tag is the fallback). docuconf's tags: `secret`, `min`/`max`, `minLength`/`maxLength`, `pattern` (RE2), `values` (enum), `schemes` (url), `minItems`/`maxItems`. File types: `TLSKeyPair`, `CABundle`, `Keystore` (PKCS#12), `TextFile`, `BinaryFile`, `ConfigFile[T]` (JSON or YAML, with a JSON Schema generated from `T`), plus `JSON[T]` for structured variables. The full tag reference is in the [package docs](doc.go).
+Doc comments are the descriptions (a `desc` tag is the fallback). docuconf's tags: `secret`, `min`/`max`, `minLength`/`maxLength`, `pattern` (RE2), `values` (enum), `schemes` (url), `minItems`/`maxItems`, and `itemMin`/`itemMax` on integer lists (`` Shards []int `env:"SHARDS" itemMin:"0" itemMax:"1023"` ``). Integer bounds always include the range of the Go type: an `int8` exports `min: -128, max: 127`, a `[]uint16` exports `itemMin: 0, itemMax: 65535`. File types: `TLSKeyPair`, `CABundle`, `Keystore` (PKCS#12), `TextFile`, `BinaryFile`, `ConfigFile[T]` (JSON or YAML, with a JSON Schema generated from `T`), plus `JSON[T]` for structured variables. The full tag reference is in the [package docs](doc.go).
 
 ## Load
 
@@ -56,6 +56,17 @@ Secrets injected at startup, by Bank-Vaults' `vault-env`, a wrapper such as `op 
 
 caarlos0/env reads only environment variables and does not layer config files, so the Go SDK has no config-file overlays (spec section 4.7) and never exports `overlays`. A platform supplies every Go variable through the environment.
 
+### Contract-first
+
+To validate an environment against a contract with no Go struct, for example one written in CUE by hand and converted with `cue export --out json`, use `LoadContract`. It parses every wire encoding (lists as `csv`, `json` or `indexed`; durations as `go`, `iso8601`, `seconds` or `timespan`) and returns typed values, or a `*ValidationError` with every violation:
+
+```go
+vals, err := docuconf.LoadContract(contractJSON, docuconf.Options{})
+timeout := vals["REQUEST_TIMEOUT"].(time.Duration) // int is int64, list is []string or []int64
+```
+
+It loads variables only: a contract with `files`, `overlays` or `profiles` is rejected.
+
 ## Export and validate
 
 ```
@@ -67,3 +78,18 @@ docuconf render -contract contract.cue -values values.yaml -files files.yaml
 `vet` prints one line per problem, such as `serving-tls: certificate does not cover api.example.com`. From Go code, `docuconf.Export[Config](docuconf.Meta{Name: "billing-api"})` returns the same contract.
 
 The old builder-based generator in `gen/` and `LoadDotEnv` are deprecated.
+
+## Conformance
+
+`go test ./...` runs the shared conformance suite (spec section 12) from [`conformance/cases.json`](conformance/cases.json) through `LoadContract`, one subtest per case id. To run another copy of the suite, set `DOCUCONF_CONFORMANCE` to its `cases.json`:
+
+```
+go test -run TestConformance -v .
+DOCUCONF_CONFORMANCE=/path/to/cases.json go test -run TestConformance .
+```
+
+The Go SDK supports every capability tag (`int64`, `json-schema`), so no case is skipped.
+
+## Licence
+
+[MIT](LICENSE).

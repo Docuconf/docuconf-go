@@ -145,7 +145,7 @@ An optional variable with no default is legal. The SDK exposes it as absent (`ni
 | `duration` | `min`, `max` (durations), `encoding` | Go-syntax duration, e.g. `1m30s` | depends on `encoding` |
 | `url` | `schemes` | string with a `scheme://` | as is |
 | `enum` | `values` (non-empty) | one of `values` | as is |
-| `list` | `items` (`string`\|`int`), `encoding`, `separator` (csv only, default `,`), `minItems`, `maxItems` | list | depends on `encoding` |
+| `list` | `items` (`string`\|`int`), `encoding`, `separator` (csv only, default `,`), `minItems`, `maxItems`, `itemMin` and `itemMax` (`int` items only) | list | depends on `encoding` |
 | `json` | `schema` (JSON Schema) | any JSON value | compact JSON |
 
 Rules:
@@ -396,7 +396,7 @@ Renderers MUST double every `$` in a literal value (`$` becomes `$$`). Kubernete
 SDK parsing rules:
 
 - `bool` MUST accept `true` and `false`, case-insensitive. Host libraries that also accept `1`, `0`, `yes` and so on may keep doing so, since the platform only ever emits `true` / `false`.
-- `int` MUST reject non-integers and values outside the 64-bit signed range. When the app's field is narrower (a 32-bit `Int`, an `int8`, an unsigned type, a JavaScript `number` beyond 2^53), the SDK MUST export `min`/`max` within that range, so the platform never accepts a value the app cannot hold.
+- `int` MUST reject non-integers (`invalid_type`) and values outside the 64-bit signed range (`out_of_range`). When the app's field is narrower (a 32-bit `Int`, an `int8`, an unsigned type, a JavaScript `number` beyond 2^53), the SDK MUST export `min`/`max` within that range, so the platform never accepts a value the app cannot hold. The same applies to the items of an `int` list, through `itemMin`/`itemMax`; an item outside them is `out_of_range`.
 - Values are never trimmed. A trailing newline is part of the value. Host libraries that trim whitespace around `csv` separators may keep doing so: the renderer never emits it.
 - `float` MUST NOT be `NaN` or infinite, and SDKs MUST parse floats independently of the process locale.
 - An **empty string** is a present value for `string` (and fails `minLength` if set). For every other type, empty means *unset*, so a defaulted variable takes its default and a required one fails. Where a host library treats empty differently, the SDK adds a pre-check rather than changing the spec.
@@ -532,7 +532,7 @@ A conforming SDK MUST:
 2. Validate the declaration itself at definition time: name format, description length, default against constraints, required without default, RE2-only patterns.
 3. Export a contract that matches the conformance golden file for the fixture declaration, compared as data (`cue export` to JSON), so formatting does not matter. Fields equal to their meta-schema default (`required: false`, `reload: "restart"`, `minCertificates: 1`) MAY be omitted; the comparison is made after unifying with the meta-schema. Durations are written in canonical form: units in the order `h`, `m`, `s`, `ms`, `us`, `ns`, each at most once, zero units omitted, and `0s` for zero (`1h30m`, not `90m`, `1.5h` or Go's `1h30m0s`). `metadata.generator` and the `encoding` fields are set by the SDK, so they are excluded from the comparison. Output MUST be deterministic: variables and file inputs sorted by name.
 4. Load from the **process environment**, as it is when the process starts, by default. That is after any injection (section 4.5.1), so injected values are validated exactly like any other, and the SDK never resolves secret references itself. Configuration is never read at build time. Reading a `.env` file is an opt-in for development, and real environment variables override it.
-5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_unreadable`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed. Length limits on strings and text files use `out_of_range`. An expired or not-yet-valid certificate, a disallowed key algorithm or a broken chain is `certificate_invalid`; a CA bundle with too few certificates is `file_malformed`.
+5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_unreadable`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed. Length limits on strings and text files, and `itemMin`/`itemMax` on list items, use `out_of_range`. An expired or not-yet-valid certificate, a disallowed key algorithm or a broken chain is `certificate_invalid`; a CA bundle with too few certificates is `file_malformed`.
 6. Expose typed values: a struct, a class, or an inferred TypeScript type. Not a string map.
 7. Check every file input at boot, covering what the platform could not see:
    - the path exists and is readable, within `maxSize`;
@@ -542,22 +542,29 @@ A conforming SDK MUST:
 8. Honour `reload: watch` for every file input that declares it, typically by watching (or polling) the mount directory, since Kubernetes updates projected files by swapping a symlink. An SDK that cannot reload an input type MUST reject `watch` for it at declaration time rather than export a promise it does not keep.
 9. Load declared config-file overlays (section 4.7) between the profile file and the environment, reloading them when declared `watch`; reject `overlays` at declaration time where the host cannot layer files, and reject an overlay `path` whose directory holds files the app ships with.
 10. Ignore environment variables not in the declaration. A real process has many (`HOSTNAME`, `KUBERNETES_*`), so the unknown-variable check is only applied to platform values.
-11. Pass the shared conformance suite (section 12).
+11. Offer a **contract-first** mode: validate an environment against a `contract.json` (the contract exported as JSON) with no in-language declaration, parsing every encoding in section 5 and returning typed values. The conformance runner uses this mode, and so can teams that want to author CUE by hand and export it with `cue export`. It MAY be an internal API, used only by the runner, while the SDK has no public use for it.
+12. Pass the shared conformance suite (section 12).
 
 An SDK SHOULD also:
 
 - Generate Markdown documentation from the declaration.
 - Report `invalid_type` when a secret variable still holds an unresolved injector reference (a value starting with `vault:`, `op://` or `ref+`), because the injector did not run. The message names the variable and the reference scheme, never the value.
-- Support a **contract-first** mode: load a `contract.cue` or `contract.json` at runtime, with no in-language declaration. The conformance runner uses this mode, and so can teams that want to author CUE by hand.
 - Integrate with the framework around the host library: a Railtie, `ValidateOnStart` in .NET, a Next.js or NestJS adapter for T3 Env.
 
 ## 12. Conformance suite
 
-The `conformance/` directory is language-neutral:
+The `conformance/` directory of docuconf-go is the shared suite. Cases are language-neutral, so every SDK runs the same ones and a disagreement between two SDKs is a bug in one of them.
 
-- `contracts/*.cue`: valid and invalid contracts. Each SDK's contract-first loader must accept or reject them.
-- `load/*.yaml`: each case pairs a contract, typed platform values, and either the expected typed result (as JSON) or the expected error codes. The runner renders the values with `#Render` using the SDK's encodings, so one case tests every encoding.
-- `export/`: a fixture declaration described in prose, plus `golden.cue`. Each SDK writes the fixture in its own language, using its host library, and must reproduce `golden.cue` (see 11.2, item 3).
+- `load/*.yaml` holds the cases, written by hand. Each file declares variables and a list of cases. A case gives either `values` (typed platform values, which must pass `#Validate`) or `env` (raw strings, for input the platform would never send, such as malformed or out-of-range values), and, for `env`, either the expected typed result (`expect`) or the expected errors (`errors`, a list of variable and code).
+- `cases.json` is generated from `load/` by `docuconf conformance`, and checked in. For each case it holds the full contract, unified with the meta-schema so defaults are explicit; the exact process environment the SDK sees; and either the typed value of every variable (`null` when absent) or the errors. A `values` case is rendered with `#Render` once per list and duration encoding the case leaves open, so one case tests every encoding, with `$` already reduced as Kubernetes does.
+- A case may list `requires` tags: `int64` (the host holds every 64-bit integer) and `json-schema` (the SDK validates `json` values against their JSON Schema in contract-first mode). An SDK lacking a capability skips those cases and documents the gap. No other case may be skipped.
+
+A conformance runner, one per SDK, runs every case in `cases.json` through the SDK's contract-first mode (section 11.2, item 11), with the case's `env` as the whole environment:
+
+- For `expect`, loading succeeds and each variable's typed value, written as JSON, equals the expected one: durations in canonical form (section 11.2, item 3), integers exactly, floats numerically, lists as arrays.
+- For `errors`, loading fails with exactly the listed variable and code pairs, in any order, and no error output contains the raw value of a secret variable.
+
+The suite covers variables in v1. File inputs, profiles and overlays are tested by each SDK for now; cases for them are planned. Contract export is checked separately: each SDK writes a fixture declaration in its own language and vets the exported contract against the meta-schema (section 11.2, item 3).
 
 ## 13. Open questions
 
@@ -568,11 +575,10 @@ The `conformance/` directory is language-neutral:
 5. Proposals arising from [`docs/EDGE_CASES.md`](../docs/EDGE_CASES.md):
    - **roles**, for one image running several processes;
    - **`requiredIf`**, for conditional requirements;
-   - **per-item bounds for `list`** (`itemMin`, `itemMax`), so an `int` list can carry the range a host can hold (a JavaScript number beyond 2^53, a 32-bit item type) as section 5 requires for scalars;
    - **well-known fragments**, for variables read by frameworks and libraries;
    - **platform-authored contracts**, for third-party images.
 6. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?
 7. Should a file input be able to take a whole directory of arbitrary files (for example, every `*.crt` in a trust directory), rather than one file or a TLS key pair?
 8. Should file inputs support profiles, so a baked-in `routes.yaml` can be the default for some environments, as `appsettings.{Environment}.json` is for variables?
 
-Resolved in this draft: config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
+Resolved in this draft: per-item bounds for `int` lists (`itemMin`, `itemMax`, section 4.3); config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).

@@ -57,6 +57,8 @@ contract.#Contract & {
 			encoding:    "csv"
 			separator:   ";"
 			maxItems:    4
+			itemMin:     1
+			itemMax:     65535
 		}
 		GOMEMLIMIT: {
 			type:        "int"

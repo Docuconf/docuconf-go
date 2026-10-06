@@ -39,7 +39,7 @@ type Gateway struct {
 	AllowedOrigins []string `env:"ALLOWED_ORIGINS,required" minItems:"1" examples:"https://app.example.com"`
 
 	// Extra ports to listen on.
-	ExtraPorts []uint16 `env:"EXTRA_PORTS" envSeparator:";" maxItems:"4"`
+	ExtraPorts []uint16 `env:"EXTRA_PORTS" envSeparator:";" maxItems:"4" itemMin:"1"`
 
 	// Stripe API base URL.
 	StripeAPIBase *url.URL `env:"STRIPE_API_BASE" envDefault:"https://api.stripe.com" schemes:"https"`

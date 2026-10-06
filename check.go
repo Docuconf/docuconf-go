@@ -8,34 +8,57 @@ import (
 	"math/big"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
 
+// Wire encodings (SPEC §5).
+const (
+	encGo       = "go"
+	encISO8601  = "iso8601"
+	encSeconds  = "seconds"
+	encTimespan = "timespan"
+
+	encCSV     = "csv"
+	encJSON    = "json"
+	encIndexed = "indexed"
+)
+
 // check validates one present value of a variable against its type and
 // constraints. Messages never include the value of a secret variable.
 func (v *varDecl) check(raw string) []Violation {
-	viol := func(code Code, format string, args ...any) []Violation {
-		return []Violation{{Input: v.name, Code: code, Message: fmt.Sprintf(format, args...)}}
-	}
-	show := func(s string) string { return v.show(s) }
+	_, out := v.parse(raw)
+	return out
+}
+
+// violation returns a one-violation slice for the variable.
+func (v *varDecl) violation(code Code, format string, args ...any) []Violation {
+	return []Violation{{Input: v.name, Code: code, Message: fmt.Sprintf(format, args...)}}
+}
+
+// parse validates one present value, as check does, and returns it typed:
+// string, int64 (*big.Int beyond that range), float64, bool,
+// time.Duration, []string, []int64, or a decoded JSON value with numbers
+// as json.Number. The value is nil when there are violations.
+func (v *varDecl) parse(raw string) (any, []Violation) {
+	viol := v.violation
+	show := v.show
 
 	switch v.typ {
 	case typeString, typeEnum:
 		if v.custom != nil {
 			if err := v.custom(raw); err != nil {
-				return viol(CodeInvalidType, "%s is not a valid %v%s", show(raw), v.goType, v.reason(err))
+				return nil, viol(CodeInvalidType, "%s is not a valid %v%s", show(raw), v.goType, v.reason(err))
 			}
 		}
 		if v.typ == typeEnum {
-			for _, x := range v.values {
-				if raw == x {
-					return nil
-				}
+			if slices.Contains(v.values, raw) {
+				return raw, nil
 			}
-			return viol(CodeNotInEnum, "%s is not one of %s", show(raw), strings.Join(v.values, ", "))
+			return nil, viol(CodeNotInEnum, "%s is not one of %s", show(raw), strings.Join(v.values, ", "))
 		}
 		var out []Violation
 		n := utf8.RuneCountInString(raw)
@@ -48,20 +71,26 @@ func (v *varDecl) check(raw string) []Violation {
 		if v.pattern != nil && !v.pattern.MatchString(raw) {
 			out = append(out, viol(CodePatternMismatch, "%s does not match pattern %s", show(raw), v.pattern)...)
 		}
-		return out
+		if len(out) > 0 {
+			return nil, out
+		}
+		return raw, nil
 
 	case typeInt:
 		n, code, msg := v.parseInt(raw)
 		if msg != "" {
-			return viol(code, "%s", msg)
+			return nil, viol(code, "%s", msg)
 		}
 		if v.minInt != nil && n.Cmp(v.minInt) < 0 {
-			return viol(CodeOutOfRange, "%s is below min %s", v.showNum(raw), v.minInt)
+			return nil, viol(CodeOutOfRange, "%s is below min %s", v.showNum(raw), v.minInt)
 		}
 		if v.maxInt != nil && n.Cmp(v.maxInt) > 0 {
-			return viol(CodeOutOfRange, "%s is above max %s", v.showNum(raw), v.maxInt)
+			return nil, viol(CodeOutOfRange, "%s is above max %s", v.showNum(raw), v.maxInt)
 		}
-		return nil
+		if n.IsInt64() {
+			return n.Int64(), nil
+		}
+		return n, nil
 
 	case typeFloat:
 		bits := 64
@@ -70,103 +99,178 @@ func (v *varDecl) check(raw string) []Violation {
 		}
 		f, err := strconv.ParseFloat(raw, bits)
 		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
-			return viol(CodeInvalidType, "%s is not a finite number", show(raw))
+			return nil, viol(CodeInvalidType, "%s is not a finite number", show(raw))
 		}
 		if v.minFloat != nil && f < *v.minFloat {
-			return viol(CodeOutOfRange, "%s is below min %s", v.showNum(raw), formatFloat(*v.minFloat))
+			return nil, viol(CodeOutOfRange, "%s is below min %s", v.showNum(raw), formatFloat(*v.minFloat))
 		}
 		if v.maxFloat != nil && f > *v.maxFloat {
-			return viol(CodeOutOfRange, "%s is above max %s", v.showNum(raw), formatFloat(*v.maxFloat))
+			return nil, viol(CodeOutOfRange, "%s is above max %s", v.showNum(raw), formatFloat(*v.maxFloat))
 		}
-		return nil
+		return f, nil
 
 	case typeBool:
 		if strings.EqualFold(raw, "true") || strings.EqualFold(raw, "false") {
-			return nil
+			return strings.EqualFold(raw, "true"), nil
 		}
-		if _, err := strconv.ParseBool(raw); err != nil {
-			return viol(CodeInvalidType, "%s is not a bool (true or false)", show(raw))
+		b, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, viol(CodeInvalidType, "%s is not a bool (true or false)", show(raw))
 		}
-		return nil
+		return b, nil
 
 	case typeDuration:
-		d, err := time.ParseDuration(raw)
+		d, err := v.parseDuration(raw)
 		if err != nil {
-			return viol(CodeInvalidType, "%s is not a duration such as 1m30s", show(raw))
+			return nil, viol(CodeInvalidType, "%s is not a duration %s", show(raw), durationHint(v.durEncoding))
 		}
 		if v.minDur != nil && d < *v.minDur {
-			return viol(CodeOutOfRange, "%s is below min %s", v.showNum(raw), formatDuration(*v.minDur))
+			return nil, viol(CodeOutOfRange, "%s is below min %s", v.showNum(raw), formatDuration(*v.minDur))
 		}
 		if v.maxDur != nil && d > *v.maxDur {
-			return viol(CodeOutOfRange, "%s is above max %s", v.showNum(raw), formatDuration(*v.maxDur))
+			return nil, viol(CodeOutOfRange, "%s is above max %s", v.showNum(raw), formatDuration(*v.maxDur))
 		}
-		return nil
+		return d, nil
 
 	case typeURL:
 		u, err := url.Parse(raw)
 		if err != nil || !urlRe.MatchString(raw) {
-			return viol(CodeInvalidType, "%s is not a URL of the form scheme://...", show(raw))
+			return nil, viol(CodeInvalidType, "%s is not a URL of the form scheme://...", show(raw))
 		}
 		if v.custom != nil {
 			if err := v.custom(raw); err != nil {
-				return viol(CodeInvalidType, "%s is not a valid %v%s", show(raw), v.goType, v.reason(err))
+				return nil, viol(CodeInvalidType, "%s is not a valid %v%s", show(raw), v.goType, v.reason(err))
 			}
 		}
-		if len(v.schemes) > 0 {
-			for _, s := range v.schemes {
-				if strings.EqualFold(u.Scheme, s) {
-					return nil
-				}
-			}
+		if len(v.schemes) > 0 && !slices.ContainsFunc(v.schemes, func(s string) bool { return strings.EqualFold(u.Scheme, s) }) {
 			if v.secret {
-				return viol(CodeInvalidScheme, "scheme is not one of %s", strings.Join(v.schemes, ", "))
+				return nil, viol(CodeInvalidScheme, "scheme is not one of %s", strings.Join(v.schemes, ", "))
 			}
-			return viol(CodeInvalidScheme, "scheme %q is not one of %s", u.Scheme, strings.Join(v.schemes, ", "))
+			return nil, viol(CodeInvalidScheme, "scheme %q is not one of %s", u.Scheme, strings.Join(v.schemes, ", "))
 		}
-		return nil
+		return raw, nil
 
 	case typeList:
-		items := strings.Split(raw, v.separator)
-		for i, item := range items {
-			if v.items == "int" {
-				if _, _, msg := v.parseInt(item); msg != "" {
-					return viol(CodeInvalidType, "item %d: %s", i, msg)
-				}
-			} else if v.custom != nil {
-				if err := v.custom(item); err != nil {
-					return viol(CodeInvalidType, "item %d: %s is not a valid %v%s", i, show(item), v.goType.Elem(), v.reason(err))
-				}
-			}
+		items, out := v.splitItems(raw)
+		if len(out) > 0 {
+			return nil, out
 		}
-		if v.minItems != nil && len(items) < *v.minItems {
-			return viol(CodeTooFewItems, "has %s, below minItems %d", plural(len(items), "item"), *v.minItems)
-		}
-		if v.maxItems != nil && len(items) > *v.maxItems {
-			return viol(CodeTooManyItems, "has %s, above maxItems %d", plural(len(items), "item"), *v.maxItems)
-		}
-		return nil
+		return v.parseItems(items)
 
 	case typeJSON:
 		doc, err := decodeJSON([]byte(raw))
 		if err != nil {
-			return viol(CodeInvalidType, "is not valid JSON%s", v.reason(err))
+			return nil, viol(CodeInvalidType, "is not valid JSON%s", v.reason(err))
 		}
 		var out []Violation
-		for _, p := range v.schema.validate(doc) {
-			out = append(out, viol(CodeSchemaMismatch, "%s", p)...)
+		if v.schema != nil {
+			for _, p := range v.schema.validate(doc) {
+				out = append(out, viol(CodeSchemaMismatch, "%s", p)...)
+			}
 		}
 		if len(out) > 0 {
-			return out
+			return nil, out
 		}
-		if err := v.custom(raw); err != nil {
-			return viol(CodeSchemaMismatch, "does not bind to %v%s", v.jsonType, v.reason(err))
+		if v.custom != nil {
+			if err := v.custom(raw); err != nil {
+				return nil, viol(CodeSchemaMismatch, "does not bind to %v%s", v.jsonType, v.reason(err))
+			}
 		}
-		if err := validateValue(v.jsonType, []byte(raw)); err != nil {
-			return viol(CodeSchemaMismatch, "%s", v.redact(err.Error()))
+		if v.jsonType != nil {
+			if err := validateValue(v.jsonType, []byte(raw)); err != nil {
+				return nil, viol(CodeSchemaMismatch, "%s", v.redact(err.Error()))
+			}
 		}
-		return nil
+		return doc, nil
 	}
-	return nil
+	return raw, nil
+}
+
+// splitItems splits a list value in its encoding. An indexed list spans
+// several variables, so the caller collects its items instead.
+func (v *varDecl) splitItems(raw string) ([]string, []Violation) {
+	if v.listEncoding != encJSON {
+		return strings.Split(raw, v.separator), nil
+	}
+	doc, err := decodeJSON([]byte(raw))
+	arr, ok := doc.([]any)
+	if err != nil || !ok {
+		return nil, v.violation(CodeInvalidType, "is not a JSON array%s", v.reason(err))
+	}
+	items := make([]string, len(arr))
+	for i, x := range arr {
+		switch x := x.(type) {
+		case string:
+			if v.items == "string" {
+				items[i] = x
+				continue
+			}
+		case json.Number:
+			if v.items == "int" {
+				items[i] = x.String()
+				continue
+			}
+		}
+		want := "a string"
+		if v.items == "int" {
+			want = "an integer"
+		}
+		return nil, v.violation(CodeInvalidType, "item %d is %s, not %s", i, jsonKind(x), want)
+	}
+	return items, nil
+}
+
+// parseItems checks a list's items and returns them as []string or
+// []int64. (A []uint64 declaration may hold larger items; its typed
+// value is never used, since caarlos0/env parses declared lists.)
+func (v *varDecl) parseItems(items []string) (any, []Violation) {
+	viol := v.violation
+	var ints []int64
+	for i, item := range items {
+		if v.items == "int" {
+			n, code, msg := v.parseInt(item)
+			if msg != "" {
+				return nil, viol(code, "item %d: %s", i, msg)
+			}
+			if v.itemMin != nil && n.Cmp(v.itemMin) < 0 {
+				return nil, viol(CodeOutOfRange, "item %d: %s is below itemMin %s", i, v.showNum(item), v.itemMin)
+			}
+			if v.itemMax != nil && n.Cmp(v.itemMax) > 0 {
+				return nil, viol(CodeOutOfRange, "item %d: %s is above itemMax %s", i, v.showNum(item), v.itemMax)
+			}
+			ints = append(ints, n.Int64())
+		} else if v.custom != nil {
+			if err := v.custom(item); err != nil {
+				return nil, viol(CodeInvalidType, "item %d: %s is not a valid %v%s", i, v.show(item), v.goType.Elem(), v.reason(err))
+			}
+		}
+	}
+	if v.minItems != nil && len(items) < *v.minItems {
+		return nil, viol(CodeTooFewItems, "has %s, below minItems %d", plural(len(items), "item"), *v.minItems)
+	}
+	if v.maxItems != nil && len(items) > *v.maxItems {
+		return nil, viol(CodeTooManyItems, "has %s, above maxItems %d", plural(len(items), "item"), *v.maxItems)
+	}
+	if v.items == "int" {
+		if ints == nil {
+			ints = []int64{}
+		}
+		return ints, nil
+	}
+	return slices.Clone(items), nil
+}
+
+// indexedItems collects an indexed list from NAME__0, NAME__1, ... up to
+// the first missing index. The list is present when NAME__0 is set.
+func indexedItems(environ map[string]string, name string) ([]string, bool) {
+	var items []string
+	for i := 0; ; i++ {
+		s, ok := environ[fmt.Sprintf("%s__%d", name, i)]
+		if !ok {
+			return items, i > 0
+		}
+		items = append(items, s)
+	}
 }
 
 // parseInt parses an integer the way caarlos0/env does for the field's

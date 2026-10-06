@@ -1,0 +1,24 @@
+description: URL variables (SPEC §4.3).
+vars:
+  API_BASE:
+    type: url
+    description: Base URL of the upstream API
+    schemes: [https]
+    default: https://api.example.com
+  CALLBACK:
+    type: url
+    description: Where to send webhooks
+cases:
+  - name: typed values
+    values: {API_BASE: "https://api.internal:8443/v1", CALLBACK: "http://hooks.svc:8080/in?x=1"}
+  - name: defaults and absent optionals
+    values: {}
+  - name: scheme not allowed
+    env: {API_BASE: "http://api.internal"}
+    errors: [{var: API_BASE, code: invalid_scheme}]
+  - name: no scheme
+    env: {CALLBACK: "hooks.svc:8080"}
+    errors: [{var: CALLBACK, code: invalid_type}]
+  - name: any scheme when none is declared
+    env: {CALLBACK: "amqp://broker:5672"}
+    expect: {CALLBACK: "amqp://broker:5672"}

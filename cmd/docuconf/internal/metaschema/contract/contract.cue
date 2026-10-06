@@ -203,6 +203,14 @@ import (
 	}
 	minItems?: int & >=0
 	maxItems?: int & >=0
+	// Bounds on each item of an int list, so a list can carry the range its
+	// host item type holds (a 32-bit int, a JavaScript number), as min and
+	// max do for an int variable.
+	itemMin?: int
+	itemMax?: int
+	if itemMin != _|_ || itemMax != _|_ {
+		_itemBoundsOnIntItems: true & items == "int"
+	}
 	default?: [...]
 })
 
@@ -336,7 +344,11 @@ import (
 		}
 		if var.type == "list" {
 			if var.items == "string" {literal: [...string]}
-			if var.items == "int" {literal: [...int]}
+			if var.items == "int" {
+				literal: [...int]
+				if var.itemMin != _|_ {literal: [...>=var.itemMin]}
+				if var.itemMax != _|_ {literal: [...<=var.itemMax]}
+			}
 			if var.minItems != _|_ {literal: list.MinItems(var.minItems)}
 			if var.maxItems != _|_ {literal: list.MaxItems(var.maxItems)}
 		}

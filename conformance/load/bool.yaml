@@ -1,0 +1,23 @@
+description: Bool variables (SPEC §4.3, §5).
+vars:
+  VERBOSE:
+    type: bool
+    description: Log every request
+    default: false
+  STRICT:
+    type: bool
+    description: Reject unknown fields
+cases:
+  - name: typed values
+    values: {VERBOSE: true, STRICT: false}
+  - name: defaults and absent optionals
+    values: {}
+  - name: case-insensitive
+    env: {VERBOSE: "TRUE", STRICT: "False"}
+    expect: {VERBOSE: true, STRICT: false}
+  - name: not a bool
+    env: {STRICT: "maybe"}
+    errors: [{var: STRICT, code: invalid_type}]
+  - name: empty is unset
+    env: {VERBOSE: ""}
+    expect: {VERBOSE: false}

@@ -212,6 +212,12 @@ func (v *varDecl) contract(desc string, docs *docResolver) (obj, error) {
 		if v.maxItems != nil {
 			o = o.add("maxItems", int64(*v.maxItems))
 		}
+		if v.itemMin != nil {
+			o = o.add("itemMin", json.Number(v.itemMin.String()))
+		}
+		if v.itemMax != nil {
+			o = o.add("itemMax", json.Number(v.itemMax.String()))
+		}
 	case typeJSON:
 		s, err := schemaFor(v.jsonType, docs)
 		if err != nil {

@@ -1,0 +1,18 @@
+description: Enum variables (SPEC §4.3).
+vars:
+  LOG_LEVEL:
+    type: enum
+    description: Minimum level to log
+    values: [debug, info, warn, error]
+    default: info
+cases:
+  - name: typed values
+    values: {LOG_LEVEL: warn}
+  - name: default
+    values: {}
+  - name: not one of the values
+    env: {LOG_LEVEL: verbose}
+    errors: [{var: LOG_LEVEL, code: not_in_enum}]
+  - name: values are case-sensitive
+    env: {LOG_LEVEL: WARN}
+    errors: [{var: LOG_LEVEL, code: not_in_enum}]

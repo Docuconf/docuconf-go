@@ -1,0 +1,51 @@
+description: String variables (SPEC §4.3, §5).
+vars:
+  NAME:
+    type: string
+    description: Display name of the service
+    minLength: 2
+    maxLength: 5
+  SLUG:
+    type: string
+    description: URL slug, matched anywhere unless anchored
+    pattern: "^[a-z][a-z0-9-]*$"
+    default: home
+  CODE:
+    type: string
+    description: Contains three digits somewhere
+    pattern: "[0-9]{3}"
+  NOTE:
+    type: string
+    description: Free text, kept exactly as given
+cases:
+  - name: typed values
+    values: {NAME: héllo, SLUG: my-page, CODE: ab123cd, NOTE: "cost $5, see $(HOME)"}
+  - name: defaults and absent optionals
+    values: {}
+  - name: length counts characters, not bytes
+    env: {NAME: "日本"}
+    expect: {NAME: "日本"}
+  - name: shorter than minLength
+    env: {NAME: "a"}
+    errors: [{var: NAME, code: out_of_range}]
+  - name: longer than maxLength
+    env: {NAME: "abcdef"}
+    errors: [{var: NAME, code: out_of_range}]
+  - name: anchored pattern rejects a partial match
+    env: {SLUG: "My-Page"}
+    errors: [{var: SLUG, code: pattern_mismatch}]
+  - name: unanchored pattern matches anywhere
+    env: {CODE: "x999y"}
+    expect: {CODE: "x999y"}
+  - name: unanchored pattern with no match
+    env: {CODE: "abc"}
+    errors: [{var: CODE, code: pattern_mismatch}]
+  - name: an empty string is a present value
+    env: {NOTE: ""}
+    expect: {NOTE: ""}
+  - name: an empty string can fail minLength
+    env: {NAME: ""}
+    errors: [{var: NAME, code: out_of_range}]
+  - name: values are never trimmed
+    env: {NOTE: "  padded \n"}
+    expect: {NOTE: "  padded \n"}
