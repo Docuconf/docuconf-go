@@ -16,30 +16,64 @@
           "additionalProperties": false,
           "properties": {
             "DATABASE_URL": {
-              "description": "Primary Postgres connection string (secret: supply a secretKeyRef)",
-              "type": "object",
-              "required": [
-                "secretKeyRef"
-              ],
-              "additionalProperties": false,
-              "properties": {
-                "secretKeyRef": {
+              "description": "Primary Postgres connection string (secret: supply a secretKeyRef or injected)",
+              "oneOf": [
+                {
                   "type": "object",
                   "required": [
-                    "name",
-                    "key"
+                    "secretKeyRef"
                   ],
-                  "additionalProperties": true,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
-                    "name": {
-                      "type": "string"
-                    },
-                    "key": {
-                      "type": "string"
+                    "secretKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
                     }
                   }
                 }
-              }
+              ]
             },
             "KAFKA_BROKERS": {
               "description": "Kafka brokers orders are published to",
@@ -49,6 +83,34 @@
                   "type": "array",
                   "items": {
                     "type": "string"
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
                   }
                 }
               ]
@@ -69,7 +131,9 @@
                   "required": [
                     "configMapKeyRef"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "configMapKeyRef": {
                       "type": "object",
@@ -88,6 +152,38 @@
                       }
                     }
                   }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null",
+                  "description": "Unset."
                 }
               ]
             },
@@ -103,7 +199,9 @@
                   "required": [
                     "configMapKeyRef"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "configMapKeyRef": {
                       "type": "object",
@@ -122,6 +220,38 @@
                       }
                     }
                   }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null",
+                  "description": "Unset."
                 }
               ]
             },
@@ -138,7 +268,9 @@
                   "required": [
                     "configMapKeyRef"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "configMapKeyRef": {
                       "type": "object",
@@ -163,7 +295,9 @@
                   "required": [
                     "resourceFieldRef"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "resourceFieldRef": {
                       "type": "object",
@@ -178,6 +312,38 @@
                       }
                     }
                   }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null",
+                  "description": "Unset."
                 }
               ]
             },
@@ -194,7 +360,9 @@
                   "required": [
                     "configMapKeyRef"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "configMapKeyRef": {
                       "type": "object",
@@ -213,6 +381,38 @@
                       }
                     }
                   }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null",
+                  "description": "Unset."
                 }
               ]
             }
@@ -235,7 +435,9 @@
                   "required": [
                     "secret"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "secret": {
                       "required": [
@@ -266,7 +468,9 @@
                   "required": [
                     "certificate"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "certificate": {
                       "required": [
@@ -320,7 +524,9 @@
                   "required": [
                     "csi"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "csi": {
                       "required": [
@@ -340,6 +546,30 @@
                       }
                     }
                   }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "required": [
+                        "provider"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        }
+                      }
+                    }
+                  }
                 }
               ]
             },
@@ -351,7 +581,9 @@
                   "required": [
                     "secret"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "secret": {
                       "required": [
@@ -387,7 +619,9 @@
                   "required": [
                     "csi"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "csi": {
                       "required": [
@@ -411,9 +645,35 @@
                 {
                   "type": "object",
                   "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "required": [
+                        "provider"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
                     "inline"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "inline": {
                       "type": "string"
@@ -425,7 +685,9 @@
                   "required": [
                     "inline"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "inline": {
                       "type": "object",
@@ -457,7 +719,9 @@
                   "required": [
                     "configMap"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "configMap": {
                       "required": [
@@ -484,7 +748,9 @@
                   "required": [
                     "image"
                   ],
-                  "additionalProperties": false,
+                  "additionalProperties": {
+                    "type": "null"
+                  },
                   "properties": {
                     "image": {
                       "required": [

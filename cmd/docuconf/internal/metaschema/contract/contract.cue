@@ -214,6 +214,22 @@ import (
 	}
 })
 
+// #Injected is a value supplied at runtime by something other than the pod
+// spec: a mutating webhook (Bank-Vaults), a wrapper process (op run) or an
+// operator (the OpenTelemetry operator). The SDK validates the value when
+// the process starts, after injection, so nothing about it is checked
+// before deploy except the shape of the reference.
+#Injected: close({injected: {
+	// Who supplies the value, e.g. "bank-vaults", "otel-operator".
+	provider: #Provider
+	// The reference the injector resolves, rendered verbatim as the env
+	// value, e.g. "vault:secret/data/db#url". Omitted when the injector
+	// sets the variable itself; nothing is rendered then.
+	ref?: string & !=""
+}})
+
+#Provider: =~"^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+
 // Non-secret values the platform supplies by reference rather than as a
 // literal. Their content is not known before deploy, so the SDK checks it
 // at boot.
@@ -244,9 +260,14 @@ import (
 	// Constraints go on `literal`, a copy of value, so that whether value
 	// is a reference can be decided from value without a cycle.
 	let isRef = (value & #ValueRef) != _|_
+	let isInjected = (value & #Injected) != _|_
 
 	if var.secret {
-		value: #SecretRef
+		value: #SecretRef | #Injected
+	}
+	if isInjected && value.injected.ref != _|_ && var.type == "list" {
+		// One env value cannot carry a list spread over NAME__0, NAME__1.
+		injectedRefNotIndexed: true & var.encoding != "indexed"
 	}
 	if !var.secret && isRef {
 		if value.fieldRef != _|_ {
@@ -257,7 +278,7 @@ import (
 		}
 		listCannotBeRef: true & var.type != "list"
 	}
-	if !var.secret && !isRef {
+	if !var.secret && !isRef && !isInjected {
 		literal: value
 		if var.type == "string" {
 			literal: string
@@ -391,8 +412,8 @@ import (
 		},
 		for r in _files {r.env},
 	], 1)
-	volumes: [for r in _files {r.volume}]
-	volumeMounts: [for r in _files {r.volumeMount}]
+	volumes: list.FlattenN([for r in _files {r.volumes}], 1)
+	volumeMounts: list.FlattenN([for r in _files {r.volumeMounts}], 1)
 	configMaps: list.FlattenN([for r in _files {r.configMaps}], 1)
 	restartTriggers: list.FlattenN([for r in _files {r.restartTriggers}], 1)
 }
@@ -409,8 +430,12 @@ import (
 	let V = value
 
 	let isRef = (V & #ValueRef) != _|_
+	let isInjected = (V & #Injected) != _|_
 
-	if var.secret || isRef {
+	if isInjected {
+		out: [if V.injected.ref != _|_ {{name: N, value: strings.Replace(V.injected.ref, "$", "$$", -1)}}]
+	}
+	if !isInjected && (var.secret || isRef) {
 		out: [{name: N, valueFrom: V}]
 	}
 
@@ -421,7 +446,7 @@ import (
 		out: strings.Replace(in, "$", "$$", -1)
 	}
 
-	if !var.secret && !isRef {
+	if !var.secret && !isRef && !isInjected {
 		if var.type == "json" {
 			out: [{name: N, value: (esc & {in: json.Marshal(V)}).out}]
 		}

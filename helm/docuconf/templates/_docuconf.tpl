@@ -37,8 +37,36 @@ same contract; these helpers also refuse names the contract does not declare.
 {{- $raw -}}
 {{- end -}}
 
+{{/*
+The inputs, with nulls removed. Overlays switch a source with `old: null`
+(Helm cannot replace a map with another), and Helm keeps those nulls in
+.Values, so a null value or source key means "not set". Data is left
+alone: inline file content and json values may hold nulls of their own.
+*/}}
 {{- define "docuconf.inputs" -}}
-{{- toJson (default dict .Values.docuconf) -}}
+{{- $in := default dict .Values.docuconf -}}
+{{- $out := dict -}}
+{{- range $section := list "values" "files" -}}
+{{- $clean := dict -}}
+{{- range $k, $v := (get $in $section | default dict) -}}
+{{- if not (kindIs "invalid" $v) -}}
+{{- $isSource := and (kindIs "map" $v) (or (eq $section "files") (gt (len (pick $v "secretKeyRef" "configMapKeyRef" "fieldRef" "resourceFieldRef" "injected")) 0)) -}}
+{{- if $isSource -}}
+{{- $m := dict -}}
+{{- range $k2, $v2 := $v -}}
+{{- if not (kindIs "invalid" $v2) -}}
+{{- $_ := set $m $k2 $v2 -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := set $clean $k $m -}}
+{{- else -}}
+{{- $_ := set $clean $k $v -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := set $out $section $clean -}}
+{{- end -}}
+{{- toJson $out -}}
 {{- end -}}
 
 {{/* Kubernetes expands $(VAR) in env values and reduces $$ to $. */}}
@@ -152,12 +180,18 @@ true
 {{- $var := get $c.vars $name -}}
 {{- if hasKey $values $name -}}
 {{- $v := get $values $name -}}
-{{- if include "docuconf.isRef" $v }}
+{{- if and (kindIs "map" $v) (hasKey $v "injected") -}}
+{{- /* Supplied at runtime (SPEC §4.5.1): the injector's reference, or nothing. */ -}}
+{{- with $v.injected.ref }}
+- name: {{ $name }}
+  value: {{ include "docuconf.escape" . | quote }}
+{{- end -}}
+{{- else if include "docuconf.isRef" $v }}
 - name: {{ $name }}
   valueFrom:
     {{- toYaml $v | nindent 4 }}
 {{- else if $var.secret -}}
-{{- fail (printf "docuconf: %s is secret; supply it as a secretKeyRef, never as a value" $name) -}}
+{{- fail (printf "docuconf: %s is secret; supply it as a secretKeyRef or injected, never as a value" $name) -}}
 {{- else if eq $var.type "list" -}}
 {{- $enc := $var.encoding | default "csv" -}}
 {{- if eq $enc "indexed" -}}
@@ -195,15 +229,18 @@ true
 
 {{- define "docuconf.volumeMounts" -}}
 {{- range $e := include "docuconf.fileSpecs" . | fromJsonArray }}
+{{- if not (hasKey $e.source "injected") }}
 - name: {{ $e.vol }}
   mountPath: {{ $e.mountPath }}
   readOnly: true
+{{- end }}
 {{- end -}}
 {{- end -}}
 
 {{- define "docuconf.volumes" -}}
 {{- range $e := include "docuconf.fileSpecs" . | fromJsonArray }}
 {{- $s := $e.source }}
+{{- if not (hasKey $s "injected") }}
 - name: {{ $e.vol }}
 {{- if hasKey $e "configMap" }}
   configMap:
@@ -243,6 +280,7 @@ true
     reference: {{ $s.image.reference }}
 {{- with $s.image.pullPolicy }}
     pullPolicy: {{ . }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end -}}

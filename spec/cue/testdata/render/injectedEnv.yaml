@@ -1,0 +1,4 @@
+- name: DATABASE_URL
+  value: vault:secret/data/billing/db#url
+- name: LOG_LEVEL
+  value: warn

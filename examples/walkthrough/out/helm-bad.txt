@@ -1,7 +1,11 @@
 Error: values don't meet the specifications of the schema(s) in the following chart(s):
 orders-api:
 - at '/docuconf/values': additional properties 'LOG_LEVL' not allowed
-- at '/docuconf/values/DATABASE_URL': got string, want object
+- at '/docuconf/values/DATABASE_URL': 'oneOf' failed, none matched
+  - at '/docuconf/values/DATABASE_URL': got string, want object
+  - at '/docuconf/values/DATABASE_URL': got string, want object
 - at '/docuconf/values/LOG_LEVEL': 'anyOf' failed
   - at '/docuconf/values/LOG_LEVEL': value must be one of 'debug', 'info', 'warn', 'error'
   - at '/docuconf/values/LOG_LEVEL': got string, want object
+  - at '/docuconf/values/LOG_LEVEL': got string, want object
+  - at '/docuconf/values/LOG_LEVEL': got string, want null

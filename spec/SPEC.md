@@ -197,9 +197,28 @@ A non-secret variable's value is usually a literal. Some values only exist in th
 | `configMapKeyRef` | `{configMapKeyRef: {name: "limits", key: "rate"}}` | every non-secret type except `list` | at boot |
 | `fieldRef` (Downward API) | `{fieldRef: fieldPath: "metadata.namespace"}` | `string` | always valid |
 | `resourceFieldRef` | `{resourceFieldRef: resource: "limits.memory"}` | `int` | always valid |
-| `secretKeyRef` | `{secretKeyRef: {name: "db", key: "url"}}` | secret variables only, and required for them | at boot |
+| `secretKeyRef` | `{secretKeyRef: {name: "db", key: "url"}}` | secret variables (one of the two secret sources) | at boot |
+| `injected` with `ref` | `{injected: {provider: "bank-vaults", ref: "vault:secret/data/db#url"}}` | every type, including secrets; not an `indexed` list | the reference's shape before deploy; the value at boot |
+| `injected` without `ref` | `{injected: {provider: "otel-operator"}}` | every type, including secrets | at boot |
 
 The Downward API always yields a string, and resource fields an integer, so the meta-schema rejects a `fieldRef` for an `int` variable. Typical uses are a pod's namespace for metrics labels, and `GOMEMLIMIT` or `DOTNET_GCHeapHardLimit` from the container's memory limit.
+
+#### 4.5.1 Injected values
+
+Many platforms do not put every value in the pod spec. A mutating webhook, a wrapper process or an operator supplies it when the container starts:
+
+- **Bank-Vaults** (`vault-env`) reads env values such as `vault:secret/data/db#url`, resolves them, and execs the app with the real values.
+- **Wrappers** such as `op run`, `doppler run` or `infisical run` resolve their own reference formats the same way.
+- **Operators and webhooks**, such as the OpenTelemetry operator, add variables (`OTEL_EXPORTER_OTLP_ENDPOINT`) to the pod themselves.
+
+The contract does not change: it describes what the app accepts, not who supplies it. The platform's values document says who supplies it, with `injected`:
+
+- `provider` names the injector, as a lowercase label (`bank-vaults`, `otel-operator`). It is for people and tooling; docuconf does not interpret it.
+- `ref`, when present, is the reference the injector resolves. `#Render` writes it verbatim as the env value (with `$` escaped, section 5). When absent, the injector sets the variable itself and `#Render` emits nothing for it.
+- An injected value is checked only at boot, by the SDK, after injection. Before deploy, `#Validate` checks only that the reference is well-formed and that an `indexed` list (one variable per item) is not given a single reference.
+- A secret variable may be injected; that is often the point. Like a `secretKeyRef`, the reference is not secret material.
+
+Making sure the injector actually runs (for Bank-Vaults, the pod annotations or namespace label that enable its webhook) is the platform's job and outside the contract. When it does not run, the app receives the raw reference, and the SDK's boot check is what catches it (section 11.2, item 4).
 
 ### 4.6 File inputs
 
@@ -269,6 +288,7 @@ The platform chooses where each file comes from:
 | `certificate` (cert-manager) | `tls` | From the Certificate's spec, which is not secret: it covers every name in `dnsNames` (wildcards count for one label), uses an allowed key algorithm, and its `renewBefore` is at least `minRemaining`, since cert-manager renews when that much validity is left. |
 | `csi` (Secrets Store CSI driver) | any | Nothing about the content; it is checked at boot. |
 | `image` (image volume) | non-secret files | Nothing about the content. For data too large for a ConfigMap's 1 MiB limit. Needs a cluster with image volumes enabled. |
+| `injected` | any | Nothing about the content. An injector, such as the Vault Agent injector rendering a template to `/vault/secrets`, writes the file at `path` when the pod starts. `#Render` emits no volume or mount for it; the platform must make the injector write to the declared `path`. |
 
 Inline content is a string, written to the file as given. For a `json` or `yaml` config file it may instead be structured data, which is checked against the file's `schema` and serialized in the file's `format`. The exact bytes of serialized content, and so the ConfigMap's hash, belong to the renderer: the CUE renderer keeps the order fields are written in, while Helm sorts object keys and indents lists differently. Two renderers MUST produce content that parses to the same data, and each MUST name the ConfigMap from a hash of the bytes it wrote; they need not agree on the bytes. A platform that needs byte-identical output across tools gives the content as a string.
 
@@ -333,7 +353,9 @@ DATABASE_URL: secretKeyRef: {name: "billing-db", key: "url"}
 
 `#Render` emits it as a `valueFrom.secretKeyRef` entry. CUE cannot see the secret's contents, so its type and constraints (scheme, pattern, length) are enforced by the SDK at boot. SDKs MUST NOT include a secret's value in error messages, logs or docs.
 
-A secret file input (`secret: true`, and always `tls` and `keystore`) MUST come from a `secret`, `certificate` or `csi` source, never `inline` or a ConfigMap. Neither a contract nor a values document ever contains private keys or passwords.
+A secret variable MAY instead be `injected` (section 4.5.1), with or without a reference.
+
+A secret file input (`secret: true`, and always `tls` and `keystore`) MUST come from a `secret`, `certificate`, `csi` or `injected` source, never `inline` or a ConfigMap. Neither a contract nor a values document ever contains private keys or passwords.
 
 ## 7. Platform validation
 
@@ -451,7 +473,7 @@ A conforming SDK MUST:
 1. Offer an idiomatic declaration API covering every type and field in section 4.
 2. Validate the declaration itself at definition time: name format, description length, default against constraints, required without default, RE2-only patterns.
 3. Export a contract that matches the conformance golden file for the fixture declaration, compared as data (`cue export` to JSON), so formatting does not matter. Fields equal to their meta-schema default (`required: false`, `reload: "restart"`, `minCertificates: 1`) MAY be omitted; the comparison is made after unifying with the meta-schema. Durations are written in canonical form: units in the order `h`, `m`, `s`, `ms`, `us`, `ns`, each at most once, zero units omitted, and `0s` for zero (`1h30m`, not `90m`, `1.5h` or Go's `1h30m0s`). `metadata.generator` and the `encoding` fields are set by the SDK, so they are excluded from the comparison. Output MUST be deterministic: variables and file inputs sorted by name.
-4. Load from the **process environment** by default. Reading a `.env` file is an opt-in for development, and real environment variables override it.
+4. Load from the **process environment**, as it is when the process starts, by default. That is after any injection (section 4.5.1), so injected values are validated exactly like any other, and the SDK never resolves secret references itself. Configuration is never read at build time. Reading a `.env` file is an opt-in for development, and real environment variables override it.
 5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_unreadable`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed. Length limits on strings and text files use `out_of_range`. An expired or not-yet-valid certificate, a disallowed key algorithm or a broken chain is `certificate_invalid`; a CA bundle with too few certificates is `file_malformed`.
 6. Expose typed values: a struct, a class, or an inferred TypeScript type. Not a string map.
 7. Check every file input at boot, covering what the platform could not see:
@@ -466,6 +488,7 @@ A conforming SDK MUST:
 An SDK SHOULD also:
 
 - Generate Markdown documentation from the declaration.
+- Report `invalid_type` when a secret variable still holds an unresolved injector reference (a value starting with `vault:`, `op://` or `ref+`), because the injector did not run. The message names the variable and the reference scheme, never the value.
 - Support a **contract-first** mode: load a `contract.cue` or `contract.json` at runtime, with no in-language declaration. The conformance runner uses this mode, and so can teams that want to author CUE by hand.
 - Integrate with the framework around the host library: a Railtie, `ValidateOnStart` in .NET, a Next.js or NestJS adapter for T3 Env.
 
@@ -485,7 +508,6 @@ The `conformance/` directory is language-neutral:
 4. Should there be a file render target? Some .NET and Spring teams mount `appsettings.Production.json` or `application-prod.yml` from a ConfigMap instead of using env vars. `#Render` could emit that file from `configKey`. Replacing a baked-in file, though, would silently discard its profile defaults, so env vars, which layer on top, stay the recommended route.
 5. Spring can activate several profiles at once (`SPRING_PROFILES_ACTIVE=prod,eu`). Should `profiles` support an ordered list, with later profiles winning?
 6. Proposals arising from [`docs/EDGE_CASES.md`](../docs/EDGE_CASES.md):
-   - platform-declared **injected variables**, set by webhooks such as the OpenTelemetry operator;
    - **roles**, for one image running several processes;
    - **`requiredIf`**, for conditional requirements;
    - **well-known fragments**, for variables read by frameworks and libraries;
@@ -494,4 +516,4 @@ The `conformance/` directory is language-neutral:
 8. Should a file input be able to take a whole directory of arbitrary files (for example, every `*.crt` in a trust directory), rather than one file or a TLS key pair?
 9. Should file inputs support profiles, so a baked-in `routes.yaml` can be the default for some environments, as `appsettings.{Environment}.json` is for variables?
 
-Resolved in this draft: non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
+Resolved in this draft: values and files supplied at runtime by injectors (section 4.5.1); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).

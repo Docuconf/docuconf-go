@@ -39,6 +39,7 @@ cases=(
   'docuconf: {files: {license: {inline: not-a-licence}}}|license'
   'docuconf: {files: {upstream-ca: {configMap: {key: null}}}}|upstream-ca'
   'docuconf: {files: {upstream-ca: {secret: {name: ca, key: ca.crt}}}}|upstream-ca'
+  'docuconf: {values: {PARTNER_KEYSTORE_PASSWORD: {secretKeyRef: null, injected: {provider: "Bank Vaults"}}}}|PARTNER_KEYSTORE_PASSWORD'
 )
 
 for helm in "${helms[@]}"; do
@@ -53,6 +54,28 @@ for helm in "${helms[@]}"; do
     echo "PASS $version $(cat "$tmp/cmp")"
   else
     echo "FAIL $version parity with the CUE renderer"; cat "$tmp/err" "$tmp/cmp" 2>/dev/null; fail=1
+  fi
+
+  # Injected inputs (SPEC §4.5.1): the reference becomes the env value, and
+  # a file the injector writes gets no volume.
+  printf '%s\n' 'docuconf:' '  values:' \
+    '    PARTNER_KEYSTORE_PASSWORD: {secretKeyRef: null, injected: {provider: bank-vaults, ref: "vault:secret/data/p#pw"}}' \
+    '  files:' '    partner-keystore: {csi: null, injected: {provider: vault-agent}}' >"$tmp/injected.yaml"
+  if out=$("$helm" template gateway "$chart" -f "$tmp/injected.yaml" 2>&1) &&
+    grep -qF 'value: "vault:secret/data/p#pw"' <<<"$out" && ! grep -qF 'dc-partner-keystore' <<<"$out"; then
+    echo "PASS $version injected value and file"
+  else
+    echo "FAIL $version injected value and file"; echo "$out" | head -20; fail=1
+  fi
+
+  # Switching a source in an overlay: the old key set to null is dropped.
+  printf '%s\n' 'docuconf:' '  files:' '    routes:' '      inline: null' \
+    '      configMap: {name: routes, key: routes.yaml}' >"$tmp/switch.yaml"
+  if out=$("$helm" template gateway "$chart" -f "$tmp/switch.yaml" 2>&1) &&
+    grep -qF 'name: routes' <<<"$out" && ! grep -qF 'gateway-routes-' <<<"$out"; then
+    echo "PASS $version source switched with null"
+  else
+    echo "FAIL $version source switched with null"; echo "$out" | head -20; fail=1
   fi
 
   for c in "${cases[@]}"; do

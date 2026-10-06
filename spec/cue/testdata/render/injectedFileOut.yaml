@@ -1,0 +1,8 @@
+volumes:
+  - dc-routes
+  - dc-serving-tls
+  - dc-license
+volumeMounts:
+  - /etc/gateway/routes
+  - /etc/gateway/tls
+  - /etc/gateway/license

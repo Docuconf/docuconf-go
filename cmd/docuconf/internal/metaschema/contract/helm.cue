@@ -109,8 +109,15 @@ import (
 		if var.type == "json" && var.schema != _|_ {var.schema}
 	}
 
+	// An indexed list spans several variables, so an injector may set it
+	// but not resolve one reference into it.
+	let injected = [if var.type == "list" if var.encoding == "indexed" {_helmInjectedNoRef}, _helmInjected][0]
+
 	if var.secret {
-		out: _helmSecretKeyRef & {description: "\(var.description) (secret: supply a secretKeyRef)"}
+		out: {
+			description: "\(var.description) (secret: supply a secretKeyRef or injected)"
+			oneOf: [_helmSecretKeyRef, injected, if !var.required {_helmNull}]
+		}
 	}
 	if !var.secret {
 		out: {
@@ -120,6 +127,8 @@ import (
 				if var.type != "list" {_helmConfigMapKeyRef},
 				if var.type == "string" {_helmFieldRef},
 				if var.type == "int" {_helmResourceFieldRef},
+				injected,
+				if !var.required {_helmNull},
 			]
 		}
 	}
@@ -132,7 +141,9 @@ _helmRef: {
 	out: {
 		type: "object"
 		required: [key]
-		additionalProperties: false
+		// Another source's key may remain as null: overlays switch sources
+		// with `old: null`, and Helm validates before dropping nulls.
+		additionalProperties: type: "null"
 		properties: (key): {
 			type:                 "object"
 			required:             fields
@@ -147,6 +158,28 @@ _helmConfigMapKeyRef: (_helmRef & {key: "configMapKeyRef", fields: ["name", "key
 _helmFieldRef: (_helmRef & {key: "fieldRef", fields: ["fieldPath"]}).out
 _helmResourceFieldRef: (_helmRef & {key: "resourceFieldRef", fields: ["resource"]}).out
 
+// An optional input set to null in an overlay is unset.
+_helmNull: {type: "null", description: "Unset."}
+
+// Supplied at runtime by an injector (SPEC §4.5.1).
+_helmProvider: {type: "string", pattern: "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"}
+_helmInjectedOf: {
+	props: {...}
+	out: {
+		type: "object"
+		required: ["injected"]
+		additionalProperties: type: "null"
+		properties: injected: {
+			type: "object"
+			required: ["provider"]
+			additionalProperties: false
+			properties: props
+		}
+	}
+}
+_helmInjected: (_helmInjectedOf & {props: {provider: _helmProvider, ref: {type: "string", minLength: 1}}}).out
+_helmInjectedNoRef: (_helmInjectedOf & {props: provider: _helmProvider}).out
+
 #HelmFile: {
 	file: #File
 	out: {...}
@@ -159,7 +192,7 @@ _helmResourceFieldRef: (_helmRef & {key: "resourceFieldRef", fields: ["resource"
 		out: {
 			type: "object"
 			"required": [key]
-			additionalProperties: false
+			additionalProperties: type: "null"
 			properties: (key): {
 				type:                 "object"
 				additionalProperties: false
@@ -184,7 +217,7 @@ _helmResourceFieldRef: (_helmRef & {key: "resourceFieldRef", fields: ["resource"
 	let inlineText = {
 		type: "object"
 		required: ["inline"]
-		additionalProperties: false
+		additionalProperties: type: "null"
 		properties: inline: {
 			type: "string"
 			if F.type == "text" {
@@ -200,7 +233,7 @@ _helmResourceFieldRef: (_helmRef & {key: "resourceFieldRef", fields: ["resource"
 	let inlineData = {
 		type: "object"
 		required: ["inline"]
-		additionalProperties: false
+		additionalProperties: type: "null"
 		properties: inline: [if F.type == "config" && F.schema != _|_ {F.schema}, {type: ["object", "array"]}][0]
 	}
 
@@ -210,6 +243,7 @@ _helmResourceFieldRef: (_helmRef & {key: "resourceFieldRef", fields: ["resource"
 	let certificate = (source & {key: "certificate", props: {"name": name, secretName: name, resolvedCertificate}, required: ["name", "secretName"]}).out
 	let csi = (source & {key: "csi", props: {secretProviderClass: name, driver: name}, required: ["secretProviderClass"]}).out
 	let image = (source & {key: "image", props: {reference: name, pullPolicy: enum: ["Always", "IfNotPresent", "Never"]}, required: ["reference"]}).out
+	let injectedFile = (source & {key: "injected", props: {provider: _helmProvider}, required: ["provider"]}).out
 
 	out: {
 		description: F.description
@@ -218,10 +252,12 @@ _helmResourceFieldRef: (_helmRef & {key: "resourceFieldRef", fields: ["resource"
 			if F.type == "tls" {certificate},
 			if F.type != "tls" {secretSingle},
 			csi,
+			injectedFile,
 			if !F.secret && F.type != "binary" {inlineText},
 			if !F.secret && F.type == "config" {inlineData},
 			if !F.secret {configMap},
 			if !F.secret {image},
+			if !F.required {_helmNull},
 		]
 	}
 }

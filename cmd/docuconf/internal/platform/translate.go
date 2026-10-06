@@ -260,7 +260,27 @@ func (t *translator) varProblem(name string, e errors.Error) {
 var durationRe = regexp.MustCompile(`^([0-9]+(ns|us|ms|s|m|h))+$`)
 var urlRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*://[^\s]+$`)
 
-var refKinds = []string{"configMapKeyRef", "fieldRef", "resourceFieldRef", "secretKeyRef"}
+var refKinds = []string{"configMapKeyRef", "fieldRef", "resourceFieldRef", "secretKeyRef", "injected"}
+
+var providerRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$`)
+
+// explainInjected explains a malformed injected value (SPEC §4.5.1). The
+// reference is not secret material, but it is never needed in the message.
+func explainInjected(cv, x cue.Value) []string {
+	var out []string
+	if p, err := x.LookupPath(cue.ParsePath("injected.provider")).String(); err != nil || !providerRe.MatchString(p) {
+		out = append(out, "injected.provider must name the injector as a lowercase label, such as bank-vaults")
+	}
+	ref := x.LookupPath(cue.ParsePath("injected.ref"))
+	if ref.Exists() {
+		if r, err := ref.String(); err != nil || r == "" {
+			out = append(out, "injected.ref, when given, must be a non-empty string")
+		} else if str(cv, "type") == "list" && str(cv, "encoding") == "indexed" {
+			out = append(out, "an indexed list is spread over NAME__0, NAME__1, …, so one injected reference cannot carry it; let the injector set the variables, without ref")
+		}
+	}
+	return out
+}
 
 // explainVar re-checks a value against its variable and explains what is
 // wrong, mirroring #Check. It returns nothing if it finds no problem, so
@@ -276,9 +296,12 @@ func explainVar(name string, cv, x cue.Value) []string {
 			}
 		}
 	}
+	if ref == "injected" {
+		return explainInjected(cv, x)
+	}
 	if secret {
 		if ref != "secretKeyRef" {
-			return []string{"is secret, so it must come from a secretKeyRef, never a literal or another reference"}
+			return []string{"is secret, so it must come from a secretKeyRef or an injector, never a literal or another reference"}
 		}
 		return nil
 	}
@@ -435,7 +458,7 @@ func (t *translator) fileProblem(name string, rest []string, e errors.Error) {
 	kind := sourceKind(src)
 	switch check {
 	case "secretFromSecretStore":
-		t.add("%s: is secret, so it must come from a secret, certificate or csi source, not %s", name, kind)
+		t.add("%s: is secret, so it must come from a secret, certificate, csi or injected source, not %s", name, kind)
 	case "certificateOnlyForTLS":
 		t.add("%s: a certificate source only fits a tls input, and this is a %s input", name, str(f, "type"))
 	case "binaryCannotBeInline":
@@ -500,7 +523,7 @@ func schemaMsg(path []string, e errors.Error) string {
 }
 
 func sourceKind(src cue.Value) string {
-	for _, k := range []string{"inline", "configMap", "secret", "certificate", "csi", "image"} {
+	for _, k := range []string{"inline", "configMap", "secret", "certificate", "csi", "image", "injected"} {
 		if src.LookupPath(cue.MakePath(cue.Str(k))).Exists() {
 			return k
 		}

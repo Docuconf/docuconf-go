@@ -89,7 +89,7 @@ PARTNER_KEYSTORE_PASSWORD: "hunter2-pasted-literal"
 		"GOMEMLIMIT: a fieldRef always yields a string, but GOMEMLIMIT is an integer",
 		`LOG_LEVEL: "debug" is not allowed by policy`,
 		"LOG_LEVLE: is not declared in the contract (check the spelling)",
-		"PARTNER_KEYSTORE_PASSWORD: is secret, so it must come from a secretKeyRef, never a literal or another reference",
+		"PARTNER_KEYSTORE_PASSWORD: is secret, so it must come from a secretKeyRef or an injector, never a literal or another reference",
 		"RATE_LIMITS: does not match its schema: at perMinute: invalid value 0 (out of bound >=1)",
 		"license: inline text does not match pattern ^[A-Z0-9]{5}(-[A-Z0-9]{5}){3}\\n?$",
 		"serving-tls: certificate key algorithm Ed25519 is not one of ECDSA, RSA",
@@ -112,7 +112,7 @@ LOG_LEVEL: 3
 	out, _, code := docuconf(t, "vet", "-contract", billing, "-values", write(t, "values.yaml", values))
 	requireLines(t, out, code,
 		"ALLOWED_ORIGINS: has 0 items, below minItems 1",
-		"DATABASE_URL: is secret, so it must come from a secretKeyRef, never a literal or another reference",
+		"DATABASE_URL: is secret, so it must come from a secretKeyRef or an injector, never a literal or another reference",
 		"LOG_LEVEL: 3 is not one of debug, info, warn, error",
 		"PORT: 70000 is above max 65535",
 		"REQUEST_TIMEOUT: 10m is above max 5m",
@@ -127,6 +127,40 @@ LOG_LEVEL: 3
 	requireLines(t, out, code,
 		"ALLOWED_ORIGINS: is required, and set neither by the platform nor by the selected profile",
 		"DATABASE_URL: is required, and set neither by the platform nor by the selected profile",
+	)
+}
+
+// Values supplied by injectors (SPEC §4.5.1): checked for shape only,
+// rendered as the reference or not at all.
+func TestInjected(t *testing.T) {
+	values := `DATABASE_URL:
+  injected: {provider: bank-vaults, ref: "vault:secret/data/billing/db#url"}
+ALLOWED_ORIGINS:
+  injected: {provider: origins-operator}
+`
+	out, errOut, code := docuconf(t, "vet", "-contract", billing, "-values", write(t, "values.yaml", values))
+	if code != 0 || out != "billing-api: ok\n" {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+	}
+	out, errOut, code = docuconf(t, "render", "-contract", billing, "-values", write(t, "values.yaml", values))
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if !strings.Contains(out, "- name: DATABASE_URL\n    value: vault:secret/data/billing/db#url\n") {
+		t.Errorf("reference not rendered as the env value:\n%s", out)
+	}
+	if strings.Contains(out, "ALLOWED_ORIGINS") {
+		t.Errorf("a variable the injector sets itself was rendered:\n%s", out)
+	}
+
+	bad := `DATABASE_URL:
+  injected: {provider: "Bank Vaults", ref: ""}
+ALLOWED_ORIGINS: ["https://a.example.com"]
+`
+	out, _, code = docuconf(t, "vet", "-contract", billing, "-values", write(t, "bad.yaml", bad))
+	requireLines(t, out, code,
+		"DATABASE_URL: injected.provider must name the injector as a lowercase label, such as bank-vaults",
+		"DATABASE_URL: injected.ref, when given, must be a non-empty string",
 	)
 }
 
