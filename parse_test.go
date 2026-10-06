@@ -389,6 +389,59 @@ func TestParseSecretRedaction(t *testing.T) {
 	require.NotContains(t, err.Error(), "12ab")
 }
 
+func TestParseUnresolvedInjectorReference(t *testing.T) {
+	for ref, scheme := range map[string]string{
+		"vault:secret/data/payments/db#url":      "vault:",
+		"op://prod/payments/database-url":        "op://",
+		"ref+awssecrets://payments/database-url": "ref+",
+	} {
+		t.Run(scheme, func(t *testing.T) {
+			f := newFixture(t)
+			f.env["DATABASE_URL"] = ref
+			logPath := filepath.Join(t.TempDir(), "termination-log")
+			opts := f.opts()
+			opts.TerminationLog = logPath
+			_, err := docuconf.ParseWithOptions[Gateway](opts)
+			var verr *docuconf.ValidationError
+			require.True(t, errors.As(err, &verr), "%v", err)
+			require.Equal(t, []docuconf.Violation{{
+				Input:   "DATABASE_URL",
+				Code:    docuconf.CodeInvalidType,
+				Message: "holds an unresolved " + scheme + " reference; the injector that should resolve it did not run",
+			}}, verr.Violations)
+
+			logged, rerr := os.ReadFile(logPath)
+			require.NoError(t, rerr)
+			require.Contains(t, string(logged), "unresolved "+scheme+" reference")
+			for _, out := range []string{err.Error(), string(logged)} {
+				require.NotContains(t, out, ref)
+				require.NotContains(t, out, ref[len(scheme):])
+			}
+		})
+	}
+
+	// A secret of another type reports the reference, not a parse error, and
+	// a non-secret value that happens to look like a reference is ordinary.
+	type cfg struct {
+		// A numeric PIN.
+		PIN int `env:"PIN" secret:"true"`
+		// Upstream address.
+		Upstream string `env:"UPSTREAM"`
+	}
+	_, err := docuconf.ParseWithOptions[cfg](docuconf.Options{
+		Environment:    map[string]string{"PIN": "vault:secret/data/pin#value", "UPSTREAM": "vault:8200"},
+		TerminationLog: "-",
+	})
+	require.EqualError(t, err, "docuconf: 1 configuration problem:\n  PIN: holds an unresolved vault: reference; the injector that should resolve it did not run (invalid_type)")
+
+	c, err := docuconf.ParseWithOptions[cfg](docuconf.Options{
+		Environment:    map[string]string{"PIN": "1234", "UPSTREAM": "vault:8200"},
+		TerminationLog: "-",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "vault:8200", c.Upstream)
+}
+
 func TestParseReportsEverythingTogether(t *testing.T) {
 	f := newFixture(t)
 	delete(f.env, "POD_NAMESPACE")
