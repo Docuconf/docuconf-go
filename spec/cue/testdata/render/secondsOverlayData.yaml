@@ -1,0 +1,3 @@
+http:
+  retry: 90
+  timeout: 1.5

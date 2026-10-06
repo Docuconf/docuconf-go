@@ -36,3 +36,14 @@ catalogRestartOverlay: {
 	}
 	configMap: r.configMap
 }
+
+// A duration with the seconds encoding is a number in the file, so a host
+// with a typed reader (swift-configuration) reads it without parsing text.
+secondsOverlayData: (contract.#OverlayData & {
+	overlay: {name: "platform", format: "json", path: "/app/config/settings.json", keySeparator: ".", reload: "restart"}
+	vars: {
+		HTTP_TIMEOUT: {name: "HTTP_TIMEOUT", type: "duration", description: "Request timeout", encoding: "seconds", configKey: "http.timeout"}
+		HTTP_RETRY: {name: "HTTP_RETRY", type: "duration", description: "Delay between retries", encoding: "seconds", configKey: "http.retry"}
+	}
+	values: {HTTP_TIMEOUT: "1500ms", HTTP_RETRY: "1m30s"}
+}).out

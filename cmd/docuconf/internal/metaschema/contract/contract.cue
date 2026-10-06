@@ -159,8 +159,8 @@ import (
 // #Render converts to it.
 #Duration: =~"^([0-9]+(ns|us|ms|s|m|h))+$"
 
-// go:       1m30s     (Go time.ParseDuration, Spring Boot)
-// iso8601:  PT90S     (pydantic timedelta, ActiveSupport::Duration.parse)
+// go:       1m30s     (Go time.ParseDuration)
+// iso8601:  PT90S     (pydantic timedelta, ActiveSupport::Duration.parse, java.time.Duration in Spring Boot and Hoplite)
 // seconds:  90        (plain number of seconds)
 // timespan: 00:01:30  (.NET TimeSpan.Parse)
 #DurationEncoding: "go" | "iso8601" | "seconds" | "timespan"
@@ -383,6 +383,10 @@ import (
 				hasConfigKey: true & v.configKey != _|_
 				if v.configKey != _|_ {
 					withinKeyDepth: true & len(strings.Split(v.configKey, contract.overlays[o].keySeparator)) <= #MaxKeyDepth
+				}
+				// The profile selector picks which files load, so it cannot come from one.
+				if contract.profiles != _|_ {
+					notProfileSelector: true & contract.profiles.selector != n
 				}
 				if !v.secret && (x & #ValueRef) == _|_ && (x & #Injected) == _|_ {
 					value: #CheckOverlayValue & {var: v, value: x, if #schemas[n] != _|_ {#schema: #schemas[n]}}

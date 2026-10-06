@@ -342,11 +342,22 @@ Rules, enforced by the meta-schema:
 - A variable comes from one place: the environment or one overlay. Supplying both is an error, since the environment would silently win.
 - A required variable is satisfied by an overlay as by an env value or a profile.
 - The overlay's mount directory follows the file-input mount rules (section 4.6): unique and not reserved.
+- The profile selector (section 4.4) cannot be supplied through an overlay: it chooses which files load, and an overlay is one of them.
+- A variable an overlay may carry needs a `configKey`, and with overlays declared the `configKey` is no longer only for docs: it MUST be the host's real key path, written with `keySeparator`, because `#Render` places the value there. SDKs fill it in from the declaration and reject a conflicting one. A variable the host cannot read back from a nested file (for example a `json` value on a host whose file reader flattens objects) is exported without a `configKey`, which keeps it in the environment.
+
+What the SDK does at boot:
+
+- It loads the overlay as an optional file: a missing one is not an error; one that does not parse is `file_malformed`, reported with the other violations.
+- It validates the values it binds from the overlay exactly as it validates env values, and a `json` value in its bound form: hosts that merge layers key by key may combine an overlay object with baked-in keys, and the app checks the result.
+- It MUST NOT take a secret's value from an overlay, and SHOULD fail with `invalid_type` if one is there, without printing it.
+- When a variable is set both in the environment and in an overlay, the environment wins, as the precedence says. The platform rejects this before deploy; an SDK that sees it at boot SHOULD log a warning naming the variable.
+- It refuses an overlay whose directory holds files the app ships with. The image's real layout is often only known at runtime, so this check MAY run at boot rather than at export (for example: the overlay directory is the executable's directory, the working directory, or the directory of a baked-in config file).
+- If it cannot reload an overlay, it rejects `reload: watch` at declaration time (section 11.2, item 8).
 
 `#Render` writes the file:
 
 - Each value goes at its variable's `configKey`, split on `keySeparator` (`Catalog:Search:Url` becomes `{"Catalog": {"Search": {"Url": ...}}}`), at most 8 levels deep.
-- Values are written in **native types** (numbers, booleans, lists), since the host binds the file itself. Durations are strings in the variable's `encoding` (`timespan` for .NET).
+- Values are written in **native types** (numbers, booleans, lists), since the host binds the file itself. Durations are written in the variable's `encoding`: a number for `seconds` (`90`, `1.5`), a string otherwise (`"00:01:30"` for .NET's `timespan`).
 - Keys are sorted, so the file and its hash do not depend on the order the platform wrote its values in.
 - `reload: watch` renders a mutable ConfigMap with a stable name: the kubelet updates the mounted file in place and the host reloads it (`reloadOnChange` in .NET, read through `IOptionsMonitor<T>`). `reload: restart` renders an immutable, content-hashed ConfigMap, so any change rolls the pods.
 
@@ -373,8 +384,8 @@ Lists and durations are different: the leading libraries disagree, and making an
 
 | `duration` encoding | Wire form for 90s | Native to |
 |---|---|---|
-| `go` (default) | `1m30s` | Go `time.ParseDuration`, Spring Boot |
-| `iso8601` | `PT90S` | pydantic `timedelta`, `ActiveSupport::Duration.parse` |
+| `go` (default) | `1m30s` | Go `time.ParseDuration` |
+| `iso8601` | `PT90S` | pydantic `timedelta`, `ActiveSupport::Duration.parse`, `java.time.Duration` (Spring Boot, Hoplite). Spring's own short form takes one unit only (`90s`, not `1m30s`). |
 | `seconds` | `90` | anything that takes a number |
 | `timespan` | `00:01:30` (`d.hh:mm:ss.fff` when needed) | .NET `TimeSpan.Parse` |
 
@@ -557,6 +568,7 @@ The `conformance/` directory is language-neutral:
 5. Proposals arising from [`docs/EDGE_CASES.md`](../docs/EDGE_CASES.md):
    - **roles**, for one image running several processes;
    - **`requiredIf`**, for conditional requirements;
+   - **per-item bounds for `list`** (`itemMin`, `itemMax`), so an `int` list can carry the range a host can hold (a JavaScript number beyond 2^53, a 32-bit item type) as section 5 requires for scalars;
    - **well-known fragments**, for variables read by frameworks and libraries;
    - **platform-authored contracts**, for third-party images.
 6. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?
