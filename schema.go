@@ -455,3 +455,170 @@ func jsonKind(v any) string {
 	}
 	return fmt.Sprintf("%T", v)
 }
+
+// schemaAnnotations are JSON Schema keywords that do not constrain a
+// value, so contract-first mode accepts and ignores them.
+var schemaAnnotations = []string{"$schema", "$id", "$comment", "title", "description", "examples", "default", "format"}
+
+// schemaFromJSON reads a JSON Schema from a contract into the subset
+// docuconf generates and checks. It rejects keywords outside the subset
+// rather than ignore a constraint the platform would enforce.
+func schemaFromJSON(x any, at string) (*jsonSchema, error) {
+	o, ok := x.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s must be an object", at)
+	}
+	s := &jsonSchema{}
+	s.Description, _ = o["description"].(string)
+	s.Format, _ = o["format"].(string)
+	var err error
+	fail := func(format string, args ...any) {
+		if err == nil {
+			err = fmt.Errorf("%s: %s", at, fmt.Sprintf(format, args...))
+		}
+	}
+	nonNeg := func(k string) *int {
+		v, ok := o[k]
+		if !ok {
+			return nil
+		}
+		n, isNum := v.(json.Number)
+		i, convErr := strconv.Atoi(string(n))
+		if !isNum || convErr != nil || i < 0 {
+			fail("%s must be a non-negative integer", k)
+			return nil
+		}
+		return &i
+	}
+	number := func(k string) string {
+		v, ok := o[k]
+		if !ok {
+			return ""
+		}
+		n, isNum := v.(json.Number)
+		if _, isFloat := new(big.Float).SetString(string(n)); !isNum || !isFloat {
+			fail("%s must be a number", k)
+			return ""
+		}
+		return string(n)
+	}
+	allowed := map[string][]string{
+		"":        {},
+		"object":  {"properties", "required", "additionalProperties"},
+		"array":   {"items", "minItems", "maxItems"},
+		"string":  {"enum", "minLength", "maxLength", "pattern"},
+		"integer": {"minimum", "maximum"},
+		"number":  {"minimum", "maximum"},
+		"boolean": {},
+	}
+	if t, ok := o["type"]; ok {
+		s.Type, _ = t.(string)
+		if _, known := allowed[s.Type]; !known || s.Type == "" {
+			return nil, fmt.Errorf("%s: type must be one of object, array, string, integer, number or boolean", at)
+		}
+	}
+	keys := make([]string, 0, len(o))
+	for k := range o {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		if k != "type" && !slices.Contains(schemaAnnotations, k) && !slices.Contains(allowed[s.Type], k) {
+			if s.Type == "" {
+				return nil, fmt.Errorf("%s: keyword %s needs a type", at, k)
+			}
+			return nil, fmt.Errorf("%s: keyword %s is not supported for type %s", at, k, s.Type)
+		}
+	}
+
+	switch s.Type {
+	case "object":
+		if r, ok := o["required"]; ok {
+			list, isList := r.([]any)
+			for _, e := range list {
+				name, isStr := e.(string)
+				if !isStr {
+					isList = false
+				}
+				s.Required = append(s.Required, name)
+			}
+			if !isList {
+				fail("required must be a list of strings")
+			}
+		}
+		props, hasProps := o["properties"]
+		if hasProps {
+			m, isObj := props.(map[string]any)
+			if !isObj {
+				fail("properties must be an object")
+			}
+			names := make([]string, 0, len(m))
+			for n := range m {
+				names = append(names, n)
+			}
+			slices.Sort(names)
+			for _, n := range names {
+				ps, perr := schemaFromJSON(m[n], joinPath(at, "properties."+n))
+				if perr != nil {
+					return nil, perr
+				}
+				s.Properties = append(s.Properties, schemaProp{Name: n, Schema: ps})
+			}
+		}
+		switch ap := o["additionalProperties"].(type) {
+		case nil:
+		case bool:
+			s.Closed = !ap
+		case map[string]any:
+			if hasProps || len(s.Required) > 0 {
+				fail("additionalProperties as a schema cannot be combined with properties or required")
+			}
+			add, aerr := schemaFromJSON(ap, joinPath(at, "additionalProperties"))
+			if aerr != nil {
+				return nil, aerr
+			}
+			s.Additional = add
+		default:
+			fail("additionalProperties must be a bool or a schema")
+		}
+	case "array":
+		s.Items = &jsonSchema{}
+		if it, ok := o["items"]; ok {
+			items, ierr := schemaFromJSON(it, joinPath(at, "items"))
+			if ierr != nil {
+				return nil, ierr
+			}
+			s.Items = items
+		}
+		s.MinItems, s.MaxItems = nonNeg("minItems"), nonNeg("maxItems")
+	case "string":
+		if e, ok := o["enum"]; ok {
+			list, isList := e.([]any)
+			for _, x := range list {
+				str, isStr := x.(string)
+				if !isStr {
+					isList = false
+				}
+				s.Enum = append(s.Enum, str)
+			}
+			if !isList || len(s.Enum) == 0 {
+				fail("enum must be a non-empty list of strings")
+			}
+		}
+		s.MinLength, s.MaxLength = nonNeg("minLength"), nonNeg("maxLength")
+		if p, ok := o["pattern"]; ok {
+			str, _ := p.(string)
+			re, rerr := regexp.Compile(str)
+			if rerr != nil {
+				fail("pattern is not valid RE2: %v", rerr)
+			}
+			s.Pattern = re
+		}
+	case "integer", "number":
+		s.Minimum, s.Maximum = number("minimum"), number("maximum")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}

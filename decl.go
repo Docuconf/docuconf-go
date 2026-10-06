@@ -70,6 +70,7 @@ type varDecl struct {
 	notEmpty   bool
 	def        string
 	hasDef     bool
+	defTyped   any // a contract's default, typed (contract-first mode)
 	desc       string
 	group      string
 	examples   []string

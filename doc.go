@@ -87,6 +87,13 @@
 // DOCUCONF_FILE_ROOT remaps file paths for local development, and .env
 // files are read only when listed in Options.DotEnv.
 //
+// # Contract-first
+//
+// LoadContract validates an environment against a contract given as JSON,
+// with no Go declaration, and returns typed values. It parses every wire
+// encoding of SPEC §5, and runs the same checks as Parse. The shared
+// conformance suite runs through it.
+//
 // # Export
 //
 // Export renders the declaration as a contract.cue for the platform. The
