@@ -108,95 +108,12 @@ func load(ptr any, opts Options, parse bool) error {
 		interval = 10 * time.Second
 	}
 
-	environ := opts.Environment
-	if environ == nil {
-		environ = env.ToMap(os.Environ())
+	environ, err := environment(opts)
+	if err != nil {
+		return err
 	}
-	environ = copyMap(environ)
-	for _, p := range opts.DotEnv {
-		vals, err := readDotEnv(p)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("docuconf: reading %s: %w", p, err)
-		}
-		for k, v := range vals {
-			if _, set := environ[k]; !set {
-				environ[k] = v
-			}
-		}
-	}
-
-	// Adapt the environment to the spec before caarlos0/env reads it: an
-	// empty value is unset for every type but string, and bools accept
-	// true and false in any case.
-	for _, v := range d.vars {
-		raw, ok := environ[v.name]
-		if !ok {
-			continue
-		}
-		if raw == "" && v.typ != typeString {
-			delete(environ, v.name)
-			continue
-		}
-		if v.typ == typeBool && (strings.EqualFold(raw, "true") || strings.EqualFold(raw, "false")) {
-			environ[v.name] = strings.ToLower(raw)
-		}
-	}
-
-	var viols []Violation
-	flagged := map[string]bool{} // env names with a violation
-	values := map[string]string{}
-	for _, v := range d.vars {
-		raw, ok := environ[v.name]
-		if ok && v.expand {
-			raw = os.Expand(raw, func(k string) string { return environ[k] })
-		}
-		if !ok {
-			if v.required {
-				viols = append(viols, Violation{Input: v.name, Code: CodeMissingRequired, Message: "is required but not set"})
-				flagged[v.name] = true
-			}
-			continue
-		}
-		if v.deprecated != "" {
-			logger.Warn("docuconf: deprecated variable is set", "name", v.name, "message", v.deprecated)
-		}
-		if v.secret {
-			if scheme := injectorScheme(raw); scheme != "" {
-				// The injector should have replaced the reference before the
-				// process started (SPEC §4.5.1). Never print the reference.
-				viols = append(viols, Violation{Input: v.name, Code: CodeInvalidType, Message: fmt.Sprintf(
-					"holds an unresolved %s reference; the injector that should resolve it did not run", scheme)})
-				flagged[v.name] = true
-				continue
-			}
-		}
-		if v.loadFile {
-			data, err := os.ReadFile(raw)
-			if err != nil {
-				code := CodeFileMissing
-				if errors.Is(err, fs.ErrPermission) {
-					code = CodeFileUnreadable
-				}
-				viols = append(viols, Violation{Input: v.name, Code: code, Message: fmt.Sprintf("cannot read the file it names: %v", err)})
-				flagged[v.name] = true
-				continue
-			}
-			raw = string(data)
-		}
-		if v.notEmpty && raw == "" {
-			viols = append(viols, Violation{Input: v.name, Code: CodeMissingRequired, Message: "is set but empty"})
-			flagged[v.name] = true
-			continue
-		}
-		values[v.name] = raw
-		if vs := v.check(raw); len(vs) > 0 {
-			viols = append(viols, vs...)
-			flagged[v.name] = true
-		}
-	}
+	res := checkVars(d.vars, environ, logger)
+	viols, flagged, values := res.viols, res.flagged, res.raw
 
 	if parse {
 		err := env.ParseWithOptions(ptr, env.Options{Environment: environ, Prefix: opts.Prefix, FuncMap: opts.FuncMap})
@@ -253,6 +170,134 @@ func load(ptr any, opts Options, parse bool) error {
 	verr := &ValidationError{Violations: viols}
 	writeTerminationLog(opts.TerminationLog, environ, verr, logger)
 	return verr
+}
+
+// environment returns a copy of the environment to load from: the
+// process environment or Options.Environment, then the .env files.
+func environment(opts Options) (map[string]string, error) {
+	environ := opts.Environment
+	if environ == nil {
+		environ = env.ToMap(os.Environ())
+	}
+	environ = copyMap(environ)
+	for _, p := range opts.DotEnv {
+		vals, err := readDotEnv(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("docuconf: reading %s: %w", p, err)
+		}
+		for k, v := range vals {
+			if _, set := environ[k]; !set {
+				environ[k] = v
+			}
+		}
+	}
+	return environ, nil
+}
+
+// varResults is what checkVars found.
+type varResults struct {
+	viols   []Violation
+	flagged map[string]bool   // names with a violation
+	raw     map[string]string // raw values of the variables that are set
+	typed   map[string]any    // typed values of the set variables without violations
+}
+
+// checkVars checks every variable that environ sets, and reports the
+// required ones it does not. It first adapts environ to the spec, in
+// place, before caarlos0/env reads it: an empty value is unset for every
+// type but string, and bools accept true and false in any case.
+func checkVars(vars []*varDecl, environ map[string]string, logger *slog.Logger) varResults {
+	for _, v := range vars {
+		raw, ok := environ[v.name]
+		if !ok {
+			continue
+		}
+		if raw == "" && v.typ != typeString {
+			delete(environ, v.name)
+			continue
+		}
+		if v.typ == typeBool && (strings.EqualFold(raw, "true") || strings.EqualFold(raw, "false")) {
+			environ[v.name] = strings.ToLower(raw)
+		}
+	}
+
+	res := varResults{flagged: map[string]bool{}, raw: map[string]string{}, typed: map[string]any{}}
+	fail := func(v *varDecl, code Code, msg string) {
+		res.viols = append(res.viols, Violation{Input: v.name, Code: code, Message: msg})
+		res.flagged[v.name] = true
+	}
+	for _, v := range vars {
+		var raw string
+		var items []string
+		var ok bool
+		indexed := v.typ == typeList && v.listEncoding == encIndexed
+		if indexed {
+			items, ok = indexedItems(environ, v.name)
+		} else {
+			raw, ok = environ[v.name]
+		}
+		if ok && v.expand {
+			raw = os.Expand(raw, func(k string) string { return environ[k] })
+		}
+		if !ok {
+			if v.required {
+				fail(v, CodeMissingRequired, "is required but not set")
+			}
+			continue
+		}
+		if v.deprecated != "" {
+			logger.Warn("docuconf: deprecated variable is set", "name", v.name, "message", v.deprecated)
+		}
+		if v.secret {
+			scheme := injectorScheme(raw)
+			for _, item := range items {
+				if scheme == "" {
+					scheme = injectorScheme(item)
+				}
+			}
+			if scheme != "" {
+				// The injector should have replaced the reference before the
+				// process started (SPEC §4.5.1). Never print the reference.
+				fail(v, CodeInvalidType, fmt.Sprintf(
+					"holds an unresolved %s reference; the injector that should resolve it did not run", scheme))
+				continue
+			}
+		}
+		if v.loadFile {
+			data, err := os.ReadFile(raw)
+			if err != nil {
+				code := CodeFileMissing
+				if errors.Is(err, fs.ErrPermission) {
+					code = CodeFileUnreadable
+				}
+				fail(v, code, fmt.Sprintf("cannot read the file it names: %v", err))
+				continue
+			}
+			raw = string(data)
+		}
+		if v.notEmpty && raw == "" {
+			fail(v, CodeMissingRequired, "is set but empty")
+			continue
+		}
+		res.raw[v.name] = raw
+		var val any
+		var vs []Violation
+		if indexed {
+			val, vs = v.parseItems(items)
+		} else {
+			val, vs = v.parse(raw)
+		}
+		if len(vs) > 0 {
+			res.viols = append(res.viols, vs...)
+			res.flagged[v.name] = true
+			continue
+		}
+		res.typed[v.name] = val
+	}
+	return res
 }
 
 // explainHostError turns an error from caarlos0/env into a violation,

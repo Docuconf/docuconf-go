@@ -90,10 +90,17 @@ type varDecl struct {
 	intBits  int
 	unsigned bool
 
-	// Lists.
+	// Lists. itemMin and itemMax bound each item of an int list, and
+	// include the range the element kind holds.
 	items              string // "string" or "int"
 	separator          string
 	minItems, maxItems *int
+	itemMin, itemMax   *big.Int
+
+	// Wire encodings (SPEC §5). A declaration always uses the encodings
+	// caarlos0/env parses, "go" and "csv"; a contract may name any.
+	durEncoding  string
+	listEncoding string
 
 	// json variables.
 	jsonType reflect.Type
@@ -295,6 +302,8 @@ var constraintTags = map[string][]string{
 	"values":    {typeEnum},
 	"minItems":  {typeList},
 	"maxItems":  {typeList},
+	"itemMin":   {typeList},
+	"itemMax":   {typeList},
 }
 
 func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int, fp, name string, envOpts []string, opts declOptions) {
@@ -565,27 +574,14 @@ func (v *varDecl) parseConstraints(tag reflect.StructTag, problem func(string, .
 	maxS, hasMax := tag.Lookup("max")
 	switch v.typ {
 	case typeInt:
-		lo, hi := intRange(v.intBits, v.unsigned)
-		parse := func(name, s string, def *big.Int) *big.Int {
-			n, ok := new(big.Int).SetString(s, 10)
-			if !ok {
-				problem("%s must be an integer", name)
-				return def
-			}
-			if (lo != nil && n.Cmp(lo) < 0) || (hi != nil && n.Cmp(hi) > 0) {
-				problem("%s %s is outside the range of %v", name, s, v.goType)
-			}
-			return n
-		}
-		v.minInt, v.maxInt = lo, hi
-		if hasMin {
-			v.minInt = parse("min", minS, lo)
-		}
-		if hasMax {
-			v.maxInt = parse("max", maxS, hi)
-		}
-		if v.minInt != nil && v.maxInt != nil && v.minInt.Cmp(v.maxInt) > 0 {
-			problem("min is greater than max")
+		v.minInt, v.maxInt = v.intBounds(tag, "min", "max", v.goType, problem)
+	case typeList:
+		_, hasItemMin := tag.Lookup("itemMin")
+		_, hasItemMax := tag.Lookup("itemMax")
+		if v.items == "int" {
+			v.itemMin, v.itemMax = v.intBounds(tag, "itemMin", "itemMax", v.goType.Elem(), problem)
+		} else if hasItemMin || hasItemMax {
+			problem("itemMin and itemMax apply only to lists of integers")
 		}
 	case typeFloat:
 		parse := func(name, s string) *float64 {
@@ -618,6 +614,33 @@ func (v *varDecl) parseConstraints(tag reflect.StructTag, problem func(string, .
 			v.maxDur = parse("max", maxS)
 		}
 	}
+}
+
+// intBounds reads a pair of integer bound tags. Each defaults to, and
+// must lie within, the range caarlos0/env parses the integer kind with,
+// so the contract never accepts a value the field cannot hold.
+func (v *varDecl) intBounds(tag reflect.StructTag, minName, maxName string, t reflect.Type, problem func(string, ...any)) (lo, hi *big.Int) {
+	kindLo, kindHi := intRange(v.intBits, v.unsigned)
+	parse := func(name string, def *big.Int) *big.Int {
+		s, ok := tag.Lookup(name)
+		if !ok {
+			return def
+		}
+		n, ok := new(big.Int).SetString(s, 10)
+		if !ok {
+			problem("%s must be an integer", name)
+			return def
+		}
+		if (kindLo != nil && n.Cmp(kindLo) < 0) || (kindHi != nil && n.Cmp(kindHi) > 0) {
+			problem("%s %s is outside the range of %v", name, s, t)
+		}
+		return n
+	}
+	lo, hi = parse(minName, kindLo), parse(maxName, kindHi)
+	if lo != nil && hi != nil && lo.Cmp(hi) > 0 {
+		problem("%s is greater than %s", minName, maxName)
+	}
+	return lo, hi
 }
 
 // crossCheck applies rules that span several inputs.

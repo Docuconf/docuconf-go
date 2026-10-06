@@ -35,6 +35,7 @@
 //	schemes:"https"         makes a string a url; also on url.URL fields
 //	type:"url"              a url with any scheme
 //	minItems maxItems       list length
+//	itemMin:"0" itemMax:"9" bounds on each item of an integer list
 //	group, examples ("a|b"), deprecated, configKey
 //
 // The contract type follows from the Go type: string, bool, every int and
@@ -42,7 +43,9 @@
 // strings or integers (encoding "csv" with envSeparator), JSON[T] for a
 // structured value, and any encoding.TextUnmarshaler as a string. Nested
 // structs are walked with their envPrefix. Integer bounds include the
-// range caarlos0/env parses the kind with (int is parsed as 32 bits).
+// range caarlos0/env parses the kind with (int is parsed as 32 bits), for
+// scalars as min and max and for list items as itemMin and itemMax: a
+// []uint16 exports itemMin 0 and itemMax 65535 without any tag.
 //
 // # File inputs
 //

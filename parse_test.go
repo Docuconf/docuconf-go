@@ -325,6 +325,8 @@ func TestParseVariables(t *testing.T) {
 		{"pattern", map[string]string{"REGION": "Europe"}, "REGION", docuconf.CodePatternMismatch, "does not match pattern"},
 		{"too many items", map[string]string{"EXTRA_PORTS": "1;2;3;4;5"}, "EXTRA_PORTS", docuconf.CodeTooManyItems, "has 5 items, above maxItems 4"},
 		{"list item", map[string]string{"EXTRA_PORTS": "1;x"}, "EXTRA_PORTS", docuconf.CodeInvalidType, `item 1: "x" is not an integer`},
+		{"list item below itemMin", map[string]string{"EXTRA_PORTS": "80;0"}, "EXTRA_PORTS", docuconf.CodeOutOfRange, "item 1: 0 is below itemMin 1"},
+		{"list item beyond uint16", map[string]string{"EXTRA_PORTS": "70000"}, "EXTRA_PORTS", docuconf.CodeOutOfRange, "item 0: 70000 is outside the range of uint16"},
 		{"json syntax", map[string]string{"RATE_LIMITS": "{"}, "RATE_LIMITS", docuconf.CodeInvalidType, "is not valid JSON"},
 		{"json schema", map[string]string{"RATE_LIMITS": `{"burst":1}`}, "RATE_LIMITS", docuconf.CodeSchemaMismatch, `missing required property "perMinute"`},
 	}

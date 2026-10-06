@@ -112,6 +112,12 @@ func TestDeclarationErrors(t *testing.T) {
 		Labels map[string]string `env:"LABELS"`
 		// A file input under a reserved directory.
 		CA docuconf.CABundle `file:"ca" path:"/etc/ca.pem"`
+		// Item bounds apply to integer lists only.
+		Names []string `env:"NAMES" itemMin:"1"`
+		// Item bounds must fit the element type.
+		Small []int8 `env:"SMALL" itemMax:"300"`
+		// itemMin must not exceed itemMax.
+		Ids []int64 `env:"IDS" itemMin:"5" itemMax:"4"`
 	}
 	_, err := docuconf.ParseWithOptions[bad](docuconf.Options{Environment: map[string]string{}})
 	var de *docuconf.DeclarationError
@@ -126,6 +132,9 @@ func TestDeclarationErrors(t *testing.T) {
 		"TOKEN (bad.Token): a secret variable must not have a default",
 		"LABELS (bad.Labels): map[string]string is not a contract type",
 		"file input ca would be mounted at /etc",
+		"NAMES (bad.Names): itemMin and itemMax apply only to lists of integers",
+		"SMALL (bad.Small): itemMax 300 is outside the range of int8",
+		"IDS (bad.Ids): itemMin is greater than itemMax",
 	} {
 		require.Contains(t, all, want)
 	}
