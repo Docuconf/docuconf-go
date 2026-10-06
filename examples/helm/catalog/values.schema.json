@@ -1,0 +1,646 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "docuconf": {
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": [
+                "values"
+              ],
+              "properties": {
+                "values": {
+                  "required": [
+                    "CATALOG__SEARCH__URL"
+                  ]
+                }
+              }
+            },
+            {
+              "required": [
+                "overlays"
+              ],
+              "properties": {
+                "overlays": {
+                  "required": [
+                    "platform"
+                  ],
+                  "properties": {
+                    "platform": {
+                      "required": [
+                        "CATALOG__SEARCH__URL"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "type": "object",
+      "description": "Inputs for catalog-api, checked against its docuconf contract.",
+      "additionalProperties": false,
+      "properties": {
+        "global": {
+          "description": "Set by Helm for the docuconf library chart; ignored."
+        },
+        "values": {
+          "type": "object",
+          "description": "Environment variables, as typed values.",
+          "additionalProperties": false,
+          "properties": {
+            "CATALOG__CACHETTL": {
+              "description": "How long catalog pages are cached",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9]+(ns|us|ms|s|m|h))+$"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null",
+                  "description": "Unset."
+                }
+              ]
+            },
+            "CATALOG__DBPASSWORD": {
+              "description": "Catalog database password (secret: supply a secretKeyRef or injected)",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "secretKeyRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "secretKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "CATALOG__FEATUREDCATEGORIES": {
+              "description": "Categories shown on the home page",
+              "anyOf": [
+                {
+                  "maxItems": 10,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null",
+                  "description": "Unset."
+                }
+              ]
+            },
+            "CATALOG__PAGESIZE": {
+              "description": "Items per page",
+              "anyOf": [
+                {
+                  "maximum": 500,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "resourceFieldRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "resourceFieldRef": {
+                      "type": "object",
+                      "required": [
+                        "resource"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "resource": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null",
+                  "description": "Unset."
+                }
+              ]
+            },
+            "CATALOG__SEARCH__URL": {
+              "description": "Search service endpoint",
+              "anyOf": [
+                {
+                  "pattern": "^(https)://[^\\s]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "CATALOG__TRACEHEADER": {
+              "description": "Header carrying the trace id",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "fieldRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "fieldRef": {
+                      "type": "object",
+                      "required": [
+                        "fieldPath"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "fieldPath": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null",
+                  "description": "Unset."
+                }
+              ]
+            },
+            "LOGGING__LOGLEVEL__DEFAULT": {
+              "description": "Minimum log level",
+              "anyOf": [
+                {
+                  "enum": [
+                    "Trace",
+                    "Debug",
+                    "Information",
+                    "Warning",
+                    "Error"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null",
+                  "description": "Unset."
+                }
+              ]
+            }
+          },
+          "required": [
+            "CATALOG__DBPASSWORD"
+          ]
+        },
+        "files": {
+          "type": "object",
+          "description": "Where each file input comes from.",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "overlays": {
+          "type": "object",
+          "description": "Values written into config-file overlays instead of the environment, by overlay name.",
+          "additionalProperties": false,
+          "properties": {
+            "platform": {
+              "description": "Platform overrides, layered over the baked-in appsettings files",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "CATALOG__CACHETTL": {
+                  "description": "How long catalog pages are cached",
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^([0-9]+(ns|us|ms|s|m|h))+$"
+                    },
+                    {
+                      "type": "null",
+                      "description": "Unset."
+                    }
+                  ]
+                },
+                "CATALOG__FEATUREDCATEGORIES": {
+                  "description": "Categories shown on the home page",
+                  "anyOf": [
+                    {
+                      "maxItems": 10,
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "type": "null",
+                      "description": "Unset."
+                    }
+                  ]
+                },
+                "CATALOG__PAGESIZE": {
+                  "description": "Items per page",
+                  "anyOf": [
+                    {
+                      "maximum": 500,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null",
+                      "description": "Unset."
+                    }
+                  ]
+                },
+                "CATALOG__SEARCH__URL": {
+                  "description": "Search service endpoint",
+                  "anyOf": [
+                    {
+                      "pattern": "^(https)://[^\\s]+$",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "LOGGING__LOGLEVEL__DEFAULT": {
+                  "description": "Minimum log level",
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "Trace",
+                        "Debug",
+                        "Information",
+                        "Warning",
+                        "Error"
+                      ]
+                    },
+                    {
+                      "type": "null",
+                      "description": "Unset."
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "values"
+      ]
+    }
+  },
+  "required": [
+    "docuconf"
+  ]
+}

@@ -21,6 +21,8 @@ import (
 // fallback, and is withheld for secrets.
 type translator struct {
 	values, files cue.Value
+	overlays      cue.Value // overlay name -> variable name -> value
+	overlayDefs   map[string]cue.Value
 	vars          map[string]cue.Value
 	fileDefs      map[string]cue.Value
 	secrets       []string // literal values to scrub from every line
@@ -28,13 +30,23 @@ type translator struct {
 	out           []string
 }
 
-func newTranslator(c *Contract, values, files cue.Value) *translator {
+func newTranslator(c *Contract, values, files, overlays cue.Value) *translator {
 	t := &translator{
-		values:    values,
-		files:     files,
-		vars:      fields(c.Value.LookupPath(cue.ParsePath("vars"))),
-		fileDefs:  fields(c.Value.LookupPath(cue.ParsePath("files"))),
-		explained: map[string]bool{},
+		values:      values,
+		files:       files,
+		overlays:    overlays,
+		vars:        fields(c.Value.LookupPath(cue.ParsePath("vars"))),
+		fileDefs:    fields(c.Value.LookupPath(cue.ParsePath("files"))),
+		overlayDefs: fields(c.Value.LookupPath(cue.ParsePath("overlays"))),
+		explained:   map[string]bool{},
+	}
+	// A secret wrongly written into an overlay is scrubbed like a literal.
+	for _, m := range fields(overlays) {
+		for name, x := range fields(m) {
+			if v, ok := t.vars[name]; ok && boolean(v, "secret") {
+				collectStrings(x, &t.secrets)
+			}
+		}
 	}
 	for name, v := range t.vars {
 		x := t.value(name)
@@ -64,6 +76,78 @@ func (t *translator) declaredOnly(ctx *cue.Context, v cue.Value, declared map[st
 		out = out.FillPath(cue.MakePath(cue.Str(name)), it.Value())
 	}
 	return out
+}
+
+// declaredOverlays reports overlays the contract does not declare, names
+// they set that it does not declare, and variables set both in the
+// environment and in an overlay, and leaves them out of #Validate: CUE
+// would reject the whole input over any of them and hide every other
+// problem.
+func (t *translator) declaredOverlays(ctx *cue.Context) cue.Value {
+	out := ctx.CompileString("{}")
+	inEnv := fields(t.values)
+	it, _ := t.overlays.Fields()
+	for it != nil && it.Next() {
+		o := selName(it.Selector())
+		if _, ok := t.overlayDefs[o]; !ok {
+			t.add("overlay %s: is not declared in the contract", o)
+			continue
+		}
+		vars, _ := it.Value().Fields()
+		for vars != nil && vars.Next() {
+			name := selName(vars.Selector())
+			switch v, declared := t.vars[name]; {
+			case !declared:
+				t.add("%s: is not declared in the contract (check the spelling; in overlay %s)", name, o)
+				continue
+			case boolean(v, "secret"):
+				// Reported before anything else: secret material in a ConfigMap.
+				t.add("%s: is secret, so it cannot go in overlay %s (a ConfigMap); supply it in the environment as a secretKeyRef or injected", name, o)
+				continue
+			case inEnv[name].Exists():
+				t.add("%s: is set both in the environment and in overlay %s; set it in one place (the environment would win)", name, o)
+				continue
+			}
+			out = out.FillPath(cue.MakePath(cue.Str(o), cue.Str(name)), vars.Value())
+		}
+	}
+	return out
+}
+
+// overlayProblem explains a failed check on one overlay value
+// (overlayChecks.OVERLAY/NAME.check...).
+func (t *translator) overlayProblem(key string, rest []string, e errors.Error) {
+	o, name, _ := strings.Cut(key, "/")
+	if t.explained[key] {
+		return
+	}
+	check := ""
+	if len(rest) > 0 {
+		check = rest[0]
+	}
+	cv := t.vars[name]
+	x := t.overlays.LookupPath(cue.MakePath(cue.Str(o), cue.Str(name)))
+	switch check {
+	case "notSecret":
+		t.add("%s: is secret, so it cannot go in overlay %s (a ConfigMap); supply it in the environment as a secretKeyRef or injected", name, o)
+	case "literalOnly":
+		t.add("%s: overlay %s holds values, not references; give a literal, or supply the reference in the environment", name, o)
+	case "hasConfigKey":
+		t.add("%s: has no configKey in the contract, so overlay %s has nowhere to put it", name, o)
+	case "withinKeyDepth":
+		t.add("%s: configKey %s is nested deeper than 8 levels", name, str(cv, "configKey"))
+	case "value":
+		if lines := explainVar(name, cv, x); len(lines) > 0 {
+			for _, l := range lines {
+				t.add("%s: %s (in overlay %s)", name, l, o)
+			}
+		} else {
+			t.add("%s: %s (in overlay %s)", name, errMsg(e), o)
+		}
+	default:
+		t.add("%s: %s (in overlay %s)", name, errMsg(e), o)
+	}
+	t.explained[key] = true
 }
 
 func fields(v cue.Value) map[string]cue.Value {
@@ -204,6 +288,8 @@ func (t *translator) validate(err error) {
 			t.varProblem(name, e)
 		case "fileChecks":
 			t.fileProblem(name, p[2:], e)
+		case "overlayChecks":
+			t.overlayProblem(name, p[2:], e)
 		case "files":
 			if _, ok := t.fileDefs[name]; !ok {
 				t.add("%s: is not a file input declared in the contract", name)

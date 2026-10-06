@@ -218,7 +218,7 @@ The contract does not change: it describes what the app accepts, not who supplie
 - An injected value is checked only at boot, by the SDK, after injection. Before deploy, `#Validate` checks only that the reference is well-formed and that an `indexed` list (one variable per item) is not given a single reference.
 - A secret variable may be injected; that is often the point. Like a `secretKeyRef`, the reference is not secret material.
 
-Making sure the injector actually runs (for Bank-Vaults, the pod annotations or namespace label that enable its webhook) is the platform's job and outside the contract. When it does not run, the app receives the raw reference, and the SDK's boot check is what catches it (section 11.2, item 4).
+Making sure the injector actually runs (for Bank-Vaults, the pod annotations or namespace label that enable its webhook) is the platform's job and outside the contract. When it does not run, the app receives the raw reference, and the SDK's boot check is what catches it: a URL or pattern fails its constraints, and section 11.2 asks SDKs to recognise an unresolved reference outright.
 
 ### 4.6 File inputs
 
@@ -303,6 +303,53 @@ A source that changes after deploy (a renewed certificate, an updated ConfigMap)
 
 Inline content is content-hashed, so it always rolls the pods when it changes.
 
+### 4.7 Config-file overlays
+
+Hosts that layer configuration files under environment variables (.NET, Spring Boot, Rails, figment, Hoplite) commonly take one more file from the platform, mounted between the files baked into the image and the environment:
+
+```csharp
+builder.Configuration.AddJsonFile("appsettings.json", optional: false);
+builder.Configuration.AddJsonFile("/app/config/appsettings.Production.json", optional: true, reloadOnChange: true);
+builder.Configuration.AddEnvironmentVariables();
+```
+
+The contract declares such a file in `overlays`, keyed by name (a DNS label):
+
+```cue
+overlays: platform: {
+	format:       "json"                                    // json | yaml | toml
+	path:         "/app/config/appsettings.Production.json"
+	keySeparator: ":"                                       // ":" in .NET, "." in Spring
+	reload:       "watch"                                   // or "restart" (default)
+}
+```
+
+The platform supplies an overlay's values in the `overlays` input of `#Validate` and `#Render`, keyed by overlay name and then variable name, as typed values like any other:
+
+```cue
+overlays: platform: {
+	CATALOG__PAGESIZE: 50
+	CATALOG__CACHETTL: "90s"
+	CATALOG__FEATUREDCATEGORIES: ["books", "games"]
+}
+```
+
+Rules, enforced by the meta-schema:
+
+- **Precedence** is fixed on every host: base file, then profile file (section 4.4), then the overlay, then environment variables. SDKs MUST load overlays in this position, and MUST reject an overlay at declaration time where the host cannot layer files.
+- **Overlays add, never replace.** The overlay's directory is mounted, hiding what the image had there, so `path` MUST NOT be in a directory holding files the app ships with; the SDK checks this at export. Mounting a file over the baked-in `appsettings.Production.json` would silently discard its values, which is why overlays have their own path.
+- An overlay value MUST be a literal for a declared, non-secret variable with a `configKey`. It is checked exactly like an env value. Overlays are ConfigMaps, so secrets come from the environment (a `secretKeyRef` or `injected`).
+- A variable comes from one place: the environment or one overlay. Supplying both is an error, since the environment would silently win.
+- A required variable is satisfied by an overlay as by an env value or a profile.
+- The overlay's mount directory follows the file-input mount rules (section 4.6): unique and not reserved.
+
+`#Render` writes the file:
+
+- Each value goes at its variable's `configKey`, split on `keySeparator` (`Catalog:Search:Url` becomes `{"Catalog": {"Search": {"Url": ...}}}`), at most 8 levels deep.
+- Values are written in **native types** (numbers, booleans, lists), since the host binds the file itself. Durations are strings in the variable's `encoding` (`timespan` for .NET).
+- Keys are sorted, so the file and its hash do not depend on the order the platform wrote its values in.
+- `reload: watch` renders a mutable ConfigMap with a stable name: the kubelet updates the mounted file in place and the host reloads it (`reloadOnChange` in .NET, read through `IOptionsMonitor<T>`). `reload: restart` renders an immutable, content-hashed ConfigMap, so any change rolls the pods.
+
 ## 5. Wire encoding and parsing
 
 Kubernetes env values are strings. The platform always holds **typed** values in CUE, written one way: lists as CUE lists, durations in Go syntax. `#Render` converts each value into the string form the application's library parses.
@@ -368,7 +415,7 @@ The meta-schema provides two definitions, both exercised by `cue/test.sh`:
 - every required file input must have a source,
 - any value or file source not declared in the contract is rejected. A typo like `DATABSE_URL` is the most common environment bug, so this check is on by default.
 
-**`#Render`**: produces the container's `env` entries (in each variable's wire encoding, plus every `pathEnv`), the `volumes` and `volumeMounts` for file inputs, the ConfigMaps for inline content, and the `restartTriggers` (section 4.6.2).
+**`#Render`**: produces the container's `env` entries (in each variable's wire encoding, plus every `pathEnv`), the `volumes` and `volumeMounts` for file inputs and overlays, the ConfigMaps for inline content and overlays (section 4.7), and the `restartTriggers` (section 4.6.2).
 
 **Policy** is plain CUE unified with the values:
 
@@ -482,8 +529,9 @@ A conforming SDK MUST:
    - `tls`: the certificate and key parse and match, the certificate is currently valid with at least `minRemaining` left, covers every name in `dnsNames`, uses an allowed key algorithm, and chains to `ca.crt` when `requireCA` is set;
    - `caBundle` holds at least `minCertificates` parseable certificates; `keystore` opens with its password variable (an empty password when that optional variable is unset; where the host has no keystore parser, the SDK MUST at least verify the keystore's integrity MAC or, failing that, its format, and document the gap); `text` matches its constraints.
 8. Honour `reload: watch` for every file input that declares it, typically by watching (or polling) the mount directory, since Kubernetes updates projected files by swapping a symlink. An SDK that cannot reload an input type MUST reject `watch` for it at declaration time rather than export a promise it does not keep.
-9. Ignore environment variables not in the declaration. A real process has many (`HOSTNAME`, `KUBERNETES_*`), so the unknown-variable check is only applied to platform values.
-10. Pass the shared conformance suite (section 12).
+9. Load declared config-file overlays (section 4.7) between the profile file and the environment, reloading them when declared `watch`; reject `overlays` at declaration time where the host cannot layer files, and reject an overlay `path` whose directory holds files the app ships with.
+10. Ignore environment variables not in the declaration. A real process has many (`HOSTNAME`, `KUBERNETES_*`), so the unknown-variable check is only applied to platform values.
+11. Pass the shared conformance suite (section 12).
 
 An SDK SHOULD also:
 
@@ -505,15 +553,14 @@ The `conformance/` directory is language-neutral:
 1. Should optional variables with no default be allowed at all, or should every variable be required or defaulted?
 2. Should `#Validate` support a non-strict mode where unknown variables are warnings, to ease removals?
 3. Should the spec cover build-time variables (section 11.1) with a separate `buildVars` section, so a CI build can be validated the same way?
-4. Should there be a file render target? Some .NET and Spring teams mount `appsettings.Production.json` or `application-prod.yml` from a ConfigMap instead of using env vars. `#Render` could emit that file from `configKey`. Replacing a baked-in file, though, would silently discard its profile defaults, so env vars, which layer on top, stay the recommended route.
-5. Spring can activate several profiles at once (`SPRING_PROFILES_ACTIVE=prod,eu`). Should `profiles` support an ordered list, with later profiles winning?
-6. Proposals arising from [`docs/EDGE_CASES.md`](../docs/EDGE_CASES.md):
+4. Spring can activate several profiles at once (`SPRING_PROFILES_ACTIVE=prod,eu`). Should `profiles` support an ordered list, with later profiles winning?
+5. Proposals arising from [`docs/EDGE_CASES.md`](../docs/EDGE_CASES.md):
    - **roles**, for one image running several processes;
    - **`requiredIf`**, for conditional requirements;
    - **well-known fragments**, for variables read by frameworks and libraries;
    - **platform-authored contracts**, for third-party images.
-7. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?
-8. Should a file input be able to take a whole directory of arbitrary files (for example, every `*.crt` in a trust directory), rather than one file or a TLS key pair?
-9. Should file inputs support profiles, so a baked-in `routes.yaml` can be the default for some environments, as `appsettings.{Environment}.json` is for variables?
+6. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?
+7. Should a file input be able to take a whole directory of arbitrary files (for example, every `*.crt` in a trust directory), rather than one file or a TLS key pair?
+8. Should file inputs support profiles, so a baked-in `routes.yaml` can be the default for some environments, as `appsettings.{Environment}.json` is for variables?
 
-Resolved in this draft: values and files supplied at runtime by injectors (section 4.5.1); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
+Resolved in this draft: config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).

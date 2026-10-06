@@ -26,7 +26,15 @@ import (
 		},
 		{},
 	][0]
-	let _requiredVars = list.SortStrings([for n, v in contract.vars if v.required && _profile[n] == _|_ {n}])
+	// A variable an overlay may carry (non-secret, with a configKey) is
+	// satisfied by values or by any overlay; the others only by values.
+	let _overlayNames = [if contract.overlays != _|_ for o, _ in contract.overlays {o}]
+	let _overlayable = {
+		for n, v in contract.vars if !v.secret && v.configKey != _|_ && len(_overlayNames) > 0 {(n): true}
+	}
+	let _requiredAll = list.SortStrings([for n, v in contract.vars if v.required && _profile[n] == _|_ {n}])
+	let _requiredVars = [for n in _requiredAll if _overlayable[n] == _|_ {n}]
+	let _requiredEither = [for n in _requiredAll if _overlayable[n] != _|_ {n}]
 	let _requiredFiles = list.SortStrings([
 		if contract.files != _|_ for n, f in contract.files if f.required {n},
 	])
@@ -58,11 +66,43 @@ import (
 					}
 					if len(_requiredFiles) > 0 {required: _requiredFiles}
 				}
+				if len(_overlayNames) > 0 {
+					overlays: {
+						type:                 "object"
+						description:          "Values written into config-file overlays instead of the environment, by overlay name."
+						additionalProperties: false
+						properties: {
+							for o, ov in contract.overlays {
+								(o): {
+									type: "object"
+									[if ov.description != _|_ {description: ov.description}, {description: "Values for \(ov.path)."}][0]
+									additionalProperties: false
+									properties: {
+										for n, v in contract.vars if _overlayable[n] != _|_ {
+											(n): {
+												description: v.description
+												anyOf: [(#HelmVar & {var: v}).literal, if !v.required {_helmNull}]
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			if len(_requiredEither) > 0 {
+				allOf: [for n in _requiredEither {
+					anyOf: [
+						{required: ["values"], properties: values: required: [n]},
+						for o in _overlayNames {required: ["overlays"], properties: overlays: {required: [o], properties: (o): required: [n]}},
+					]
+				}]
 			}
 			let req = list.Concat([[if len(_requiredVars) > 0 {"values"}], [if len(_requiredFiles) > 0 {"files"}]])
 			if len(req) > 0 {required: req}
 		}
-		if len(_requiredVars) > 0 || len(_requiredFiles) > 0 {required: ["docuconf"]}
+		if len(_requiredAll) > 0 || len(_requiredFiles) > 0 {required: ["docuconf"]}
 	}
 }
 
@@ -70,7 +110,7 @@ import (
 	var: #Var
 	out: {...}
 
-	let literal = {
+	let _literal = {
 		if var.type == "string" {
 			type: "string"
 			if var.minLength != _|_ {minLength: var.minLength}
@@ -112,6 +152,9 @@ import (
 	// An indexed list spans several variables, so an injector may set it
 	// but not resolve one reference into it.
 	let injected = [if var.type == "list" if var.encoding == "indexed" {_helmInjectedNoRef}, _helmInjected][0]
+
+	// The schema of a literal value, also used for overlays.
+	literal: _literal
 
 	if var.secret {
 		out: {

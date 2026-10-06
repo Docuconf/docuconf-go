@@ -86,6 +86,38 @@ Helm-based platform the same guarantees as the CUE/Crossplane path:
 [`examples/helm/gateway`](../examples/helm/gateway) is a complete chart that
 uses every input kind.
 
+## Config-file overlays
+
+An app on a host that layers config files (.NET `appsettings`, Spring
+`application.yml`) can declare an overlay in its contract: one more file,
+mounted by the platform, between its baked-in files and the environment.
+Values go under `docuconf.overlays.<name>`, in native types:
+
+```yaml
+docuconf:
+  values:
+    CATALOG__DBPASSWORD:             # secrets stay in the environment
+      injected: {provider: bank-vaults, ref: "vault:secret/data/catalog/db#password"}
+  overlays:
+    platform:                        # /app/config/appsettings.Production.json
+      CATALOG__PAGESIZE: 50
+      CATALOG__CACHETTL: 90s
+      CATALOG__FEATUREDCATEGORIES: [books, games]
+```
+
+The helpers write each value at its variable's `configKey`
+(`{"Catalog": {"PageSize": 50, …}}`) and add the ConfigMap, volume and mount
+to `docuconf.configMaps`, `docuconf.volumes` and `docuconf.volumeMounts`, so a
+chart needs no extra templates. An overlay declared `reload: watch` uses a
+stable, mutable ConfigMap that the kubelet updates in place, so
+`reloadOnChange` picks changes up without a restart; `restart` uses a
+content-hashed one, so a change rolls the pods.
+
+The schema checks overlay values like env values, and rejects secrets and
+variables without a `configKey`. A variable set both in `values` and in an
+overlay fails the render, because the environment would silently win.
+[`examples/helm/catalog`](../examples/helm/catalog) is a complete chart.
+
 ## What a bad value looks like
 
 ```text

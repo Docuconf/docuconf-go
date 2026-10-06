@@ -53,7 +53,8 @@ helm_by_stem = {unhashed(n): cm for n, cm in config_maps.items()}
 for cm in golden["configMaps"]:
     want_name = cm["metadata"]["name"]
     got = helm_by_stem.get(unhashed(want_name))
-    if got is None or got.get("immutable") is not True:
+    # Immutable unless it is a watched overlay, which the kubelet updates in place.
+    if got is None or bool(got.get("immutable")) != bool(cm.get("immutable")):
         problems.append(f"ConfigMap {want_name}: helm {got} cue {cm}")
         continue
     if got["data"] == cm["data"]:

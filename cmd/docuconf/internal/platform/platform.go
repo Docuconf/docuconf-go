@@ -189,27 +189,34 @@ func (p *Platform) Schemas(c *Contract) (map[string]cue.Value, error) {
 
 // Validate runs #Validate, and the policy against the values, and returns
 // one readable line per problem. Secret values never appear in the lines.
-func (p *Platform) Validate(c *Contract, values, files, policy cue.Value) ([]string, error) {
+func (p *Platform) Validate(c *Contract, values, files, overlays, policy cue.Value) ([]string, error) {
 	schemas, err := p.Schemas(c)
 	if err != nil {
 		return nil, err
 	}
-	t := newTranslator(c, values, files)
+	t := newTranslator(c, values, files, overlays)
 	// An undeclared name makes CUE reject the whole values struct, which
 	// would hide every other problem, so unknown names are reported here
 	// and left out of #Validate.
 	values = t.declaredOnly(p.ctx, values, t.vars, "is not declared in the contract (check the spelling)")
 	files = t.declaredOnly(p.ctx, files, t.fileDefs, "is not a file input declared in the contract")
+	overlays = t.declaredOverlays(p.ctx)
 
+	// Policy applies to a value however it is supplied: env or overlay.
 	if policy.Exists() {
-		if err := values.Unify(policy).Validate(cue.Concrete(true)); err != nil {
+		all := values
+		for _, m := range fields(overlays) {
+			all = all.Unify(m)
+		}
+		if err := all.Unify(policy).Validate(cue.Concrete(true)); err != nil {
 			t.policy(err)
 		}
 	}
 	v := p.meta.LookupPath(cue.ParsePath("#Validate")).
 		FillPath(cue.ParsePath("contract"), c.Value).
 		FillPath(cue.ParsePath("values"), values).
-		FillPath(cue.ParsePath("files"), files)
+		FillPath(cue.ParsePath("files"), files).
+		FillPath(cue.ParsePath("overlays"), overlays)
 	for name, s := range schemas {
 		v = v.FillPath(cue.MakePath(cue.Def("#schemas"), cue.Str(name)), s)
 	}
@@ -220,11 +227,12 @@ func (p *Platform) Validate(c *Contract, values, files, policy cue.Value) ([]str
 }
 
 // Render runs #Render and returns its output as YAML.
-func (p *Platform) Render(c *Contract, values, files cue.Value) ([]byte, error) {
+func (p *Platform) Render(c *Contract, values, files, overlays cue.Value) ([]byte, error) {
 	r := p.meta.LookupPath(cue.ParsePath("#Render")).
 		FillPath(cue.ParsePath("contract"), c.Value).
 		FillPath(cue.ParsePath("values"), values).
-		FillPath(cue.ParsePath("files"), files)
+		FillPath(cue.ParsePath("files"), files).
+		FillPath(cue.ParsePath("overlays"), overlays)
 	// Each section is encoded separately to keep this order in the output.
 	var buf bytes.Buffer
 	for _, f := range []string{"env", "volumes", "volumeMounts", "configMaps", "restartTriggers"} {

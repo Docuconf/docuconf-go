@@ -1,0 +1,18 @@
+image: registry.example.com/catalog-api:1.0.0
+replicas: 2
+
+# catalog-api layers /app/config/appsettings.Production.json between its
+# baked-in appsettings files and environment variables, and reloads it on
+# change. Settings go there, in native types; the secret comes from
+# Bank-Vaults through the environment.
+docuconf:
+  values:
+    CATALOG__DBPASSWORD:
+      injected: {provider: bank-vaults, ref: "vault:secret/data/catalog/db#password"}
+  overlays:
+    platform:
+      CATALOG__CACHETTL: 90s
+      CATALOG__FEATUREDCATEGORIES: [books, games]
+      CATALOG__PAGESIZE: 50
+      CATALOG__SEARCH__URL: https://search.internal
+      LOGGING__LOGLEVEL__DEFAULT: Warning

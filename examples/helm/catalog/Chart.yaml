@@ -1,0 +1,10 @@
+apiVersion: v2
+name: catalog
+description: Example chart for a .NET service that takes platform settings through an appsettings overlay.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+dependencies:
+  - name: docuconf
+    version: 0.1.0
+    repository: file://../../../helm/docuconf

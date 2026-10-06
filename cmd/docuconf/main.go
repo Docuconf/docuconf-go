@@ -27,8 +27,8 @@ const usage = `docuconf: typed configuration contracts between apps and the plat
 
 Usage:
   docuconf export -pkg <package> -type <Type> -name <service> [-o contract.cue]
-  docuconf vet    -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-policy policy.cue]
-  docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml]
+  docuconf vet    -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml] [-policy policy.cue]
+  docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml]
   docuconf helm   -contract <contract.cue> -chart <chart directory>
 
 Run "docuconf <command> -h" for a command's flags.
@@ -78,22 +78,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 type platformFlags struct {
-	contract, values, files, policy string
+	contract, values, files, overlays, policy string
 }
 
 func (p *platformFlags) register(fs *flag.FlagSet, policy bool) {
 	fs.StringVar(&p.contract, "contract", "contract.cue", "the service's contract")
 	fs.StringVar(&p.values, "values", "", "variable values (YAML, JSON or CUE)")
 	fs.StringVar(&p.files, "files", "", "file input sources (YAML, JSON or CUE)")
+	fs.StringVar(&p.overlays, "overlays", "", "values for config-file overlays, by overlay name (YAML, JSON or CUE)")
 	if policy {
 		fs.StringVar(&p.policy, "policy", "", "environment policy unified with the values (CUE)")
 	}
 }
 
 type loaded struct {
-	p                     *platform.Platform
-	c                     *platform.Contract
-	values, files, policy cue.Value
+	p                               *platform.Platform
+	c                               *platform.Contract
+	values, files, overlays, policy cue.Value
 }
 
 func (pf *platformFlags) load() (*loaded, error) {
@@ -109,6 +110,9 @@ func (pf *platformFlags) load() (*loaded, error) {
 		return nil, err
 	}
 	if l.files, err = p.LoadData(pf.files); err != nil {
+		return nil, err
+	}
+	if l.overlays, err = p.LoadData(pf.overlays); err != nil {
 		return nil, err
 	}
 	if pf.policy != "" {
@@ -131,7 +135,7 @@ func runVet(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	lines, err := l.p.Validate(l.c, l.values, l.files, l.policy)
+	lines, err := l.p.Validate(l.c, l.values, l.files, l.overlays, l.policy)
 	if err != nil {
 		return err
 	}
@@ -158,7 +162,7 @@ func runRender(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	// Rendering invalid values would hand the cluster a broken pod.
-	lines, err := l.p.Validate(l.c, l.values, l.files, l.policy)
+	lines, err := l.p.Validate(l.c, l.values, l.files, l.overlays, l.policy)
 	if err != nil {
 		return err
 	}
@@ -168,7 +172,7 @@ func runRender(args []string, stdout, stderr io.Writer) error {
 		}
 		return errProblems
 	}
-	out, err := l.p.Render(l.c, l.values, l.files)
+	out, err := l.p.Render(l.c, l.values, l.files, l.overlays)
 	if err != nil {
 		return err
 	}

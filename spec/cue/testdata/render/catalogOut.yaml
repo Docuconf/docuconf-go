@@ -1,0 +1,41 @@
+env:
+  - name: CATALOG__DBPASSWORD
+    value: vault:secret/data/catalog/db#password
+volumes:
+  - name: dc-overlay-platform
+    configMap:
+      name: catalog-api-overlay-platform
+      defaultMode: 292
+      items:
+        - key: appsettings.Production.json
+          path: appsettings.Production.json
+volumeMounts:
+  - name: dc-overlay-platform
+    mountPath: /app/config
+    readOnly: true
+configMaps:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: catalog-api-overlay-platform
+    data:
+      appsettings.Production.json: |
+        {
+          "Catalog": {
+            "CacheTtl": "00:01:30",
+            "FeaturedCategories": [
+              "books",
+              "games"
+            ],
+            "PageSize": 50,
+            "Search": {
+              "Url": "https://search.internal"
+            }
+          },
+          "Logging": {
+            "LogLevel": {
+              "Default": "Warning"
+            }
+          }
+        }
+restartTriggers: []

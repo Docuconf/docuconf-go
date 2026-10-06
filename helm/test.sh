@@ -42,6 +42,19 @@ cases=(
   'docuconf: {values: {PARTNER_KEYSTORE_PASSWORD: {secretKeyRef: null, injected: {provider: "Bank Vaults"}}}}|PARTNER_KEYSTORE_PASSWORD'
 )
 
+catalog="$repo/examples/helm/catalog"
+"$catalog/generate.sh" >/dev/null
+# Overlay cases for the catalog chart (SPEC §4.7): a values overlay and text
+# the failure must contain.
+catalog_cases=(
+  'docuconf: {overlays: {platform: {CATALOG__PAGESIZE: 1000}}}|CATALOG__PAGESIZE'
+  'docuconf: {overlays: {platform: {CATALOG__DBPASSWORD: hunter2}}}|CATALOG__DBPASSWORD'
+  'docuconf: {overlays: {platform: {CATALOG__TRACEHEADER: x}}}|CATALOG__TRACEHEADER'
+  'docuconf: {overlays: {staging: {CATALOG__PAGESIZE: 5}}}|staging'
+  'docuconf: {overlays: {platform: {CATALOG__SEARCH__URL: null}}}|CATALOG__SEARCH__URL'
+  'docuconf: {values: {CATALOG__PAGESIZE: 30}}|set both in values and in overlay platform'
+)
+
 for helm in "${helms[@]}"; do
   version=$("$helm" version --short 2>/dev/null)
   (cd "$chart" && "$helm" dependency build . >/dev/null 2>&1) || { echo "FAIL $version dependency build"; fail=1; continue; }
@@ -77,6 +90,27 @@ for helm in "${helms[@]}"; do
   else
     echo "FAIL $version source switched with null"; echo "$out" | head -20; fail=1
   fi
+
+  # The catalog chart: overlays rendered as the CUE renderer does.
+  (cd "$catalog" && "$helm" dependency build . >/dev/null 2>&1) || { echo "FAIL $version catalog dependency build"; fail=1; }
+  if out=$("$helm" lint "$catalog" 2>&1); then echo "PASS $version catalog lint"; else echo "FAIL $version catalog lint"; echo "$out"; fail=1; fi
+  if "$helm" template catalog-api "$catalog" >"$tmp/catalog.yaml" 2>"$tmp/err" \
+    && python3 "$here/testdata/compare.py" "$tmp/catalog.yaml" "$spec/testdata/render/catalogOut.yaml" >"$tmp/cmp"; then
+    echo "PASS $version catalog overlay $(cat "$tmp/cmp")"
+  else
+    echo "FAIL $version catalog overlay parity"; cat "$tmp/err" "$tmp/cmp" 2>/dev/null; fail=1
+  fi
+  for c in "${catalog_cases[@]}"; do
+    overlay="${c%%|*}"; want="${c##*|}"
+    printf '%s\n' "$overlay" >"$tmp/bad.yaml"
+    if out=$("$helm" template catalog-api "$catalog" -f "$tmp/bad.yaml" 2>&1); then
+      echo "FAIL $version catalog accepted: $overlay"; fail=1
+    elif grep -qF -- "$want" <<<"$out" && ! grep -qF hunter2 <<<"$out"; then
+      echo "PASS $version catalog rejects $overlay"
+    else
+      echo "FAIL $version catalog rejected for another reason, or printed a secret: $overlay"; echo "$out" | head -5; fail=1
+    fi
+  done
 
   for c in "${cases[@]}"; do
     overlay="${c%%|*}"; want="${c##*|}"

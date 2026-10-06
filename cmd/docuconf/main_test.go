@@ -13,6 +13,7 @@ const (
 	examples = "../../spec/cue/examples"
 	gateway  = examples + "/gateway_contract.cue"
 	billing  = examples + "/billing_contract.cue"
+	catalog  = examples + "/catalog_contract.cue"
 )
 
 func docuconf(t *testing.T, args ...string) (stdout, stderr string, code int) {
@@ -162,6 +163,59 @@ ALLOWED_ORIGINS: ["https://a.example.com"]
 		"DATABASE_URL: injected.provider must name the injector as a lowercase label, such as bank-vaults",
 		"DATABASE_URL: injected.ref, when given, must be a non-empty string",
 	)
+}
+
+// Config-file overlays (SPEC §4.7): values rendered into the app's own
+// appsettings format, checked like env values.
+func TestOverlays(t *testing.T) {
+	values := write(t, "values.yaml", `CATALOG__DBPASSWORD:
+  injected: {provider: bank-vaults, ref: "vault:secret/data/catalog/db#password"}
+`)
+	overlays := write(t, "overlays.yaml", `platform:
+  CATALOG__CACHETTL: 90s
+  CATALOG__FEATUREDCATEGORIES: [books, games]
+  CATALOG__PAGESIZE: 50
+  CATALOG__SEARCH__URL: https://search.internal
+  LOGGING__LOGLEVEL__DEFAULT: Warning
+`)
+	out, errOut, code := docuconf(t, "vet", "-contract", catalog, "-values", values, "-overlays", overlays)
+	if code != 0 || out != "catalog-api: ok\n" {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+	}
+	out, errOut, code = docuconf(t, "render", "-contract", catalog, "-values", values, "-overlays", overlays)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if want := read(t, "../../spec/cue/testdata/render/catalogOut.yaml"); out != want {
+		t.Fatalf("render differs from spec/cue/testdata/render/catalogOut.yaml:\n%s", out)
+	}
+
+	bad := write(t, "bad.yaml", `platform:
+  CATALOG__DBPASSWORD: hunter2
+  CATALOG__PAGESIZE: 1000
+  CATALOG__TRACEHEADER: x-trace
+  CATALOG__CACHETTL: {configMapKeyRef: {name: c, key: k}}
+  CATALOG__PAGESZE: 5
+  CATALOG__SEARCH__URL: https://search.internal
+staging:
+  LOGGING__LOGLEVEL__DEFAULT: Debug
+`)
+	env := write(t, "env.yaml", `CATALOG__DBPASSWORD: {secretKeyRef: {name: db, key: pw}}
+CATALOG__SEARCH__URL: https://search.internal
+`)
+	out, _, code = docuconf(t, "vet", "-contract", catalog, "-values", env, "-overlays", bad)
+	requireLines(t, out, code,
+		"CATALOG__CACHETTL: overlay platform holds values, not references; give a literal, or supply the reference in the environment",
+		"CATALOG__DBPASSWORD: is secret, so it cannot go in overlay platform (a ConfigMap); supply it in the environment as a secretKeyRef or injected",
+		"CATALOG__PAGESIZE: 1000 is above max 500 (in overlay platform)",
+		"CATALOG__PAGESZE: is not declared in the contract (check the spelling; in overlay platform)",
+		"CATALOG__SEARCH__URL: is set both in the environment and in overlay platform; set it in one place (the environment would win)",
+		"CATALOG__TRACEHEADER: has no configKey in the contract, so overlay platform has nowhere to put it",
+		"overlay staging: is not declared in the contract",
+	)
+	if strings.Contains(out, "hunter2") {
+		t.Fatal("secret value printed")
+	}
 }
 
 func TestRenderGateway(t *testing.T) {
