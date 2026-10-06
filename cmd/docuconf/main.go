@@ -1,0 +1,224 @@
+// Command docuconf exports, validates and renders docuconf configuration
+// contracts.
+//
+//	docuconf export -pkg ./internal/config -type Config -name billing-api -o contract.cue
+//	docuconf vet    -contract contract.cue -values values.yaml [-files files.yaml] [-policy policy.cue]
+//	docuconf render -contract contract.cue -values values.yaml [-files files.yaml]
+//	docuconf helm   -contract contract.cue -chart ./chart
+//
+// vet prints one line per problem and exits 1 if there is any. Secret
+// values are never printed. The contract meta-schema is built in.
+package main
+
+import (
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+
+	"cuelang.org/go/cue"
+
+	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/platform"
+)
+
+const usage = `docuconf: typed configuration contracts between apps and the platform.
+
+Usage:
+  docuconf export -pkg <package> -type <Type> -name <service> [-o contract.cue]
+  docuconf vet    -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-policy policy.cue]
+  docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml]
+  docuconf helm   -contract <contract.cue> -chart <chart directory>
+
+Run "docuconf <command> -h" for a command's flags.
+`
+
+// errProblems means vet found problems; they have been printed already.
+var errProblems = errors.New("configuration problems found")
+
+func main() {
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// run executes a command and returns the exit code: 0 on success, 1 when
+// the configuration has problems, 2 on usage or I/O errors.
+func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprint(stderr, usage)
+		return 2
+	}
+	var err error
+	switch args[0] {
+	case "export":
+		err = runExport(args[1:], stdout, stderr)
+	case "vet":
+		err = runVet(args[1:], stdout, stderr)
+	case "render":
+		err = runRender(args[1:], stdout, stderr)
+	case "helm":
+		err = runHelm(args[1:], stdout, stderr)
+	case "help", "-h", "-help", "--help":
+		fmt.Fprint(stdout, usage)
+		return 0
+	default:
+		fmt.Fprintf(stderr, "docuconf: unknown command %q\n\n%s", args[0], usage)
+		return 2
+	}
+	switch {
+	case err == nil:
+		return 0
+	case errors.Is(err, errProblems):
+		return 1
+	case errors.Is(err, flag.ErrHelp):
+		return 0
+	}
+	fmt.Fprintf(stderr, "docuconf %s: %v\n", args[0], err)
+	return 2
+}
+
+type platformFlags struct {
+	contract, values, files, policy string
+}
+
+func (p *platformFlags) register(fs *flag.FlagSet, policy bool) {
+	fs.StringVar(&p.contract, "contract", "contract.cue", "the service's contract")
+	fs.StringVar(&p.values, "values", "", "variable values (YAML, JSON or CUE)")
+	fs.StringVar(&p.files, "files", "", "file input sources (YAML, JSON or CUE)")
+	if policy {
+		fs.StringVar(&p.policy, "policy", "", "environment policy unified with the values (CUE)")
+	}
+}
+
+type loaded struct {
+	p                     *platform.Platform
+	c                     *platform.Contract
+	values, files, policy cue.Value
+}
+
+func (pf *platformFlags) load() (*loaded, error) {
+	p, err := platform.New()
+	if err != nil {
+		return nil, err
+	}
+	l := &loaded{p: p}
+	if l.c, err = p.LoadContract(pf.contract); err != nil {
+		return nil, err
+	}
+	if l.values, err = p.LoadData(pf.values); err != nil {
+		return nil, err
+	}
+	if l.files, err = p.LoadData(pf.files); err != nil {
+		return nil, err
+	}
+	if pf.policy != "" {
+		if l.policy, err = p.LoadData(pf.policy); err != nil {
+			return nil, err
+		}
+	}
+	return l, nil
+}
+
+func runVet(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("vet", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var pf platformFlags
+	pf.register(fs, true)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	l, err := pf.load()
+	if err != nil {
+		return err
+	}
+	lines, err := l.p.Validate(l.c, l.values, l.files, l.policy)
+	if err != nil {
+		return err
+	}
+	if len(lines) == 0 {
+		fmt.Fprintf(stdout, "%s: ok\n", l.c.Name)
+		return nil
+	}
+	for _, line := range lines {
+		fmt.Fprintln(stdout, line)
+	}
+	return errProblems
+}
+
+func runRender(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("render", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var pf platformFlags
+	pf.register(fs, true)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	l, err := pf.load()
+	if err != nil {
+		return err
+	}
+	// Rendering invalid values would hand the cluster a broken pod.
+	lines, err := l.p.Validate(l.c, l.values, l.files, l.policy)
+	if err != nil {
+		return err
+	}
+	if len(lines) > 0 {
+		for _, line := range lines {
+			fmt.Fprintln(stderr, line)
+		}
+		return errProblems
+	}
+	out, err := l.p.Render(l.c, l.values, l.files)
+	if err != nil {
+		return err
+	}
+	_, err = stdout.Write(out)
+	return err
+}
+
+// runHelm writes what a chart using the docuconf library chart needs:
+// files/docuconf/contract.json, which the library renders from, and
+// values.schema.json, which Helm checks values against on every lint,
+// template, install and upgrade.
+func runHelm(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("helm", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	contract := fs.String("contract", "contract.cue", "the service's contract")
+	chart := fs.String("chart", ".", "the chart directory to write into")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	p, err := platform.New()
+	if err != nil {
+		return err
+	}
+	c, err := p.LoadContract(*contract)
+	if err != nil {
+		return err
+	}
+	schema, err := p.HelmValuesSchema(c)
+	if err != nil {
+		return err
+	}
+	doc, err := p.ContractJSON(c)
+	if err != nil {
+		return err
+	}
+	for _, out := range []struct {
+		name string
+		data []byte
+	}{
+		{filepath.Join("files", "docuconf", "contract.json"), doc},
+		{"values.schema.json", schema},
+	} {
+		path, data := filepath.Join(*chart, out.name), out.data
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "wrote %s\n", path)
+	}
+	return nil
+}

@@ -28,3 +28,5 @@ go.work
 
 configuration/
 gen/output
+# Helm dependencies, built by `helm dependency build`.
+examples/**/charts/

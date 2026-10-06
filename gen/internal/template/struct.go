@@ -2,7 +2,7 @@ package template
 
 const Struct = Header + `
 import (
-	"github.com/autoscalerhq/docuconf"
+	docuconf "github.com/docuconf/docuconf-go"
 	"os"
 	"errors"
 )

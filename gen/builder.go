@@ -40,6 +40,9 @@ type AdditionalOptions struct {
 	ReadmePath string
 }
 
+// NewService starts a generated configuration for one service.
+//
+// Deprecated: see the package documentation.
 func NewService(name string, packageStr string, outputPath string, options AdditionalOptions) *Service {
 	readmePath := outputPath
 	if len(options.ReadmePath) > 0 {
@@ -61,6 +64,9 @@ func assertConfBuilderImplementsConfBuilder(c *ConfBuild) { assertConfBuilder(c)
 //goland:noinspection GoUnusedParameter
 func assertConfBuilder(c ConfBuilder) {}
 
+// NewConfBuilder starts a set of options that services can share.
+//
+// Deprecated: see the package documentation.
 func NewConfBuilder() *ConfBuild {
 	c := &ConfBuild{options: []*confOption{}}
 	assertConfBuilderImplementsConfBuilder(c)

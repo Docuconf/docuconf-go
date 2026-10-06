@@ -1,0 +1,1022 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "docuconf": {
+      "type": "object",
+      "description": "Inputs for gateway, checked against its docuconf contract.",
+      "additionalProperties": false,
+      "properties": {
+        "global": {
+          "description": "Set by Helm for the docuconf library chart; ignored."
+        },
+        "values": {
+          "type": "object",
+          "description": "Environment variables, as typed values.",
+          "additionalProperties": false,
+          "properties": {
+            "LOG_LEVEL": {
+              "description": "Minimum log level emitted",
+              "anyOf": [
+                {
+                  "enum": [
+                    "debug",
+                    "info",
+                    "warn",
+                    "error"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "POD_NAMESPACE": {
+              "description": "Namespace the gateway runs in, for metrics labels",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "fieldRef"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "fieldRef": {
+                      "type": "object",
+                      "required": [
+                        "fieldPath"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "fieldPath": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "GOMEMLIMIT": {
+              "description": "Go runtime soft memory limit, in bytes",
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "resourceFieldRef"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "resourceFieldRef": {
+                      "type": "object",
+                      "required": [
+                        "resource"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "resource": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "RATE_LIMITS": {
+              "description": "Default per-client rate limits",
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "perMinute"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "perMinute": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "burst": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "PARTNER_KEYSTORE_PASSWORD": {
+              "description": "Password for the partner mTLS keystore (secret: supply a secretKeyRef)",
+              "type": "object",
+              "required": [
+                "secretKeyRef"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "secretKeyRef": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "key"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": [
+            "PARTNER_KEYSTORE_PASSWORD",
+            "POD_NAMESPACE"
+          ]
+        },
+        "files": {
+          "type": "object",
+          "description": "Where each file input comes from.",
+          "additionalProperties": false,
+          "properties": {
+            "routes": {
+              "description": "Routing table: path prefixes and their upstreams",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "secret"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "secret": {
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "keys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "csi"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "csi": {
+                      "required": [
+                        "secretProviderClass"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "secretProviderClass": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "driver": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "inline"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "inline": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "inline"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "inline": {
+                      "type": "object",
+                      "required": [
+                        "routes"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "routes": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "match",
+                              "upstream"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "match": {
+                                "type": "string",
+                                "pattern": "^/"
+                              },
+                              "upstream": {
+                                "type": "string",
+                                "pattern": "^https?://"
+                              },
+                              "timeout": {
+                                "type": "string",
+                                "pattern": "^([0-9]+(ms|s|m))+$"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMap"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMap": {
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "image"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "image": {
+                      "required": [
+                        "reference"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "reference": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "pullPolicy": {
+                          "enum": [
+                            "Always",
+                            "IfNotPresent",
+                            "Never"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "serving-tls": {
+              "description": "Certificate the gateway serves HTTPS with",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "secret"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "secret": {
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "keys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "certificate"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "certificate": {
+                      "required": [
+                        "name",
+                        "secretName"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "dnsNames": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "privateKey": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "algorithm": {
+                              "enum": [
+                                "RSA",
+                                "ECDSA",
+                                "Ed25519"
+                              ]
+                            }
+                          }
+                        },
+                        "duration": {
+                          "type": "string",
+                          "pattern": "^([0-9]+(ns|us|ms|s|m|h))+$"
+                        },
+                        "renewBefore": {
+                          "type": "string",
+                          "pattern": "^([0-9]+(ns|us|ms|s|m|h))+$"
+                        },
+                        "secretName": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "csi"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "csi": {
+                      "required": [
+                        "secretProviderClass"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "secretProviderClass": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "driver": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "upstream-ca": {
+              "description": "Private CAs the gateway trusts for upstream TLS",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "secret"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "secret": {
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "keys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "csi"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "csi": {
+                      "required": [
+                        "secretProviderClass"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "secretProviderClass": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "driver": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "inline"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "inline": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMap"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMap": {
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "image"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "image": {
+                      "required": [
+                        "reference"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "reference": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "pullPolicy": {
+                          "enum": [
+                            "Always",
+                            "IfNotPresent",
+                            "Never"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "partner-keystore": {
+              "description": "Client certificate for mTLS to the partner API",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "secret"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "secret": {
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "keys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "csi"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "csi": {
+                      "required": [
+                        "secretProviderClass"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "secretProviderClass": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "driver": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "license": {
+              "description": "Gateway licence key",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "secret"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "secret": {
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "keys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "csi"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "csi": {
+                      "required": [
+                        "secretProviderClass"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "secretProviderClass": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "driver": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "inline"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "inline": {
+                      "pattern": "^[A-Z0-9]{5}(-[A-Z0-9]{5}){3}\\n?$",
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMap"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMap": {
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "image"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "image": {
+                      "required": [
+                        "reference"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "reference": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "pullPolicy": {
+                          "enum": [
+                            "Always",
+                            "IfNotPresent",
+                            "Never"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "geoip": {
+              "description": "GeoIP database for country-based routing",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "secret"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "secret": {
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "keys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "csi"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "csi": {
+                      "required": [
+                        "secretProviderClass"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "secretProviderClass": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "driver": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMap"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMap": {
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "image"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "image": {
+                      "required": [
+                        "reference"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "reference": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "pullPolicy": {
+                          "enum": [
+                            "Always",
+                            "IfNotPresent",
+                            "Never"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "license",
+            "routes",
+            "serving-tls"
+          ]
+        }
+      },
+      "required": [
+        "values",
+        "files"
+      ]
+    }
+  },
+  "required": [
+    "docuconf"
+  ]
+}

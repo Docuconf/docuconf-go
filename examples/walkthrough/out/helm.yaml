@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orders-api-tax-rates-737df012bb
+  labels:
+    app.kubernetes.io/part-of: orders-api
+immutable: true
+data:
+  rates.yaml: "countries:\n  DE: 0.19\n  FR: 0.2\n  IE: 0.23\ndefault: 0.2\n"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-api
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: orders-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: orders-api
+    spec:
+      containers:
+      - name: orders-api
+        image: registry.example.com/orders-api:2.3.0
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              key: url
+              name: orders-db
+        - name: KAFKA_BROKERS
+          value: kafka-0.kafka:9092,kafka-1.kafka:9092
+        - name: LOG_LEVEL
+          value: warn
+        - name: PAYMENTS_TIMEOUT
+          value: 2s
+        - name: TRACE_SAMPLE_RATIO
+          value: '0.05'
+        volumeMounts:
+        - name: dc-serving-tls
+          mountPath: /etc/orders/tls
+          readOnly: true
+        - name: dc-tax-rates
+          mountPath: /etc/orders/tax
+          readOnly: true
+      volumes:
+      - name: dc-serving-tls
+        secret:
+          secretName: orders-tls
+          defaultMode: 256
+      - name: dc-tax-rates
+        configMap:
+          name: orders-api-tax-rates-737df012bb
+          defaultMode: 292
+          items:
+          - key: rates.yaml
+            path: rates.yaml

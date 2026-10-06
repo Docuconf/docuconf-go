@@ -1,0 +1,74 @@
+/* Dark theme (Starlight's default). */
+:root {
+	--sl-color-accent-low: #0c2a3a;
+	--sl-color-accent: #2eb3d6;
+	--sl-color-accent-high: #c4ecf7;
+	--sl-hue-accent: 195;
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #c9eef8;
+	--sl-color-accent: #0a7ea4;
+	--sl-color-accent-high: #073a4c;
+}
+
+/* Hero: a rejected deploy, as the platform would report it. */
+.hero-terminal {
+	width: min(30rem, 100%);
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 0.75rem;
+	background: var(--sl-color-black);
+	box-shadow: 0 1.5rem 3rem -1.5rem rgb(0 0 0 / 0.45);
+	font-family: var(--sl-font-mono);
+	font-size: 0.8rem;
+	line-height: 1.7;
+	text-align: start;
+	overflow: hidden;
+}
+.hero-terminal header {
+	display: flex;
+	gap: 0.4rem;
+	padding: 0.6rem 0.9rem;
+	border-bottom: 1px solid var(--sl-color-gray-5);
+}
+.hero-terminal header span {
+	width: 0.6rem;
+	height: 0.6rem;
+	border-radius: 50%;
+	background: var(--sl-color-gray-4);
+}
+.hero-terminal pre {
+	margin: 0;
+	padding: 0.9rem 1.1rem 1.1rem;
+	background: transparent;
+	white-space: pre;
+	overflow-x: auto;
+	color: var(--sl-color-gray-2);
+}
+/* Headline first on narrow screens; Starlight puts the image first. */
+.hero > .hero-html {
+	order: 2;
+}
+@media (max-width: 30rem) {
+	.hero-terminal { font-size: 0.72rem; }
+}
+.hero-terminal .cmd { color: var(--sl-color-white); }
+.hero-terminal .bad { color: #f87171; }
+.hero-terminal .muted { color: var(--sl-color-gray-3); }
+.hero-terminal .ok { color: #4ade80; }
+:root[data-theme='light'] .hero-terminal .bad { color: #b91c1c; }
+:root[data-theme='light'] .hero-terminal .ok { color: #15803d; }
+
+/* Two-column "before / after" comparison on the home page. */
+.compare {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+	gap: 1rem;
+}
+.compare > div {
+	margin-top: 0;
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 0.5rem;
+	padding: 1rem 1.25rem;
+}
+.compare h3 { margin-top: 0; font-size: var(--sl-text-lg); }

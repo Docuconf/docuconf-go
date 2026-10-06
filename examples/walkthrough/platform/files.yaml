@@ -1,0 +1,13 @@
+# Where each of orders-api's file inputs comes from.
+serving-tls:
+  certificate:
+    name: orders-tls
+    secretName: orders-tls
+    # Resolved from the cert-manager Certificate by the platform tooling.
+    dnsNames: [orders.internal]
+    duration: 2160h
+    renewBefore: 720h
+tax-rates:
+  inline:
+    default: 0.2
+    countries: {DE: 0.19, FR: 0.2, IE: 0.23}

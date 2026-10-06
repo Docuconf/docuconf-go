@@ -1,8 +1,16 @@
+// Package gen is the original docuconf code generator: it builds a
+// configuration struct and Markdown docs from Go builder calls.
+//
+// Deprecated: declare configuration as a caarlos0/env struct and use
+// docuconf.Parse and docuconf.Export (or the docuconf export command)
+// instead. This package will be removed in a future release.
 package gen
 
 import "os"
 
-// WriteAll writes all the services to the file system
+// WriteAll writes all the services to the file system.
+//
+// Deprecated: see the package documentation.
 func WriteAll(services []*Service) error {
 	for _, service := range services {
 		err := service.Write()

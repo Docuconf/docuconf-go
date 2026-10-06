@@ -1,0 +1,4 @@
+- name: REPORT_FORMATS
+  value: '["pdf","csv"]'
+- name: POLL_INTERVAL
+  value: PT90S

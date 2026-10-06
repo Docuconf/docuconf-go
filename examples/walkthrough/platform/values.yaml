@@ -1,0 +1,7 @@
+# What the platform supplies for orders-api in production.
+DATABASE_URL:
+  secretKeyRef: {name: orders-db, key: url}
+KAFKA_BROKERS: [kafka-0.kafka:9092, kafka-1.kafka:9092]
+PAYMENTS_TIMEOUT: 2s
+LOG_LEVEL: warn
+TRACE_SAMPLE_RATIO: 0.05

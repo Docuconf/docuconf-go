@@ -1,0 +1,16 @@
+# What the platform supplies for the gateway in one environment
+# (spec/cue/examples/gateway_platform.cue, as YAML).
+LOG_LEVEL: warn
+POD_NAMESPACE:
+  fieldRef:
+    fieldPath: metadata.namespace
+GOMEMLIMIT:
+  resourceFieldRef:
+    resource: limits.memory
+RATE_LIMITS:
+  perMinute: 600
+  burst: 50
+PARTNER_KEYSTORE_PASSWORD:
+  secretKeyRef:
+    name: partner-keystore
+    key: password

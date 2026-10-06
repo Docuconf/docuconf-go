@@ -1,0 +1,529 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "docuconf": {
+      "type": "object",
+      "description": "Inputs for orders-api, checked against its docuconf contract.",
+      "additionalProperties": false,
+      "properties": {
+        "global": {
+          "description": "Set by Helm for the docuconf library chart; ignored."
+        },
+        "values": {
+          "type": "object",
+          "description": "Environment variables, as typed values.",
+          "additionalProperties": false,
+          "properties": {
+            "DATABASE_URL": {
+              "description": "Primary Postgres connection string (secret: supply a secretKeyRef)",
+              "type": "object",
+              "required": [
+                "secretKeyRef"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "secretKeyRef": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "key"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "KAFKA_BROKERS": {
+              "description": "Kafka brokers orders are published to",
+              "anyOf": [
+                {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "LOG_LEVEL": {
+              "description": "Minimum log level emitted",
+              "anyOf": [
+                {
+                  "enum": [
+                    "debug",
+                    "info",
+                    "warn",
+                    "error"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "PAYMENTS_TIMEOUT": {
+              "description": "Timeout for calls to the payments service",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9]+(ns|us|ms|s|m|h))+$"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "PORT": {
+              "description": "HTTP listen port",
+              "anyOf": [
+                {
+                  "maximum": 65535,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "resourceFieldRef"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "resourceFieldRef": {
+                      "type": "object",
+                      "required": [
+                        "resource"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "resource": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "TRACE_SAMPLE_RATIO": {
+              "description": "Fraction of requests traced",
+              "anyOf": [
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "DATABASE_URL",
+            "KAFKA_BROKERS"
+          ]
+        },
+        "files": {
+          "type": "object",
+          "description": "Where each file input comes from.",
+          "additionalProperties": false,
+          "properties": {
+            "serving-tls": {
+              "description": "Certificate the API serves HTTPS with",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "secret"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "secret": {
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "keys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "certificate"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "certificate": {
+                      "required": [
+                        "name",
+                        "secretName"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "dnsNames": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "privateKey": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "algorithm": {
+                              "enum": [
+                                "RSA",
+                                "ECDSA",
+                                "Ed25519"
+                              ]
+                            }
+                          }
+                        },
+                        "duration": {
+                          "type": "string",
+                          "pattern": "^([0-9]+(ns|us|ms|s|m|h))+$"
+                        },
+                        "renewBefore": {
+                          "type": "string",
+                          "pattern": "^([0-9]+(ns|us|ms|s|m|h))+$"
+                        },
+                        "secretName": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "csi"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "csi": {
+                      "required": [
+                        "secretProviderClass"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "secretProviderClass": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "driver": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "tax-rates": {
+              "description": "Tax rates by country, loaded at boot",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "secret"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "secret": {
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "keys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "csi"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "csi": {
+                      "required": [
+                        "secretProviderClass"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "secretProviderClass": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "driver": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "inline"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "inline": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "inline"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "inline": {
+                      "type": "object",
+                      "required": [
+                        "default",
+                        "countries"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "default": {
+                          "type": "number",
+                          "description": "Rate used when a country is not listed",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "countries": {
+                          "type": "object",
+                          "description": "Rates by ISO 3166-1 alpha-2 country code",
+                          "additionalProperties": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMap"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "configMap": {
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "image"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "image": {
+                      "required": [
+                        "reference"
+                      ],
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "reference": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "pullPolicy": {
+                          "enum": [
+                            "Always",
+                            "IfNotPresent",
+                            "Never"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "serving-tls",
+            "tax-rates"
+          ]
+        }
+      },
+      "required": [
+        "values",
+        "files"
+      ]
+    }
+  },
+  "required": [
+    "docuconf"
+  ]
+}

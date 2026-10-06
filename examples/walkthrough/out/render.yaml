@@ -1,0 +1,47 @@
+env:
+  - name: DATABASE_URL
+    valueFrom:
+      secretKeyRef:
+        name: orders-db
+        key: url
+  - name: KAFKA_BROKERS
+    value: kafka-0.kafka:9092,kafka-1.kafka:9092
+  - name: LOG_LEVEL
+    value: warn
+  - name: PAYMENTS_TIMEOUT
+    value: 2s
+  - name: TRACE_SAMPLE_RATIO
+    value: "0.05"
+volumes:
+  - name: dc-serving-tls
+    secret:
+      secretName: orders-tls
+      defaultMode: 256
+  - configMap:
+      name: orders-api-tax-rates-3be5cf588e
+      defaultMode: 292
+      items:
+        - key: rates.yaml
+          path: rates.yaml
+    name: dc-tax-rates
+volumeMounts:
+  - name: dc-serving-tls
+    mountPath: /etc/orders/tls
+    readOnly: true
+  - name: dc-tax-rates
+    mountPath: /etc/orders/tax
+    readOnly: true
+configMaps:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: orders-api-tax-rates-3be5cf588e
+    immutable: true
+    data:
+      rates.yaml: |
+        default: 0.2
+        countries:
+          DE: 0.19
+          FR: 0.2
+          IE: 0.23
+restartTriggers: []

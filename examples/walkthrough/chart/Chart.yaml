@@ -1,0 +1,10 @@
+apiVersion: v2
+name: orders-api
+description: The walkthrough's orders API, deployed with its docuconf contract.
+type: application
+version: 0.1.0
+appVersion: "2.3.0"
+dependencies:
+  - name: docuconf
+    version: 0.1.0
+    repository: file://../../../helm/docuconf

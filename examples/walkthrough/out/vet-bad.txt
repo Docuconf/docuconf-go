@@ -1,0 +1,10 @@
+DATABASE_URL: is secret, so it must come from a secretKeyRef, never a literal or another reference
+KAFKA_BROKERS: is required, and set neither by the platform nor by the selected profile
+LOG_LEVL: is not declared in the contract (check the spelling)
+PAYMENTS_TIMEOUT: "2 seconds" is not a duration such as 1m30s
+PORT: 80800 is above max 65535
+TRACE_SAMPLE_RATIO: 1.5 is above max 1
+TRACE_SAMPLE_RATIO: 1.5 is not allowed by policy
+serving-tls: certificate does not cover orders.internal
+serving-tls: certificate renewBefore 240h is less than minRemaining 720h, so the app could see a certificate with too little time left
+tax-rates: inline content does not match its schema: default: invalid value 20 (out of bound <=1)

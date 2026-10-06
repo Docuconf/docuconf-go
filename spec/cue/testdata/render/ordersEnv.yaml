@@ -1,0 +1,6 @@
+- name: ORDERS__BROKERS__0
+  value: kafka-0:9092
+- name: ORDERS__BROKERS__1
+  value: kafka-1:9092
+- name: ORDERS__CHECKOUTTIMEOUT
+  value: "1.02:03:04.5"

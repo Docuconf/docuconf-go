@@ -1,23 +1,19 @@
-module github.com/autoscalerhq/docuconf
+module github.com/docuconf/docuconf-go
 
-go 1.22
+go 1.24
 
 require (
-	github.com/knadh/koanf/parsers/dotenv v1.0.0
-	github.com/knadh/koanf/providers/file v1.1.0
-	github.com/knadh/koanf/v2 v2.1.1
+	github.com/caarlos0/env/v11 v11.4.1
 	github.com/stretchr/testify v1.8.4
+	gopkg.in/yaml.v3 v3.0.1
+	software.sslmate.com/src/go-pkcs12 v0.7.3
 )
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.0.0-alpha.1 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
-	github.com/knadh/koanf/maps v0.1.1 // indirect
-	github.com/mitchellh/copystructure v1.2.0 // indirect
-	github.com/mitchellh/reflectwalk v1.0.2 // indirect
+	github.com/kr/pretty v0.2.1 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	golang.org/x/sys v0.21.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
+	golang.org/x/crypto v0.11.0 // indirect
+	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 )

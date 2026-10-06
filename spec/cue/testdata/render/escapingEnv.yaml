@@ -1,0 +1,4 @@
+- name: GREETING_TEMPLATE
+  value: Hi $$(HOSTNAME), you owe $$$$5
+- name: PRICE_REGEX
+  value: ^[0-9]+$$

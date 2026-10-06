@@ -1,0 +1,92 @@
+// Package docuconf is the Go SDK for docuconf configuration contracts.
+//
+// It extends caarlos0/env (https://github.com/caarlos0/env) rather than
+// replacing it. A configuration struct is a normal caarlos0/env struct;
+// docuconf adds what the host library lacks: descriptions, secrets,
+// constraints, file inputs, boot-time checks with stable error codes, and
+// export of a CUE contract the platform validates before it deploys.
+//
+//	type Config struct {
+//		// Primary Postgres connection string.
+//		DatabaseURL string `env:"DATABASE_URL,required" secret:"true" schemes:"postgres,postgresql"`
+//
+//		// HTTP listen port.
+//		Port int `env:"PORT" envDefault:"8080" min:"1" max:"65535"`
+//
+//		// Certificate the service serves HTTPS with.
+//		TLS docuconf.TLSKeyPair `file:"serving-tls,required" path:"/etc/app/tls" dnsNames:"api.example.com" minRemaining:"720h" reload:"watch"`
+//	}
+//
+//	cfg, err := docuconf.Parse[Config]()
+//
+// # Variables
+//
+// caarlos0/env's own tags work unchanged: env (with the options required,
+// file, notEmpty, expand, unset and init), envDefault, envSeparator and
+// envPrefix. Every variable needs a description of at least five
+// characters, taken from the field's doc comment, or from a desc tag when
+// there is none. docuconf adds:
+//
+//	secret:"true"           the value comes from a Secret; never printed, no default
+//	min:"1" max:"65535"     int, float and duration bounds (durations as "1s")
+//	minLength maxLength     string length in characters
+//	pattern:"^[a-z]+$"      string pattern, RE2, partial match like CUE =~
+//	values:"debug,info"     makes a string an enum
+//	schemes:"https"         makes a string a url; also on url.URL fields
+//	type:"url"              a url with any scheme
+//	minItems maxItems       list length
+//	group, examples ("a|b"), deprecated, configKey
+//
+// The contract type follows from the Go type: string, bool, every int and
+// uint kind, float32/64, time.Duration (encoding "go"), url.URL, slices of
+// strings or integers (encoding "csv" with envSeparator), JSON[T] for a
+// structured value, and any encoding.TextUnmarshaler as a string. Nested
+// structs are walked with their envPrefix. Integer bounds include the
+// range caarlos0/env parses the kind with (int is parsed as 32 bits).
+//
+// # File inputs
+//
+// A field of a docuconf file type is a file input. Its file tag names the
+// input (a DNS label), optionally followed by ",required":
+//
+//	TLSKeyPair     type tls: a directory with tls.crt, tls.key, ca.crt
+//	CABundle       type caBundle: PEM CA certificates
+//	Keystore       type keystore: PKCS#12, password from a secret variable
+//	TextFile       type text
+//	BinaryFile     type binary
+//	ConfigFile[T]  type config: JSON or YAML bound to T
+//
+// Tags for every file type: path (required; absolute), pathEnv (a variable
+// the platform sets to the path; it overrides path at runtime), reload
+// ("restart" or "watch"), maxSize (bytes, or with a Ki, Mi or Gi suffix),
+// secret, desc, group, deprecated. Per type:
+//
+//	TLSKeyPair  dnsNames:"a,b" keyAlgorithms:"ECDSA,RSA" minRemaining:"720h" requireCA:"true"
+//	CABundle    minCertificates:"2"
+//	Keystore    passwordVar:"KEYSTORE_PASSWORD" format:"pkcs12"
+//	TextFile    pattern, minLength, maxLength
+//	ConfigFile  format:"json" or "yaml" (default from the path's extension)
+//
+// A config file's contract carries a JSON Schema generated from T: json
+// tags name the properties, fields without omitempty (or omitzero) and
+// not pointers are required, and other properties are rejected. T's fields
+// take the constraint tags above, which become schema keywords, and T may
+// implement Validate() error.
+//
+// # Boot checks
+//
+// Parse runs caarlos0/env, then checks every variable and file and
+// returns all violations together in a *ValidationError. Each has a
+// stable Code (missing_required, out_of_range, certificate_expiring, ...).
+// Violations never include a secret's value. They are also written to
+// /dev/termination-log when it exists, or to DOCUCONF_TERMINATION_LOG.
+// An empty value counts as unset for every type except string.
+// DOCUCONF_FILE_ROOT remaps file paths for local development, and .env
+// files are read only when listed in Options.DotEnv.
+//
+// # Export
+//
+// Export renders the declaration as a contract.cue for the platform. The
+// docuconf command (cmd/docuconf) wraps it as "docuconf export", and adds
+// "docuconf vet" and "docuconf render" for the platform side.
+package docuconf

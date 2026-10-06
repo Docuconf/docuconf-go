@@ -1,0 +1,132 @@
+package docuconf_test
+
+import (
+	"errors"
+	"flag"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/docuconf/docuconf-go"
+	"github.com/stretchr/testify/require"
+)
+
+var update = flag.Bool("update", false, "rewrite golden files")
+
+const golden = "testdata/gateway.golden.cue"
+
+func TestExportGolden(t *testing.T) {
+	out, err := docuconf.Export[Gateway](docuconf.Meta{Name: "gateway"})
+	require.NoError(t, err)
+	if *update {
+		require.NoError(t, os.WriteFile(golden, out, 0o644))
+	}
+	want, err := os.ReadFile(golden)
+	require.NoError(t, err)
+	require.Equal(t, string(want), string(out), "run go test -run TestExportGolden -update to accept")
+
+	again, err := docuconf.Export[Gateway](docuconf.Meta{Name: "gateway"})
+	require.NoError(t, err)
+	require.Equal(t, string(out), string(again), "export must be deterministic")
+}
+
+// TestExportCueVet checks the exported contract against the meta-schema
+// with the cue CLI, in a temporary copy of the spec's CUE module.
+func TestExportCueVet(t *testing.T) {
+	cue := cueBinary(t)
+	out, err := docuconf.Export[Gateway](docuconf.Meta{Name: "gateway", AppVersion: "1.2.3"})
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	copyDir(t, "spec/cue/cue.mod", filepath.Join(dir, "cue.mod"))
+	copyDir(t, "spec/cue/contract", filepath.Join(dir, "contract"))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "gateway"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "gateway", "contract.cue"), out, 0o644))
+
+	cmd := exec.Command(cue, "vet", "-c", "./gateway/contract.cue")
+	cmd.Dir = dir
+	msg, err := cmd.CombinedOutput()
+	require.NoError(t, err, "cue vet failed:\n%s", msg)
+
+	// And a broken contract is rejected, so the test can fail.
+	bad := strings.Replace(string(out), `type:        "int"`, `type:        "integer"`, 1)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "gateway", "contract.cue"), []byte(bad), 0o644))
+	cmd = exec.Command(cue, "vet", "-c", "./gateway/contract.cue")
+	cmd.Dir = dir
+	_, err = cmd.CombinedOutput()
+	require.Error(t, err)
+}
+
+func cueBinary(t *testing.T) string {
+	t.Helper()
+	if p := os.Getenv("CUE"); p != "" {
+		return p
+	}
+	if p, err := exec.LookPath("cue"); err == nil {
+		return p
+	}
+	home, _ := os.UserHomeDir()
+	p := filepath.Join(home, "go", "bin", "cue")
+	if _, err := os.Stat(p); err == nil {
+		return p
+	}
+	t.Skip("cue binary not found; install cuelang.org/go/cmd/cue@v0.17.1")
+	return ""
+}
+
+func copyDir(t *testing.T, src, dst string) {
+	t.Helper()
+	require.NoError(t, os.CopyFS(dst, os.DirFS(src)))
+}
+
+func TestExportNeedsDescriptions(t *testing.T) {
+	type noDocs struct {
+		Port int    `env:"PORT"`
+		Name string `env:"NAME" desc:"abc"`
+	}
+	_, err := docuconf.Export[noDocs](docuconf.Meta{Name: "svc"})
+	var de *docuconf.DeclarationError
+	require.True(t, errors.As(err, &de), "%v", err)
+	require.Len(t, de.Problems, 2)
+	require.Contains(t, de.Problems[0], "NAME")
+	require.Contains(t, de.Problems[1], "PORT")
+}
+
+func TestDeclarationErrors(t *testing.T) {
+	type bad struct {
+		// Lower-case names are not environment variable names.
+		Lower string `env:"lower"`
+		// A required variable cannot have a default.
+		Both int `env:"BOTH,required" envDefault:"1"`
+		// Defaults must satisfy their own constraints.
+		Port int `env:"PORT" envDefault:"0" min:"1"`
+		// Patterns must be RE2.
+		Look string `env:"LOOK" pattern:"(?=x)"`
+		// min does not apply to strings.
+		Str string `env:"STR" min:"1"`
+		// Secrets have no defaults.
+		Token string `env:"TOKEN" secret:"true" envDefault:"x"`
+		// Maps are not a contract type.
+		Labels map[string]string `env:"LABELS"`
+		// A file input under a reserved directory.
+		CA docuconf.CABundle `file:"ca" path:"/etc/ca.pem"`
+	}
+	_, err := docuconf.ParseWithOptions[bad](docuconf.Options{Environment: map[string]string{}})
+	var de *docuconf.DeclarationError
+	require.True(t, errors.As(err, &de), "%v", err)
+	all := strings.Join(de.Problems, "\n")
+	for _, want := range []string{
+		"lower (bad.Lower): variable name must match",
+		"BOTH (bad.Both): a required variable must not have a default",
+		"PORT (bad.Port): default 0 is below min 1",
+		"LOOK (bad.Look): pattern is not valid RE2",
+		"STR (bad.Str): tag min does not apply to a string variable",
+		"TOKEN (bad.Token): a secret variable must not have a default",
+		"LABELS (bad.Labels): map[string]string is not a contract type",
+		"file input ca would be mounted at /etc",
+	} {
+		require.Contains(t, all, want)
+	}
+}
