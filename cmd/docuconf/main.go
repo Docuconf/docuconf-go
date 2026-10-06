@@ -6,6 +6,9 @@
 //	docuconf render -contract contract.cue -values values.yaml [-files files.yaml]
 //	docuconf helm   -contract contract.cue -chart ./chart
 //
+// docuconf conformance regenerates conformance/cases.json from
+// conformance/load, for maintainers of the spec.
+//
 // vet prints one line per problem and exits 1 if there is any. Secret
 // values are never printed. The contract meta-schema is built in.
 package main
@@ -58,6 +61,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runRender(args[1:], stdout, stderr)
 	case "helm":
 		err = runHelm(args[1:], stdout, stderr)
+	case "conformance":
+		err = runConformance(args[1:], stdout, stderr)
 	case "help", "-h", "-help", "--help":
 		fmt.Fprint(stdout, usage)
 		return 0

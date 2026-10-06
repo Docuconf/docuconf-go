@@ -1,0 +1,34 @@
+description: JSON variables (SPEC §4.3).
+vars:
+  RATE_LIMITS:
+    type: json
+    description: Request rate limits per client
+    schema:
+      type: object
+      properties:
+        perMinute: {type: integer, minimum: 1}
+        burst: {type: integer, minimum: 0}
+      required: [perMinute]
+      additionalProperties: false
+    default: {perMinute: 60}
+  EXTRA:
+    type: json
+    description: Any JSON document
+cases:
+  - name: typed values
+    values: {RATE_LIMITS: {perMinute: 600, burst: 50}, EXTRA: {a: [1, "two", null, true]}}
+  - name: defaults and absent optionals
+    values: {}
+  - name: a JSON scalar
+    values: {EXTRA: "plain"}
+  - name: not JSON
+    env: {EXTRA: "{a:1}"}
+    errors: [{var: EXTRA, code: invalid_type}]
+  - name: violates the schema
+    requires: [json-schema]
+    env: {RATE_LIMITS: '{"perMinute":0}'}
+    errors: [{var: RATE_LIMITS, code: schema_mismatch}]
+  - name: a property the schema does not allow
+    requires: [json-schema]
+    env: {RATE_LIMITS: '{"perMinute":1,"perHour":5}'}
+    errors: [{var: RATE_LIMITS, code: schema_mismatch}]

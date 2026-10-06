@@ -1,0 +1,42 @@
+description: Required and optional variables, and empty values (SPEC §4.2, §5).
+vars:
+  DATABASE_HOST:
+    type: string
+    description: Database host name
+    required: true
+  WORKERS:
+    type: int
+    description: Number of worker threads
+    required: true
+  DEBUG:
+    type: bool
+    description: Enable debug endpoints
+  REGION:
+    type: enum
+    description: Cloud region to run in
+    values: [eu, us]
+cases:
+  - name: required values set, optionals absent
+    values: {DATABASE_HOST: db.internal, WORKERS: 4}
+  - name: every required variable missing
+    env: {}
+    errors: [{var: DATABASE_HOST, code: missing_required}, {var: WORKERS, code: missing_required}]
+  - name: an empty string satisfies a required string
+    env: {DATABASE_HOST: "", WORKERS: "2"}
+    expect: {DATABASE_HOST: "", WORKERS: 2}
+  - name: an empty value is unset for a required int
+    env: {DATABASE_HOST: db, WORKERS: ""}
+    errors: [{var: WORKERS, code: missing_required}]
+  - name: an empty value is unset for an optional enum
+    env: {DATABASE_HOST: db, WORKERS: "1", REGION: ""}
+    expect: {DATABASE_HOST: db, WORKERS: 1, REGION: null}
+  - name: unknown variables are ignored
+    env: {DATABASE_HOST: db, WORKERS: "1", HOSTNAME: pod-7d9f, KUBERNETES_SERVICE_HOST: 10.0.0.1, DATABASE_HOSTNAME: typo}
+    expect: {DATABASE_HOST: db, WORKERS: 1}
+  - name: every problem is reported together
+    env: {WORKERS: "many", DEBUG: "yes please", REGION: apac}
+    errors:
+      - {var: DATABASE_HOST, code: missing_required}
+      - {var: WORKERS, code: invalid_type}
+      - {var: DEBUG, code: invalid_type}
+      - {var: REGION, code: not_in_enum}

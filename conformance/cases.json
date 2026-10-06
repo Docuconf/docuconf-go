@@ -1,0 +1,7223 @@
+{
+  "cases": [
+    {
+      "id": "bool/typed values",
+      "source": "load/bool.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-bool",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "STRICT": {
+            "name": "STRICT",
+            "description": "Reject unknown fields",
+            "required": false,
+            "secret": false,
+            "type": "bool"
+          },
+          "VERBOSE": {
+            "name": "VERBOSE",
+            "description": "Log every request",
+            "required": false,
+            "secret": false,
+            "type": "bool",
+            "default": false
+          }
+        }
+      },
+      "env": {
+        "STRICT": "false",
+        "VERBOSE": "true"
+      },
+      "expect": {
+        "STRICT": false,
+        "VERBOSE": true
+      }
+    },
+    {
+      "id": "bool/defaults and absent optionals",
+      "source": "load/bool.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-bool",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "STRICT": {
+            "name": "STRICT",
+            "description": "Reject unknown fields",
+            "required": false,
+            "secret": false,
+            "type": "bool"
+          },
+          "VERBOSE": {
+            "name": "VERBOSE",
+            "description": "Log every request",
+            "required": false,
+            "secret": false,
+            "type": "bool",
+            "default": false
+          }
+        }
+      },
+      "env": {},
+      "expect": {
+        "STRICT": null,
+        "VERBOSE": false
+      }
+    },
+    {
+      "id": "bool/case-insensitive",
+      "source": "load/bool.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-bool",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "STRICT": {
+            "name": "STRICT",
+            "description": "Reject unknown fields",
+            "required": false,
+            "secret": false,
+            "type": "bool"
+          },
+          "VERBOSE": {
+            "name": "VERBOSE",
+            "description": "Log every request",
+            "required": false,
+            "secret": false,
+            "type": "bool",
+            "default": false
+          }
+        }
+      },
+      "env": {
+        "STRICT": "False",
+        "VERBOSE": "TRUE"
+      },
+      "expect": {
+        "STRICT": false,
+        "VERBOSE": true
+      }
+    },
+    {
+      "id": "bool/not a bool",
+      "source": "load/bool.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-bool",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "STRICT": {
+            "name": "STRICT",
+            "description": "Reject unknown fields",
+            "required": false,
+            "secret": false,
+            "type": "bool"
+          },
+          "VERBOSE": {
+            "name": "VERBOSE",
+            "description": "Log every request",
+            "required": false,
+            "secret": false,
+            "type": "bool",
+            "default": false
+          }
+        }
+      },
+      "env": {
+        "STRICT": "maybe"
+      },
+      "errors": [
+        {
+          "var": "STRICT",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "bool/empty is unset",
+      "source": "load/bool.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-bool",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "STRICT": {
+            "name": "STRICT",
+            "description": "Reject unknown fields",
+            "required": false,
+            "secret": false,
+            "type": "bool"
+          },
+          "VERBOSE": {
+            "name": "VERBOSE",
+            "description": "Log every request",
+            "required": false,
+            "secret": false,
+            "type": "bool",
+            "default": false
+          }
+        }
+      },
+      "env": {
+        "VERBOSE": ""
+      },
+      "expect": {
+        "STRICT": null,
+        "VERBOSE": false
+      }
+    },
+    {
+      "id": "duration/typed values [duration=go]",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "INTERVAL": "1500ms",
+        "TIMEOUT": "1m30s"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": "1s500ms",
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "1m30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/typed values [duration=iso8601]",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "INTERVAL": "PT1.5S",
+        "TIMEOUT": "PT90S"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": "1s500ms",
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "1m30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/typed values [duration=seconds]",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "INTERVAL": "1.5",
+        "TIMEOUT": "90"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": "1s500ms",
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "1m30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/typed values [duration=timespan]",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "INTERVAL": "00:00:01.5",
+        "TIMEOUT": "00:01:30"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": "1s500ms",
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "1m30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/long durations [duration=go]",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "INTERVAL": "50h",
+        "TIMEOUT": "23h59m59s"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": "50h",
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "23h59m59s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/long durations [duration=iso8601]",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "INTERVAL": "PT180000S",
+        "TIMEOUT": "PT86399S"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": "50h",
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "23h59m59s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/long durations [duration=seconds]",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "INTERVAL": "180000",
+        "TIMEOUT": "86399"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": "50h",
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "23h59m59s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/long durations [duration=timespan]",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "INTERVAL": "2.02:00:00",
+        "TIMEOUT": "23:59:59"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": "50h",
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "23h59m59s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/zero [duration=go]",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "INTERVAL": "0s"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": "0s",
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/zero [duration=iso8601]",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "INTERVAL": "PT0S"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": "0s",
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/zero [duration=seconds]",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "INTERVAL": "0"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": "0s",
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/zero [duration=timespan]",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "INTERVAL": "00:00:00"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": "0s",
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/defaults and absent optionals",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {},
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": null,
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/below min",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "TIMEOUT": "500ms"
+      },
+      "errors": [
+        {
+          "var": "TIMEOUT",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "duration/above max",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "TIMEOUT": "25h"
+      },
+      "errors": [
+        {
+          "var": "TIMEOUT",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "duration/go syntax with several units",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "GO_D": "1h2m3s4ms"
+      },
+      "expect": {
+        "GO_D": "1h2m3s4ms",
+        "INTERVAL": null,
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/go syntax is not iso8601",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "GO_D": "PT90S"
+      },
+      "errors": [
+        {
+          "var": "GO_D",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "duration/iso8601 seconds",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "ISO_D": "PT90S"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": null,
+        "ISO_D": "1m30s",
+        "SECONDS_D": null,
+        "TIMEOUT": "30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/iso8601 fractional seconds",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "ISO_D": "PT1.5S"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": null,
+        "ISO_D": "1s500ms",
+        "SECONDS_D": null,
+        "TIMEOUT": "30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/iso8601 is not go syntax",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "ISO_D": "1m30s"
+      },
+      "errors": [
+        {
+          "var": "ISO_D",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "duration/seconds",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "SECONDS_D": "90"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": null,
+        "ISO_D": null,
+        "SECONDS_D": "1m30s",
+        "TIMEOUT": "30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/fractional seconds",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "SECONDS_D": "0.25"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": null,
+        "ISO_D": null,
+        "SECONDS_D": "250ms",
+        "TIMEOUT": "30s",
+        "TIMESPAN_D": null
+      }
+    },
+    {
+      "id": "duration/seconds is not go syntax",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "SECONDS_D": "90s"
+      },
+      "errors": [
+        {
+          "var": "SECONDS_D",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "duration/timespan",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "TIMESPAN_D": "00:01:30"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": null,
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "30s",
+        "TIMESPAN_D": "1m30s"
+      }
+    },
+    {
+      "id": "duration/timespan with days and fraction",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "TIMESPAN_D": "1.02:03:04.5"
+      },
+      "expect": {
+        "GO_D": null,
+        "INTERVAL": null,
+        "ISO_D": null,
+        "SECONDS_D": null,
+        "TIMEOUT": "30s",
+        "TIMESPAN_D": "26h3m4s500ms"
+      }
+    },
+    {
+      "id": "duration/timespan is not go syntax",
+      "source": "load/duration.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-duration",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "GO_D": {
+            "name": "GO_D",
+            "description": "Go syntax duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "INTERVAL": {
+            "name": "INTERVAL",
+            "description": "Polling interval",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go"
+          },
+          "ISO_D": {
+            "name": "ISO_D",
+            "description": "ISO 8601 duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "iso8601"
+          },
+          "SECONDS_D": {
+            "name": "SECONDS_D",
+            "description": "Duration in seconds",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "seconds"
+          },
+          "TIMEOUT": {
+            "name": "TIMEOUT",
+            "description": "Request timeout",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "go",
+            "default": "30s",
+            "min": "1s",
+            "max": "24h"
+          },
+          "TIMESPAN_D": {
+            "name": "TIMESPAN_D",
+            "description": ".NET TimeSpan duration",
+            "required": false,
+            "secret": false,
+            "type": "duration",
+            "encoding": "timespan"
+          }
+        }
+      },
+      "env": {
+        "TIMESPAN_D": "1m30s"
+      },
+      "errors": [
+        {
+          "var": "TIMESPAN_D",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "enum/typed values",
+      "source": "load/enum.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-enum",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "LOG_LEVEL": {
+            "name": "LOG_LEVEL",
+            "description": "Minimum level to log",
+            "required": false,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "debug",
+              "info",
+              "warn",
+              "error"
+            ],
+            "default": "info"
+          }
+        }
+      },
+      "env": {
+        "LOG_LEVEL": "warn"
+      },
+      "expect": {
+        "LOG_LEVEL": "warn"
+      }
+    },
+    {
+      "id": "enum/default",
+      "source": "load/enum.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-enum",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "LOG_LEVEL": {
+            "name": "LOG_LEVEL",
+            "description": "Minimum level to log",
+            "required": false,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "debug",
+              "info",
+              "warn",
+              "error"
+            ],
+            "default": "info"
+          }
+        }
+      },
+      "env": {},
+      "expect": {
+        "LOG_LEVEL": "info"
+      }
+    },
+    {
+      "id": "enum/not one of the values",
+      "source": "load/enum.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-enum",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "LOG_LEVEL": {
+            "name": "LOG_LEVEL",
+            "description": "Minimum level to log",
+            "required": false,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "debug",
+              "info",
+              "warn",
+              "error"
+            ],
+            "default": "info"
+          }
+        }
+      },
+      "env": {
+        "LOG_LEVEL": "verbose"
+      },
+      "errors": [
+        {
+          "var": "LOG_LEVEL",
+          "code": "not_in_enum"
+        }
+      ]
+    },
+    {
+      "id": "enum/values are case-sensitive",
+      "source": "load/enum.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-enum",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "LOG_LEVEL": {
+            "name": "LOG_LEVEL",
+            "description": "Minimum level to log",
+            "required": false,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "debug",
+              "info",
+              "warn",
+              "error"
+            ],
+            "default": "info"
+          }
+        }
+      },
+      "env": {
+        "LOG_LEVEL": "WARN"
+      },
+      "errors": [
+        {
+          "var": "LOG_LEVEL",
+          "code": "not_in_enum"
+        }
+      ]
+    },
+    {
+      "id": "float/typed values",
+      "source": "load/float.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-float",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "RATIO": {
+            "name": "RATIO",
+            "description": "Fraction of traffic to sample",
+            "required": false,
+            "secret": false,
+            "type": "float",
+            "default": 0.25,
+            "min": 0,
+            "max": 1
+          },
+          "SCALE": {
+            "name": "SCALE",
+            "description": "Multiplier applied to every score",
+            "required": false,
+            "secret": false,
+            "type": "float"
+          }
+        }
+      },
+      "env": {
+        "RATIO": "0.5",
+        "SCALE": "-1.75"
+      },
+      "expect": {
+        "RATIO": 0.5,
+        "SCALE": -1.75
+      }
+    },
+    {
+      "id": "float/defaults and absent optionals",
+      "source": "load/float.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-float",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "RATIO": {
+            "name": "RATIO",
+            "description": "Fraction of traffic to sample",
+            "required": false,
+            "secret": false,
+            "type": "float",
+            "default": 0.25,
+            "min": 0,
+            "max": 1
+          },
+          "SCALE": {
+            "name": "SCALE",
+            "description": "Multiplier applied to every score",
+            "required": false,
+            "secret": false,
+            "type": "float"
+          }
+        }
+      },
+      "env": {},
+      "expect": {
+        "RATIO": 0.25,
+        "SCALE": null
+      }
+    },
+    {
+      "id": "float/exponent form",
+      "source": "load/float.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-float",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "RATIO": {
+            "name": "RATIO",
+            "description": "Fraction of traffic to sample",
+            "required": false,
+            "secret": false,
+            "type": "float",
+            "default": 0.25,
+            "min": 0,
+            "max": 1
+          },
+          "SCALE": {
+            "name": "SCALE",
+            "description": "Multiplier applied to every score",
+            "required": false,
+            "secret": false,
+            "type": "float"
+          }
+        }
+      },
+      "env": {
+        "SCALE": "1e3"
+      },
+      "expect": {
+        "RATIO": 0.25,
+        "SCALE": 1000
+      }
+    },
+    {
+      "id": "float/an integer is a float",
+      "source": "load/float.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-float",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "RATIO": {
+            "name": "RATIO",
+            "description": "Fraction of traffic to sample",
+            "required": false,
+            "secret": false,
+            "type": "float",
+            "default": 0.25,
+            "min": 0,
+            "max": 1
+          },
+          "SCALE": {
+            "name": "SCALE",
+            "description": "Multiplier applied to every score",
+            "required": false,
+            "secret": false,
+            "type": "float"
+          }
+        }
+      },
+      "env": {
+        "SCALE": "3"
+      },
+      "expect": {
+        "RATIO": 0.25,
+        "SCALE": 3
+      }
+    },
+    {
+      "id": "float/above max",
+      "source": "load/float.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-float",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "RATIO": {
+            "name": "RATIO",
+            "description": "Fraction of traffic to sample",
+            "required": false,
+            "secret": false,
+            "type": "float",
+            "default": 0.25,
+            "min": 0,
+            "max": 1
+          },
+          "SCALE": {
+            "name": "SCALE",
+            "description": "Multiplier applied to every score",
+            "required": false,
+            "secret": false,
+            "type": "float"
+          }
+        }
+      },
+      "env": {
+        "RATIO": "1.5"
+      },
+      "errors": [
+        {
+          "var": "RATIO",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "float/NaN is not a number",
+      "source": "load/float.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-float",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "RATIO": {
+            "name": "RATIO",
+            "description": "Fraction of traffic to sample",
+            "required": false,
+            "secret": false,
+            "type": "float",
+            "default": 0.25,
+            "min": 0,
+            "max": 1
+          },
+          "SCALE": {
+            "name": "SCALE",
+            "description": "Multiplier applied to every score",
+            "required": false,
+            "secret": false,
+            "type": "float"
+          }
+        }
+      },
+      "env": {
+        "SCALE": "NaN"
+      },
+      "errors": [
+        {
+          "var": "SCALE",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "float/infinity is not finite",
+      "source": "load/float.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-float",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "RATIO": {
+            "name": "RATIO",
+            "description": "Fraction of traffic to sample",
+            "required": false,
+            "secret": false,
+            "type": "float",
+            "default": 0.25,
+            "min": 0,
+            "max": 1
+          },
+          "SCALE": {
+            "name": "SCALE",
+            "description": "Multiplier applied to every score",
+            "required": false,
+            "secret": false,
+            "type": "float"
+          }
+        }
+      },
+      "env": {
+        "SCALE": "Inf"
+      },
+      "errors": [
+        {
+          "var": "SCALE",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "float/not a number",
+      "source": "load/float.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-float",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "RATIO": {
+            "name": "RATIO",
+            "description": "Fraction of traffic to sample",
+            "required": false,
+            "secret": false,
+            "type": "float",
+            "default": 0.25,
+            "min": 0,
+            "max": 1
+          },
+          "SCALE": {
+            "name": "SCALE",
+            "description": "Multiplier applied to every score",
+            "required": false,
+            "secret": false,
+            "type": "float"
+          }
+        }
+      },
+      "env": {
+        "SCALE": "high"
+      },
+      "errors": [
+        {
+          "var": "SCALE",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "float/a decimal comma is not a decimal point, whatever the locale",
+      "source": "load/float.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-float",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "RATIO": {
+            "name": "RATIO",
+            "description": "Fraction of traffic to sample",
+            "required": false,
+            "secret": false,
+            "type": "float",
+            "default": 0.25,
+            "min": 0,
+            "max": 1
+          },
+          "SCALE": {
+            "name": "SCALE",
+            "description": "Multiplier applied to every score",
+            "required": false,
+            "secret": false,
+            "type": "float"
+          }
+        }
+      },
+      "env": {
+        "SCALE": "0,5"
+      },
+      "errors": [
+        {
+          "var": "SCALE",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "int/typed values",
+      "source": "load/int.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-int",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OFFSET": {
+            "name": "OFFSET",
+            "description": "Signed offset applied to every index",
+            "required": false,
+            "secret": false,
+            "type": "int"
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080,
+            "min": 1,
+            "max": 65535
+          }
+        }
+      },
+      "env": {
+        "OFFSET": "-42",
+        "PORT": "9090"
+      },
+      "expect": {
+        "OFFSET": -42,
+        "PORT": 9090
+      }
+    },
+    {
+      "id": "int/defaults and absent optionals",
+      "source": "load/int.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-int",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OFFSET": {
+            "name": "OFFSET",
+            "description": "Signed offset applied to every index",
+            "required": false,
+            "secret": false,
+            "type": "int"
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080,
+            "min": 1,
+            "max": 65535
+          }
+        }
+      },
+      "env": {},
+      "expect": {
+        "OFFSET": null,
+        "PORT": 8080
+      }
+    },
+    {
+      "id": "int/zero",
+      "source": "load/int.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-int",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OFFSET": {
+            "name": "OFFSET",
+            "description": "Signed offset applied to every index",
+            "required": false,
+            "secret": false,
+            "type": "int"
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080,
+            "min": 1,
+            "max": 65535
+          }
+        }
+      },
+      "env": {
+        "OFFSET": "0"
+      },
+      "expect": {
+        "OFFSET": 0,
+        "PORT": 8080
+      }
+    },
+    {
+      "id": "int/below min",
+      "source": "load/int.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-int",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OFFSET": {
+            "name": "OFFSET",
+            "description": "Signed offset applied to every index",
+            "required": false,
+            "secret": false,
+            "type": "int"
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080,
+            "min": 1,
+            "max": 65535
+          }
+        }
+      },
+      "env": {
+        "PORT": "0"
+      },
+      "errors": [
+        {
+          "var": "PORT",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "int/above max",
+      "source": "load/int.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-int",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OFFSET": {
+            "name": "OFFSET",
+            "description": "Signed offset applied to every index",
+            "required": false,
+            "secret": false,
+            "type": "int"
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080,
+            "min": 1,
+            "max": 65535
+          }
+        }
+      },
+      "env": {
+        "PORT": "65536"
+      },
+      "errors": [
+        {
+          "var": "PORT",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "int/not an integer",
+      "source": "load/int.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-int",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OFFSET": {
+            "name": "OFFSET",
+            "description": "Signed offset applied to every index",
+            "required": false,
+            "secret": false,
+            "type": "int"
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080,
+            "min": 1,
+            "max": 65535
+          }
+        }
+      },
+      "env": {
+        "PORT": "80.5"
+      },
+      "errors": [
+        {
+          "var": "PORT",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "int/not a number",
+      "source": "load/int.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-int",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OFFSET": {
+            "name": "OFFSET",
+            "description": "Signed offset applied to every index",
+            "required": false,
+            "secret": false,
+            "type": "int"
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080,
+            "min": 1,
+            "max": 65535
+          }
+        }
+      },
+      "env": {
+        "OFFSET": "ten"
+      },
+      "errors": [
+        {
+          "var": "OFFSET",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "int/empty is unset, so the default applies",
+      "source": "load/int.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-int",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OFFSET": {
+            "name": "OFFSET",
+            "description": "Signed offset applied to every index",
+            "required": false,
+            "secret": false,
+            "type": "int"
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080,
+            "min": 1,
+            "max": 65535
+          }
+        }
+      },
+      "env": {
+        "PORT": ""
+      },
+      "expect": {
+        "OFFSET": null,
+        "PORT": 8080
+      }
+    },
+    {
+      "id": "int/the largest 64-bit integer",
+      "source": "load/int.yaml",
+      "requires": [
+        "int64"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-int",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OFFSET": {
+            "name": "OFFSET",
+            "description": "Signed offset applied to every index",
+            "required": false,
+            "secret": false,
+            "type": "int"
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080,
+            "min": 1,
+            "max": 65535
+          }
+        }
+      },
+      "env": {
+        "OFFSET": "9223372036854775807"
+      },
+      "expect": {
+        "OFFSET": 9223372036854775807,
+        "PORT": 8080
+      }
+    },
+    {
+      "id": "int/beyond the 64-bit range",
+      "source": "load/int.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-int",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OFFSET": {
+            "name": "OFFSET",
+            "description": "Signed offset applied to every index",
+            "required": false,
+            "secret": false,
+            "type": "int"
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080,
+            "min": 1,
+            "max": 65535
+          }
+        }
+      },
+      "env": {
+        "OFFSET": "99999999999999999999"
+      },
+      "errors": [
+        {
+          "var": "OFFSET",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "json/typed values",
+      "source": "load/json.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-json",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "EXTRA": {
+            "name": "EXTRA",
+            "description": "Any JSON document",
+            "required": false,
+            "secret": false,
+            "type": "json"
+          },
+          "RATE_LIMITS": {
+            "name": "RATE_LIMITS",
+            "description": "Request rate limits per client",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "schema": {
+              "additionalProperties": false,
+              "properties": {
+                "burst": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "perMinute": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "perMinute"
+              ],
+              "type": "object"
+            },
+            "default": {
+              "perMinute": 60
+            }
+          }
+        }
+      },
+      "env": {
+        "EXTRA": "{\"a\":[1,\"two\",null,true]}",
+        "RATE_LIMITS": "{\"burst\":50,\"perMinute\":600}"
+      },
+      "expect": {
+        "EXTRA": {
+          "a": [
+            1,
+            "two",
+            null,
+            true
+          ]
+        },
+        "RATE_LIMITS": {
+          "burst": 50,
+          "perMinute": 600
+        }
+      }
+    },
+    {
+      "id": "json/defaults and absent optionals",
+      "source": "load/json.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-json",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "EXTRA": {
+            "name": "EXTRA",
+            "description": "Any JSON document",
+            "required": false,
+            "secret": false,
+            "type": "json"
+          },
+          "RATE_LIMITS": {
+            "name": "RATE_LIMITS",
+            "description": "Request rate limits per client",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "schema": {
+              "additionalProperties": false,
+              "properties": {
+                "burst": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "perMinute": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "perMinute"
+              ],
+              "type": "object"
+            },
+            "default": {
+              "perMinute": 60
+            }
+          }
+        }
+      },
+      "env": {},
+      "expect": {
+        "EXTRA": null,
+        "RATE_LIMITS": {
+          "perMinute": 60
+        }
+      }
+    },
+    {
+      "id": "json/a JSON scalar",
+      "source": "load/json.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-json",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "EXTRA": {
+            "name": "EXTRA",
+            "description": "Any JSON document",
+            "required": false,
+            "secret": false,
+            "type": "json"
+          },
+          "RATE_LIMITS": {
+            "name": "RATE_LIMITS",
+            "description": "Request rate limits per client",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "schema": {
+              "additionalProperties": false,
+              "properties": {
+                "burst": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "perMinute": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "perMinute"
+              ],
+              "type": "object"
+            },
+            "default": {
+              "perMinute": 60
+            }
+          }
+        }
+      },
+      "env": {
+        "EXTRA": "\"plain\""
+      },
+      "expect": {
+        "EXTRA": "plain",
+        "RATE_LIMITS": {
+          "perMinute": 60
+        }
+      }
+    },
+    {
+      "id": "json/not JSON",
+      "source": "load/json.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-json",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "EXTRA": {
+            "name": "EXTRA",
+            "description": "Any JSON document",
+            "required": false,
+            "secret": false,
+            "type": "json"
+          },
+          "RATE_LIMITS": {
+            "name": "RATE_LIMITS",
+            "description": "Request rate limits per client",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "schema": {
+              "additionalProperties": false,
+              "properties": {
+                "burst": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "perMinute": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "perMinute"
+              ],
+              "type": "object"
+            },
+            "default": {
+              "perMinute": 60
+            }
+          }
+        }
+      },
+      "env": {
+        "EXTRA": "{a:1}"
+      },
+      "errors": [
+        {
+          "var": "EXTRA",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "json/violates the schema",
+      "source": "load/json.yaml",
+      "requires": [
+        "json-schema"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-json",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "EXTRA": {
+            "name": "EXTRA",
+            "description": "Any JSON document",
+            "required": false,
+            "secret": false,
+            "type": "json"
+          },
+          "RATE_LIMITS": {
+            "name": "RATE_LIMITS",
+            "description": "Request rate limits per client",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "schema": {
+              "additionalProperties": false,
+              "properties": {
+                "burst": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "perMinute": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "perMinute"
+              ],
+              "type": "object"
+            },
+            "default": {
+              "perMinute": 60
+            }
+          }
+        }
+      },
+      "env": {
+        "RATE_LIMITS": "{\"perMinute\":0}"
+      },
+      "errors": [
+        {
+          "var": "RATE_LIMITS",
+          "code": "schema_mismatch"
+        }
+      ]
+    },
+    {
+      "id": "json/a property the schema does not allow",
+      "source": "load/json.yaml",
+      "requires": [
+        "json-schema"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-json",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "EXTRA": {
+            "name": "EXTRA",
+            "description": "Any JSON document",
+            "required": false,
+            "secret": false,
+            "type": "json"
+          },
+          "RATE_LIMITS": {
+            "name": "RATE_LIMITS",
+            "description": "Request rate limits per client",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "schema": {
+              "additionalProperties": false,
+              "properties": {
+                "burst": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "perMinute": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "perMinute"
+              ],
+              "type": "object"
+            },
+            "default": {
+              "perMinute": 60
+            }
+          }
+        }
+      },
+      "env": {
+        "RATE_LIMITS": "{\"perMinute\":1,\"perHour\":5}"
+      },
+      "errors": [
+        {
+          "var": "RATE_LIMITS",
+          "code": "schema_mismatch"
+        }
+      ]
+    },
+    {
+      "id": "list/typed values [list=csv]",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "ORIGINS": "https://a.example.com,https://b.example.com",
+        "SHARDS": "0,7,1023"
+      },
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": null,
+        "JSON_L": null,
+        "ORIGINS": [
+          "https://a.example.com",
+          "https://b.example.com"
+        ],
+        "SHARDS": [
+          0,
+          7,
+          1023
+        ]
+      }
+    },
+    {
+      "id": "list/typed values [list=json]",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "ORIGINS": "[\"https://a.example.com\",\"https://b.example.com\"]",
+        "SHARDS": "[0,7,1023]"
+      },
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": null,
+        "JSON_L": null,
+        "ORIGINS": [
+          "https://a.example.com",
+          "https://b.example.com"
+        ],
+        "SHARDS": [
+          0,
+          7,
+          1023
+        ]
+      }
+    },
+    {
+      "id": "list/typed values [list=indexed]",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "indexed",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "ORIGINS__0": "https://a.example.com",
+        "ORIGINS__1": "https://b.example.com",
+        "SHARDS__0": "0",
+        "SHARDS__1": "7",
+        "SHARDS__2": "1023"
+      },
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": null,
+        "JSON_L": null,
+        "ORIGINS": [
+          "https://a.example.com",
+          "https://b.example.com"
+        ],
+        "SHARDS": [
+          0,
+          7,
+          1023
+        ]
+      }
+    },
+    {
+      "id": "list/one item [list=csv]",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "SHARDS": "5"
+      },
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": null,
+        "JSON_L": null,
+        "ORIGINS": [
+          "https://app.example.com"
+        ],
+        "SHARDS": [
+          5
+        ]
+      }
+    },
+    {
+      "id": "list/one item [list=json]",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "SHARDS": "[5]"
+      },
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": null,
+        "JSON_L": null,
+        "ORIGINS": [
+          "https://app.example.com"
+        ],
+        "SHARDS": [
+          5
+        ]
+      }
+    },
+    {
+      "id": "list/one item [list=indexed]",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "indexed",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "SHARDS__0": "5"
+      },
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": null,
+        "JSON_L": null,
+        "ORIGINS": [
+          "https://app.example.com"
+        ],
+        "SHARDS": [
+          5
+        ]
+      }
+    },
+    {
+      "id": "list/defaults and absent optionals",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {},
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": null,
+        "JSON_L": null,
+        "ORIGINS": [
+          "https://app.example.com"
+        ],
+        "SHARDS": null
+      }
+    },
+    {
+      "id": "list/items with commas need a non-csv encoding [list=json]",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "ORIGINS": "[\"a,b\",\"c\"]"
+      },
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": null,
+        "JSON_L": null,
+        "ORIGINS": [
+          "a,b",
+          "c"
+        ],
+        "SHARDS": null
+      }
+    },
+    {
+      "id": "list/items with commas need a non-csv encoding [list=indexed]",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "ORIGINS__0": "a,b",
+        "ORIGINS__1": "c"
+      },
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": null,
+        "JSON_L": null,
+        "ORIGINS": [
+          "a,b",
+          "c"
+        ],
+        "SHARDS": null
+      }
+    },
+    {
+      "id": "list/custom csv separator",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "CSV_L": "a,b;c"
+      },
+      "expect": {
+        "CSV_L": [
+          "a,b",
+          "c"
+        ],
+        "INDEXED_L": null,
+        "JSON_L": null,
+        "ORIGINS": [
+          "https://app.example.com"
+        ],
+        "SHARDS": null
+      }
+    },
+    {
+      "id": "list/json list",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "JSON_L": "[1,2,3]"
+      },
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": null,
+        "JSON_L": [
+          1,
+          2,
+          3
+        ],
+        "ORIGINS": [
+          "https://app.example.com"
+        ],
+        "SHARDS": null
+      }
+    },
+    {
+      "id": "list/malformed json list",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "JSON_L": "[1,2"
+      },
+      "errors": [
+        {
+          "var": "JSON_L",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "list/json list of the wrong item type",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "JSON_L": "[\"1\"]"
+      },
+      "errors": [
+        {
+          "var": "JSON_L",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "list/indexed list",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "INDEXED_L__0": "x",
+        "INDEXED_L__1": "y"
+      },
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": [
+          "x",
+          "y"
+        ],
+        "JSON_L": null,
+        "ORIGINS": [
+          "https://app.example.com"
+        ],
+        "SHARDS": null
+      }
+    },
+    {
+      "id": "list/indexed list with too many items",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "INDEXED_L__0": "x",
+        "INDEXED_L__1": "y",
+        "INDEXED_L__2": "z"
+      },
+      "errors": [
+        {
+          "var": "INDEXED_L",
+          "code": "too_many_items"
+        }
+      ]
+    },
+    {
+      "id": "list/too many items",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "ORIGINS": "a,b,c,d"
+      },
+      "errors": [
+        {
+          "var": "ORIGINS",
+          "code": "too_many_items"
+        }
+      ]
+    },
+    {
+      "id": "list/an item that is not an int",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "SHARDS": "1,x"
+      },
+      "errors": [
+        {
+          "var": "SHARDS",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "list/an item below itemMin",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "SHARDS": "3,-1"
+      },
+      "errors": [
+        {
+          "var": "SHARDS",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "list/an item above itemMax",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "SHARDS": "1024"
+      },
+      "errors": [
+        {
+          "var": "SHARDS",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "list/empty is unset, so the default applies",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "ORIGINS": ""
+      },
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": null,
+        "JSON_L": null,
+        "ORIGINS": [
+          "https://app.example.com"
+        ],
+        "SHARDS": null
+      }
+    },
+    {
+      "id": "required/required values set, optionals absent",
+      "source": "load/required.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-required",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "DATABASE_HOST": {
+            "name": "DATABASE_HOST",
+            "description": "Database host name",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DEBUG": {
+            "name": "DEBUG",
+            "description": "Enable debug endpoints",
+            "required": false,
+            "secret": false,
+            "type": "bool"
+          },
+          "REGION": {
+            "name": "REGION",
+            "description": "Cloud region to run in",
+            "required": false,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "eu",
+              "us"
+            ]
+          },
+          "WORKERS": {
+            "name": "WORKERS",
+            "description": "Number of worker threads",
+            "required": true,
+            "secret": false,
+            "type": "int"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_HOST": "db.internal",
+        "WORKERS": "4"
+      },
+      "expect": {
+        "DATABASE_HOST": "db.internal",
+        "DEBUG": null,
+        "REGION": null,
+        "WORKERS": 4
+      }
+    },
+    {
+      "id": "required/every required variable missing",
+      "source": "load/required.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-required",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "DATABASE_HOST": {
+            "name": "DATABASE_HOST",
+            "description": "Database host name",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DEBUG": {
+            "name": "DEBUG",
+            "description": "Enable debug endpoints",
+            "required": false,
+            "secret": false,
+            "type": "bool"
+          },
+          "REGION": {
+            "name": "REGION",
+            "description": "Cloud region to run in",
+            "required": false,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "eu",
+              "us"
+            ]
+          },
+          "WORKERS": {
+            "name": "WORKERS",
+            "description": "Number of worker threads",
+            "required": true,
+            "secret": false,
+            "type": "int"
+          }
+        }
+      },
+      "env": {},
+      "errors": [
+        {
+          "var": "DATABASE_HOST",
+          "code": "missing_required"
+        },
+        {
+          "var": "WORKERS",
+          "code": "missing_required"
+        }
+      ]
+    },
+    {
+      "id": "required/an empty string satisfies a required string",
+      "source": "load/required.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-required",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "DATABASE_HOST": {
+            "name": "DATABASE_HOST",
+            "description": "Database host name",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DEBUG": {
+            "name": "DEBUG",
+            "description": "Enable debug endpoints",
+            "required": false,
+            "secret": false,
+            "type": "bool"
+          },
+          "REGION": {
+            "name": "REGION",
+            "description": "Cloud region to run in",
+            "required": false,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "eu",
+              "us"
+            ]
+          },
+          "WORKERS": {
+            "name": "WORKERS",
+            "description": "Number of worker threads",
+            "required": true,
+            "secret": false,
+            "type": "int"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_HOST": "",
+        "WORKERS": "2"
+      },
+      "expect": {
+        "DATABASE_HOST": "",
+        "DEBUG": null,
+        "REGION": null,
+        "WORKERS": 2
+      }
+    },
+    {
+      "id": "required/an empty value is unset for a required int",
+      "source": "load/required.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-required",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "DATABASE_HOST": {
+            "name": "DATABASE_HOST",
+            "description": "Database host name",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DEBUG": {
+            "name": "DEBUG",
+            "description": "Enable debug endpoints",
+            "required": false,
+            "secret": false,
+            "type": "bool"
+          },
+          "REGION": {
+            "name": "REGION",
+            "description": "Cloud region to run in",
+            "required": false,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "eu",
+              "us"
+            ]
+          },
+          "WORKERS": {
+            "name": "WORKERS",
+            "description": "Number of worker threads",
+            "required": true,
+            "secret": false,
+            "type": "int"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_HOST": "db",
+        "WORKERS": ""
+      },
+      "errors": [
+        {
+          "var": "WORKERS",
+          "code": "missing_required"
+        }
+      ]
+    },
+    {
+      "id": "required/an empty value is unset for an optional enum",
+      "source": "load/required.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-required",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "DATABASE_HOST": {
+            "name": "DATABASE_HOST",
+            "description": "Database host name",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DEBUG": {
+            "name": "DEBUG",
+            "description": "Enable debug endpoints",
+            "required": false,
+            "secret": false,
+            "type": "bool"
+          },
+          "REGION": {
+            "name": "REGION",
+            "description": "Cloud region to run in",
+            "required": false,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "eu",
+              "us"
+            ]
+          },
+          "WORKERS": {
+            "name": "WORKERS",
+            "description": "Number of worker threads",
+            "required": true,
+            "secret": false,
+            "type": "int"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_HOST": "db",
+        "REGION": "",
+        "WORKERS": "1"
+      },
+      "expect": {
+        "DATABASE_HOST": "db",
+        "DEBUG": null,
+        "REGION": null,
+        "WORKERS": 1
+      }
+    },
+    {
+      "id": "required/unknown variables are ignored",
+      "source": "load/required.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-required",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "DATABASE_HOST": {
+            "name": "DATABASE_HOST",
+            "description": "Database host name",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DEBUG": {
+            "name": "DEBUG",
+            "description": "Enable debug endpoints",
+            "required": false,
+            "secret": false,
+            "type": "bool"
+          },
+          "REGION": {
+            "name": "REGION",
+            "description": "Cloud region to run in",
+            "required": false,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "eu",
+              "us"
+            ]
+          },
+          "WORKERS": {
+            "name": "WORKERS",
+            "description": "Number of worker threads",
+            "required": true,
+            "secret": false,
+            "type": "int"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_HOST": "db",
+        "DATABASE_HOSTNAME": "typo",
+        "HOSTNAME": "pod-7d9f",
+        "KUBERNETES_SERVICE_HOST": "10.0.0.1",
+        "WORKERS": "1"
+      },
+      "expect": {
+        "DATABASE_HOST": "db",
+        "DEBUG": null,
+        "REGION": null,
+        "WORKERS": 1
+      }
+    },
+    {
+      "id": "required/every problem is reported together",
+      "source": "load/required.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-required",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "DATABASE_HOST": {
+            "name": "DATABASE_HOST",
+            "description": "Database host name",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DEBUG": {
+            "name": "DEBUG",
+            "description": "Enable debug endpoints",
+            "required": false,
+            "secret": false,
+            "type": "bool"
+          },
+          "REGION": {
+            "name": "REGION",
+            "description": "Cloud region to run in",
+            "required": false,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "eu",
+              "us"
+            ]
+          },
+          "WORKERS": {
+            "name": "WORKERS",
+            "description": "Number of worker threads",
+            "required": true,
+            "secret": false,
+            "type": "int"
+          }
+        }
+      },
+      "env": {
+        "DEBUG": "yes please",
+        "REGION": "apac",
+        "WORKERS": "many"
+      },
+      "errors": [
+        {
+          "var": "DATABASE_HOST",
+          "code": "missing_required"
+        },
+        {
+          "var": "WORKERS",
+          "code": "invalid_type"
+        },
+        {
+          "var": "DEBUG",
+          "code": "invalid_type"
+        },
+        {
+          "var": "REGION",
+          "code": "not_in_enum"
+        }
+      ]
+    },
+    {
+      "id": "secret/secrets as injected values",
+      "source": "load/secret.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-secret",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_TOKEN": {
+            "name": "API_TOKEN",
+            "description": "Token for the billing API",
+            "required": false,
+            "secret": true,
+            "type": "string",
+            "minLength": 20
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": true,
+            "type": "url",
+            "schemes": [
+              "postgres"
+            ]
+          },
+          "VAULT_HINT": {
+            "name": "VAULT_HINT",
+            "description": "Not a secret, so a reference-like value is just text",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          }
+        }
+      },
+      "env": {
+        "API_TOKEN": "tok_0123456789abcdefghij",
+        "DATABASE_URL": "postgres://app:s3cr3t@db:5432/app"
+      },
+      "expect": {
+        "API_TOKEN": "tok_0123456789abcdefghij",
+        "DATABASE_URL": "postgres://app:s3cr3t@db:5432/app",
+        "VAULT_HINT": null
+      }
+    },
+    {
+      "id": "secret/an unresolved vault reference",
+      "source": "load/secret.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-secret",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_TOKEN": {
+            "name": "API_TOKEN",
+            "description": "Token for the billing API",
+            "required": false,
+            "secret": true,
+            "type": "string",
+            "minLength": 20
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": true,
+            "type": "url",
+            "schemes": [
+              "postgres"
+            ]
+          },
+          "VAULT_HINT": {
+            "name": "VAULT_HINT",
+            "description": "Not a secret, so a reference-like value is just text",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_URL": "vault:secret/data/app/db#url"
+      },
+      "errors": [
+        {
+          "var": "DATABASE_URL",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "secret/an unresolved 1Password reference",
+      "source": "load/secret.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-secret",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_TOKEN": {
+            "name": "API_TOKEN",
+            "description": "Token for the billing API",
+            "required": false,
+            "secret": true,
+            "type": "string",
+            "minLength": 20
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": true,
+            "type": "url",
+            "schemes": [
+              "postgres"
+            ]
+          },
+          "VAULT_HINT": {
+            "name": "VAULT_HINT",
+            "description": "Not a secret, so a reference-like value is just text",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          }
+        }
+      },
+      "env": {
+        "API_TOKEN": "op://Production/billing/token-long-enough",
+        "DATABASE_URL": "postgres://db/app"
+      },
+      "errors": [
+        {
+          "var": "API_TOKEN",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "secret/an unresolved vals reference",
+      "source": "load/secret.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-secret",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_TOKEN": {
+            "name": "API_TOKEN",
+            "description": "Token for the billing API",
+            "required": false,
+            "secret": true,
+            "type": "string",
+            "minLength": 20
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": true,
+            "type": "url",
+            "schemes": [
+              "postgres"
+            ]
+          },
+          "VAULT_HINT": {
+            "name": "VAULT_HINT",
+            "description": "Not a secret, so a reference-like value is just text",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_URL": "ref+awssecrets://app/db#/url"
+      },
+      "errors": [
+        {
+          "var": "DATABASE_URL",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "secret/a secret that violates its constraints",
+      "source": "load/secret.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-secret",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_TOKEN": {
+            "name": "API_TOKEN",
+            "description": "Token for the billing API",
+            "required": false,
+            "secret": true,
+            "type": "string",
+            "minLength": 20
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": true,
+            "type": "url",
+            "schemes": [
+              "postgres"
+            ]
+          },
+          "VAULT_HINT": {
+            "name": "VAULT_HINT",
+            "description": "Not a secret, so a reference-like value is just text",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          }
+        }
+      },
+      "env": {
+        "API_TOKEN": "short-secret-value",
+        "DATABASE_URL": "mysql://app:hunter2@db/app"
+      },
+      "errors": [
+        {
+          "var": "DATABASE_URL",
+          "code": "invalid_scheme"
+        },
+        {
+          "var": "API_TOKEN",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "secret/reference prefixes only matter on secrets",
+      "source": "load/secret.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-secret",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_TOKEN": {
+            "name": "API_TOKEN",
+            "description": "Token for the billing API",
+            "required": false,
+            "secret": true,
+            "type": "string",
+            "minLength": 20
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": true,
+            "type": "url",
+            "schemes": [
+              "postgres"
+            ]
+          },
+          "VAULT_HINT": {
+            "name": "VAULT_HINT",
+            "description": "Not a secret, so a reference-like value is just text",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_URL": "postgres://db/app",
+        "VAULT_HINT": "vault:secret/data/x"
+      },
+      "expect": {
+        "API_TOKEN": null,
+        "DATABASE_URL": "postgres://db/app",
+        "VAULT_HINT": "vault:secret/data/x"
+      }
+    },
+    {
+      "id": "string/typed values",
+      "source": "load/string.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-string",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CODE": {
+            "name": "CODE",
+            "description": "Contains three digits somewhere",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "pattern": "[0-9]{3}"
+          },
+          "NAME": {
+            "name": "NAME",
+            "description": "Display name of the service",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "NOTE": {
+            "name": "NOTE",
+            "description": "Free text, kept exactly as given",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          },
+          "SLUG": {
+            "name": "SLUG",
+            "description": "URL slug, matched anywhere unless anchored",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "default": "home",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        }
+      },
+      "env": {
+        "CODE": "ab123cd",
+        "NAME": "héllo",
+        "NOTE": "cost $5, see $(HOME)",
+        "SLUG": "my-page"
+      },
+      "expect": {
+        "CODE": "ab123cd",
+        "NAME": "héllo",
+        "NOTE": "cost $5, see $(HOME)",
+        "SLUG": "my-page"
+      }
+    },
+    {
+      "id": "string/defaults and absent optionals",
+      "source": "load/string.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-string",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CODE": {
+            "name": "CODE",
+            "description": "Contains three digits somewhere",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "pattern": "[0-9]{3}"
+          },
+          "NAME": {
+            "name": "NAME",
+            "description": "Display name of the service",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "NOTE": {
+            "name": "NOTE",
+            "description": "Free text, kept exactly as given",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          },
+          "SLUG": {
+            "name": "SLUG",
+            "description": "URL slug, matched anywhere unless anchored",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "default": "home",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        }
+      },
+      "env": {},
+      "expect": {
+        "CODE": null,
+        "NAME": null,
+        "NOTE": null,
+        "SLUG": "home"
+      }
+    },
+    {
+      "id": "string/length counts characters, not bytes",
+      "source": "load/string.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-string",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CODE": {
+            "name": "CODE",
+            "description": "Contains three digits somewhere",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "pattern": "[0-9]{3}"
+          },
+          "NAME": {
+            "name": "NAME",
+            "description": "Display name of the service",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "NOTE": {
+            "name": "NOTE",
+            "description": "Free text, kept exactly as given",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          },
+          "SLUG": {
+            "name": "SLUG",
+            "description": "URL slug, matched anywhere unless anchored",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "default": "home",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        }
+      },
+      "env": {
+        "NAME": "日本"
+      },
+      "expect": {
+        "CODE": null,
+        "NAME": "日本",
+        "NOTE": null,
+        "SLUG": "home"
+      }
+    },
+    {
+      "id": "string/shorter than minLength",
+      "source": "load/string.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-string",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CODE": {
+            "name": "CODE",
+            "description": "Contains three digits somewhere",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "pattern": "[0-9]{3}"
+          },
+          "NAME": {
+            "name": "NAME",
+            "description": "Display name of the service",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "NOTE": {
+            "name": "NOTE",
+            "description": "Free text, kept exactly as given",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          },
+          "SLUG": {
+            "name": "SLUG",
+            "description": "URL slug, matched anywhere unless anchored",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "default": "home",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        }
+      },
+      "env": {
+        "NAME": "a"
+      },
+      "errors": [
+        {
+          "var": "NAME",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "string/longer than maxLength",
+      "source": "load/string.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-string",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CODE": {
+            "name": "CODE",
+            "description": "Contains three digits somewhere",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "pattern": "[0-9]{3}"
+          },
+          "NAME": {
+            "name": "NAME",
+            "description": "Display name of the service",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "NOTE": {
+            "name": "NOTE",
+            "description": "Free text, kept exactly as given",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          },
+          "SLUG": {
+            "name": "SLUG",
+            "description": "URL slug, matched anywhere unless anchored",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "default": "home",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        }
+      },
+      "env": {
+        "NAME": "abcdef"
+      },
+      "errors": [
+        {
+          "var": "NAME",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "string/anchored pattern rejects a partial match",
+      "source": "load/string.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-string",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CODE": {
+            "name": "CODE",
+            "description": "Contains three digits somewhere",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "pattern": "[0-9]{3}"
+          },
+          "NAME": {
+            "name": "NAME",
+            "description": "Display name of the service",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "NOTE": {
+            "name": "NOTE",
+            "description": "Free text, kept exactly as given",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          },
+          "SLUG": {
+            "name": "SLUG",
+            "description": "URL slug, matched anywhere unless anchored",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "default": "home",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        }
+      },
+      "env": {
+        "SLUG": "My-Page"
+      },
+      "errors": [
+        {
+          "var": "SLUG",
+          "code": "pattern_mismatch"
+        }
+      ]
+    },
+    {
+      "id": "string/unanchored pattern matches anywhere",
+      "source": "load/string.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-string",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CODE": {
+            "name": "CODE",
+            "description": "Contains three digits somewhere",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "pattern": "[0-9]{3}"
+          },
+          "NAME": {
+            "name": "NAME",
+            "description": "Display name of the service",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "NOTE": {
+            "name": "NOTE",
+            "description": "Free text, kept exactly as given",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          },
+          "SLUG": {
+            "name": "SLUG",
+            "description": "URL slug, matched anywhere unless anchored",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "default": "home",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        }
+      },
+      "env": {
+        "CODE": "x999y"
+      },
+      "expect": {
+        "CODE": "x999y",
+        "NAME": null,
+        "NOTE": null,
+        "SLUG": "home"
+      }
+    },
+    {
+      "id": "string/unanchored pattern with no match",
+      "source": "load/string.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-string",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CODE": {
+            "name": "CODE",
+            "description": "Contains three digits somewhere",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "pattern": "[0-9]{3}"
+          },
+          "NAME": {
+            "name": "NAME",
+            "description": "Display name of the service",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "NOTE": {
+            "name": "NOTE",
+            "description": "Free text, kept exactly as given",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          },
+          "SLUG": {
+            "name": "SLUG",
+            "description": "URL slug, matched anywhere unless anchored",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "default": "home",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        }
+      },
+      "env": {
+        "CODE": "abc"
+      },
+      "errors": [
+        {
+          "var": "CODE",
+          "code": "pattern_mismatch"
+        }
+      ]
+    },
+    {
+      "id": "string/an empty string is a present value",
+      "source": "load/string.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-string",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CODE": {
+            "name": "CODE",
+            "description": "Contains three digits somewhere",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "pattern": "[0-9]{3}"
+          },
+          "NAME": {
+            "name": "NAME",
+            "description": "Display name of the service",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "NOTE": {
+            "name": "NOTE",
+            "description": "Free text, kept exactly as given",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          },
+          "SLUG": {
+            "name": "SLUG",
+            "description": "URL slug, matched anywhere unless anchored",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "default": "home",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        }
+      },
+      "env": {
+        "NOTE": ""
+      },
+      "expect": {
+        "CODE": null,
+        "NAME": null,
+        "NOTE": "",
+        "SLUG": "home"
+      }
+    },
+    {
+      "id": "string/an empty string can fail minLength",
+      "source": "load/string.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-string",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CODE": {
+            "name": "CODE",
+            "description": "Contains three digits somewhere",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "pattern": "[0-9]{3}"
+          },
+          "NAME": {
+            "name": "NAME",
+            "description": "Display name of the service",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "NOTE": {
+            "name": "NOTE",
+            "description": "Free text, kept exactly as given",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          },
+          "SLUG": {
+            "name": "SLUG",
+            "description": "URL slug, matched anywhere unless anchored",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "default": "home",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        }
+      },
+      "env": {
+        "NAME": ""
+      },
+      "errors": [
+        {
+          "var": "NAME",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "string/values are never trimmed",
+      "source": "load/string.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-string",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CODE": {
+            "name": "CODE",
+            "description": "Contains three digits somewhere",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "pattern": "[0-9]{3}"
+          },
+          "NAME": {
+            "name": "NAME",
+            "description": "Display name of the service",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 5
+          },
+          "NOTE": {
+            "name": "NOTE",
+            "description": "Free text, kept exactly as given",
+            "required": false,
+            "secret": false,
+            "type": "string"
+          },
+          "SLUG": {
+            "name": "SLUG",
+            "description": "URL slug, matched anywhere unless anchored",
+            "required": false,
+            "secret": false,
+            "type": "string",
+            "default": "home",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        }
+      },
+      "env": {
+        "NOTE": "  padded \n"
+      },
+      "expect": {
+        "CODE": null,
+        "NAME": null,
+        "NOTE": "  padded \n",
+        "SLUG": "home"
+      }
+    },
+    {
+      "id": "too_few_items/enough items",
+      "source": "load/too_few_items.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-too-few-items",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BROKERS": {
+            "name": "BROKERS",
+            "description": "Kafka bootstrap servers",
+            "required": true,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "minItems": 2
+          }
+        }
+      },
+      "env": {
+        "BROKERS": "[\"kafka-0:9092\",\"kafka-1:9092\"]"
+      },
+      "expect": {
+        "BROKERS": [
+          "kafka-0:9092",
+          "kafka-1:9092"
+        ]
+      }
+    },
+    {
+      "id": "too_few_items/too few items",
+      "source": "load/too_few_items.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-too-few-items",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BROKERS": {
+            "name": "BROKERS",
+            "description": "Kafka bootstrap servers",
+            "required": true,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "minItems": 2
+          }
+        }
+      },
+      "env": {
+        "BROKERS": "[\"kafka-0:9092\"]"
+      },
+      "errors": [
+        {
+          "var": "BROKERS",
+          "code": "too_few_items"
+        }
+      ]
+    },
+    {
+      "id": "too_few_items/an empty json list is present and has too few items",
+      "source": "load/too_few_items.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-too-few-items",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BROKERS": {
+            "name": "BROKERS",
+            "description": "Kafka bootstrap servers",
+            "required": true,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "minItems": 2
+          }
+        }
+      },
+      "env": {
+        "BROKERS": "[]"
+      },
+      "errors": [
+        {
+          "var": "BROKERS",
+          "code": "too_few_items"
+        }
+      ]
+    },
+    {
+      "id": "url/typed values",
+      "source": "load/url.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-url",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_BASE": {
+            "name": "API_BASE",
+            "description": "Base URL of the upstream API",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "default": "https://api.example.com",
+            "schemes": [
+              "https"
+            ]
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to send webhooks",
+            "required": false,
+            "secret": false,
+            "type": "url"
+          }
+        }
+      },
+      "env": {
+        "API_BASE": "https://api.internal:8443/v1",
+        "CALLBACK": "http://hooks.svc:8080/in?x=1"
+      },
+      "expect": {
+        "API_BASE": "https://api.internal:8443/v1",
+        "CALLBACK": "http://hooks.svc:8080/in?x=1"
+      }
+    },
+    {
+      "id": "url/defaults and absent optionals",
+      "source": "load/url.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-url",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_BASE": {
+            "name": "API_BASE",
+            "description": "Base URL of the upstream API",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "default": "https://api.example.com",
+            "schemes": [
+              "https"
+            ]
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to send webhooks",
+            "required": false,
+            "secret": false,
+            "type": "url"
+          }
+        }
+      },
+      "env": {},
+      "expect": {
+        "API_BASE": "https://api.example.com",
+        "CALLBACK": null
+      }
+    },
+    {
+      "id": "url/scheme not allowed",
+      "source": "load/url.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-url",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_BASE": {
+            "name": "API_BASE",
+            "description": "Base URL of the upstream API",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "default": "https://api.example.com",
+            "schemes": [
+              "https"
+            ]
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to send webhooks",
+            "required": false,
+            "secret": false,
+            "type": "url"
+          }
+        }
+      },
+      "env": {
+        "API_BASE": "http://api.internal"
+      },
+      "errors": [
+        {
+          "var": "API_BASE",
+          "code": "invalid_scheme"
+        }
+      ]
+    },
+    {
+      "id": "url/no scheme",
+      "source": "load/url.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-url",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_BASE": {
+            "name": "API_BASE",
+            "description": "Base URL of the upstream API",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "default": "https://api.example.com",
+            "schemes": [
+              "https"
+            ]
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to send webhooks",
+            "required": false,
+            "secret": false,
+            "type": "url"
+          }
+        }
+      },
+      "env": {
+        "CALLBACK": "hooks.svc:8080"
+      },
+      "errors": [
+        {
+          "var": "CALLBACK",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "url/any scheme when none is declared",
+      "source": "load/url.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-url",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_BASE": {
+            "name": "API_BASE",
+            "description": "Base URL of the upstream API",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "default": "https://api.example.com",
+            "schemes": [
+              "https"
+            ]
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to send webhooks",
+            "required": false,
+            "secret": false,
+            "type": "url"
+          }
+        }
+      },
+      "env": {
+        "CALLBACK": "amqp://broker:5672"
+      },
+      "expect": {
+        "API_BASE": "https://api.example.com",
+        "CALLBACK": "amqp://broker:5672"
+      }
+    }
+  ],
+  "comment": "Generated by docuconf conformance from conformance/load. DO NOT EDIT.",
+  "version": 1
+}

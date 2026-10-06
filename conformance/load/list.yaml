@@ -1,0 +1,77 @@
+description: >
+  List variables (SPEC §4.3, §5). Values cases run once per encoding (csv,
+  json, indexed); env cases pin the encoding.
+vars:
+  ORIGINS:
+    type: list
+    description: Allowed CORS origins
+    items: string
+    minItems: 1
+    maxItems: 3
+    default: ["https://app.example.com"]
+  SHARDS:
+    type: list
+    description: Shard ids this instance owns
+    items: int
+    itemMin: 0
+    itemMax: 1023
+  CSV_L:
+    type: list
+    description: Strings separated by semicolons
+    items: string
+    encoding: csv
+    separator: ";"
+  JSON_L:
+    type: list
+    description: Ints as a JSON array
+    items: int
+    encoding: json
+  INDEXED_L:
+    type: list
+    description: Strings in NAME__0, NAME__1
+    items: string
+    encoding: indexed
+    maxItems: 2
+cases:
+  - name: typed values
+    values: {ORIGINS: ["https://a.example.com", "https://b.example.com"], SHARDS: [0, 7, 1023]}
+  - name: one item
+    values: {SHARDS: [5]}
+  - name: defaults and absent optionals
+    values: {}
+  - name: items with commas need a non-csv encoding
+    only: {list: [json, indexed]}
+    values: {ORIGINS: ["a,b", "c"]}
+  - name: custom csv separator
+    env: {CSV_L: "a,b;c"}
+    expect: {CSV_L: ["a,b", "c"]}
+  - name: json list
+    env: {JSON_L: "[1,2,3]"}
+    expect: {JSON_L: [1, 2, 3]}
+  - name: malformed json list
+    env: {JSON_L: "[1,2"}
+    errors: [{var: JSON_L, code: invalid_type}]
+  - name: json list of the wrong item type
+    env: {JSON_L: '["1"]'}
+    errors: [{var: JSON_L, code: invalid_type}]
+  - name: indexed list
+    env: {INDEXED_L__0: x, INDEXED_L__1: y}
+    expect: {INDEXED_L: [x, y]}
+  - name: indexed list with too many items
+    env: {INDEXED_L__0: x, INDEXED_L__1: y, INDEXED_L__2: z}
+    errors: [{var: INDEXED_L, code: too_many_items}]
+  - name: too many items
+    env: {ORIGINS: "a,b,c,d"}
+    errors: [{var: ORIGINS, code: too_many_items}]
+  - name: an item that is not an int
+    env: {SHARDS: "1,x"}
+    errors: [{var: SHARDS, code: invalid_type}]
+  - name: an item below itemMin
+    env: {SHARDS: "3,-1"}
+    errors: [{var: SHARDS, code: out_of_range}]
+  - name: an item above itemMax
+    env: {SHARDS: "1024"}
+    errors: [{var: SHARDS, code: out_of_range}]
+  - name: empty is unset, so the default applies
+    env: {ORIGINS: ""}
+    expect: {ORIGINS: ["https://app.example.com"]}

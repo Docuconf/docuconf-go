@@ -374,3 +374,18 @@ type Config struct {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
 }
+
+func TestListItemBounds(t *testing.T) {
+	values := write(t, "values.yaml", "ORDERS__BROKERS: [kafka-0:9092]\nORDERS__PARTITIONS: [-1, 4294967296]\n")
+	out, _, code := docuconf(t, "vet", "-contract", examples+"/orders_contract.cue", "-values", values)
+	requireLines(t, out, code, "ORDERS__PARTITIONS: item 1: 4294967296 is above itemMax 2147483647")
+}
+
+// cases.json is generated from conformance/load and checked in; SDK
+// runners read it, so it must not drift.
+func TestConformanceCasesUpToDate(t *testing.T) {
+	out, errOut, code := docuconf(t, "conformance", "-dir", "../../conformance", "-check")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out, errOut)
+	}
+}

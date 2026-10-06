@@ -1,0 +1,77 @@
+description: >
+  Duration variables (SPEC §4.3, §5). Values cases run once per encoding;
+  env cases pin the encoding. Expected durations are in canonical Go form.
+vars:
+  TIMEOUT:
+    type: duration
+    description: Request timeout
+    min: 1s
+    max: 24h
+    default: 30s
+  INTERVAL:
+    type: duration
+    description: Polling interval
+  GO_D:
+    type: duration
+    description: Go syntax duration
+    encoding: go
+  ISO_D:
+    type: duration
+    description: ISO 8601 duration
+    encoding: iso8601
+  SECONDS_D:
+    type: duration
+    description: Duration in seconds
+    encoding: seconds
+  TIMESPAN_D:
+    type: duration
+    description: .NET TimeSpan duration
+    encoding: timespan
+cases:
+  - name: typed values
+    values: {TIMEOUT: 1m30s, INTERVAL: 1500ms}
+  - name: long durations
+    values: {TIMEOUT: 23h59m59s, INTERVAL: 50h}
+  - name: zero
+    values: {INTERVAL: 0s}
+  - name: defaults and absent optionals
+    values: {}
+  - name: below min
+    env: {TIMEOUT: "500ms"}
+    errors: [{var: TIMEOUT, code: out_of_range}]
+  - name: above max
+    env: {TIMEOUT: "25h"}
+    errors: [{var: TIMEOUT, code: out_of_range}]
+  - name: go syntax with several units
+    env: {GO_D: "1h2m3s4ms"}
+    expect: {GO_D: "1h2m3s4ms"}
+  - name: go syntax is not iso8601
+    env: {GO_D: "PT90S"}
+    errors: [{var: GO_D, code: invalid_type}]
+  - name: iso8601 seconds
+    env: {ISO_D: "PT90S"}
+    expect: {ISO_D: "1m30s"}
+  - name: iso8601 fractional seconds
+    env: {ISO_D: "PT1.5S"}
+    expect: {ISO_D: "1s500ms"}
+  - name: iso8601 is not go syntax
+    env: {ISO_D: "1m30s"}
+    errors: [{var: ISO_D, code: invalid_type}]
+  - name: seconds
+    env: {SECONDS_D: "90"}
+    expect: {SECONDS_D: "1m30s"}
+  - name: fractional seconds
+    env: {SECONDS_D: "0.25"}
+    expect: {SECONDS_D: "250ms"}
+  - name: seconds is not go syntax
+    env: {SECONDS_D: "90s"}
+    errors: [{var: SECONDS_D, code: invalid_type}]
+  - name: timespan
+    env: {TIMESPAN_D: "00:01:30"}
+    expect: {TIMESPAN_D: "1m30s"}
+  - name: timespan with days and fraction
+    env: {TIMESPAN_D: "1.02:03:04.5"}
+    expect: {TIMESPAN_D: "26h3m4s500ms"}
+  - name: timespan is not go syntax
+    env: {TIMESPAN_D: "1m30s"}
+    errors: [{var: TIMESPAN_D, code: invalid_type}]

@@ -14,6 +14,7 @@ import (
 	"testing/fstest"
 
 	"cuelang.org/go/cue"
+	"cuelang.org/go/cue/ast"
 	"cuelang.org/go/cue/cuecontext"
 	"cuelang.org/go/cue/errors"
 	"cuelang.org/go/cue/load"
@@ -88,6 +89,12 @@ func (p *Platform) LoadContract(file string) (*Contract, error) {
 	if err != nil {
 		return nil, err
 	}
+	return p.ParseContract(file, src)
+}
+
+// ParseContract is LoadContract for a contract already in memory; file
+// names it in errors.
+func (p *Platform) ParseContract(file string, src []byte) (*Contract, error) {
 	v, err := p.build("/input/"+filepath.Base(file), map[string][]byte{"input/" + filepath.Base(file): src})
 	if err != nil {
 		return nil, contractError(file, err)
@@ -259,6 +266,45 @@ func (p *Platform) Render(c *Contract, values, files, overlays cue.Value) ([]byt
 		buf.WriteString("\n")
 	}
 	return buf.Bytes(), nil
+}
+
+// EnvVar is one container env entry produced by #Render.
+type EnvVar struct {
+	Name      string          `json:"name"`
+	Value     *string         `json:"value,omitempty"`
+	ValueFrom json.RawMessage `json:"valueFrom,omitempty"`
+}
+
+// RenderEnv runs #Render for variables only and returns the env entries.
+func (p *Platform) RenderEnv(c *Contract, values cue.Value) ([]EnvVar, error) {
+	v := p.meta.LookupPath(cue.ParsePath("#Render")).
+		FillPath(cue.ParsePath("contract"), c.Value).
+		FillPath(cue.ParsePath("values"), values).
+		LookupPath(cue.ParsePath("env"))
+	if err := v.Validate(cue.Concrete(true)); err != nil {
+		return nil, fmt.Errorf("render env: %s", errorLines(err))
+	}
+	raw, err := v.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("render env: %s", errorLines(err))
+	}
+	var env []EnvVar
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, err
+	}
+	return env, nil
+}
+
+// CompileFile builds a parsed file, such as YAML extracted to CUE.
+func (p *Platform) CompileFile(f *ast.File) (cue.Value, error) {
+	v := p.ctx.BuildFile(f)
+	return v, v.Err()
+}
+
+// CompileJSON compiles JSON data to a CUE value in the platform's context.
+func (p *Platform) CompileJSON(name string, data []byte) (cue.Value, error) {
+	v := p.ctx.CompileBytes(data, cue.Filename(name))
+	return v, v.Err()
 }
 
 // HelmValuesSchema runs #HelmValuesSchema and returns a values.schema.json

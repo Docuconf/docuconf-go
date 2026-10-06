@@ -1,0 +1,18 @@
+description: minItems on a required list (SPEC §4.3).
+vars:
+  BROKERS:
+    type: list
+    description: Kafka bootstrap servers
+    items: string
+    encoding: json
+    required: true
+    minItems: 2
+cases:
+  - name: enough items
+    values: {BROKERS: ["kafka-0:9092", "kafka-1:9092"]}
+  - name: too few items
+    env: {BROKERS: '["kafka-0:9092"]'}
+    errors: [{var: BROKERS, code: too_few_items}]
+  - name: an empty json list is present and has too few items
+    env: {BROKERS: "[]"}
+    errors: [{var: BROKERS, code: too_few_items}]
