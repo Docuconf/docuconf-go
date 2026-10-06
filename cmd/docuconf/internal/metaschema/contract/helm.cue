@@ -143,6 +143,10 @@ import (
 		if var.type == "list" {
 			type: "array"
 			items: type: [if var.items == "int" {"integer"}, "string"][0]
+			if var.items == "int" {
+				if var.itemMin != _|_ {items: minimum: var.itemMin}
+				if var.itemMax != _|_ {items: maximum: var.itemMax}
+			}
 			if var.minItems != _|_ {minItems: var.minItems}
 			if var.maxItems != _|_ {maxItems: var.maxItems}
 		}

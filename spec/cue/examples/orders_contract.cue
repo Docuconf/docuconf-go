@@ -21,6 +21,15 @@ orders: contract.#Contract & {
 			required:    true
 			minItems:    1
 		}
+		ORDERS__PARTITIONS: {
+			type:        "list"
+			description: "Partitions this instance consumes"
+			items:       "int"
+			encoding:    "indexed"
+			// The app reads them into int[], a 32-bit item type.
+			itemMin: -2147483648
+			itemMax: 2147483647
+		}
 		ORDERS__CHECKOUTTIMEOUT: {
 			type:        "duration"
 			description: "Time allowed to complete checkout"

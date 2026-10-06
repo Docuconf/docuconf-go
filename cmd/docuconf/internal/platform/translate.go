@@ -495,6 +495,15 @@ func explainVar(name string, cv, x cue.Value) []string {
 			if (items == "int" && e.Kind() != cue.IntKind) || (items == "string" && e.Kind() != cue.StringKind) {
 				return []string{fmt.Sprintf("item %d: expected %s, got %s", n, article(items), describe(e))}
 			}
+			if items == "int" {
+				iv, _ := e.Int(nil)
+				if m, ok := bigInt(cv, "itemMin"); ok && iv.Cmp(m) < 0 {
+					return []string{fmt.Sprintf("item %d: %s is below itemMin %s", n, iv, m)}
+				}
+				if m, ok := bigInt(cv, "itemMax"); ok && iv.Cmp(m) > 0 {
+					return []string{fmt.Sprintf("item %d: %s is above itemMax %s", n, iv, m)}
+				}
+			}
 			n++
 		}
 		if m, ok := bigInt(cv, "minItems"); ok && int64(n) < m.Int64() {
