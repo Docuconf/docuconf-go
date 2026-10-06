@@ -50,6 +50,12 @@ srv := &http.Server{TLSConfig: &tls.Config{GetCertificate: cfg.TLS.GetCertificat
 
 Violations carry stable codes (`missing_required`, `certificate_expiring`, ...), never include secret values, and go to `/dev/termination-log` too. `DOCUCONF_FILE_ROOT` remaps file paths for local runs; `.env` files are read only when passed in `Options.DotEnv`.
 
+### Injected secrets and config-file overlays
+
+Secrets injected at startup, by Bank-Vaults' `vault-env`, a wrapper such as `op run`, or vals, need nothing special: docuconf reads the environment as it is when the process starts, after injection, and validates the real values. If a secret variable still holds a reference (it starts with `vault:`, `op://` or `ref+`), the injector did not run, and loading fails with `invalid_type`, naming the variable and the reference scheme but never the value.
+
+caarlos0/env reads only environment variables and does not layer config files, so the Go SDK has no config-file overlays (spec section 4.7) and never exports `overlays`. A platform supplies every Go variable through the environment.
+
 ## Export and validate
 
 ```

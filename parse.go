@@ -163,6 +163,16 @@ func load(ptr any, opts Options, parse bool) error {
 		if v.deprecated != "" {
 			logger.Warn("docuconf: deprecated variable is set", "name", v.name, "message", v.deprecated)
 		}
+		if v.secret {
+			if scheme := injectorScheme(raw); scheme != "" {
+				// The injector should have replaced the reference before the
+				// process started (SPEC §4.5.1). Never print the reference.
+				viols = append(viols, Violation{Input: v.name, Code: CodeInvalidType, Message: fmt.Sprintf(
+					"holds an unresolved %s reference; the injector that should resolve it did not run", scheme)})
+				flagged[v.name] = true
+				continue
+			}
+		}
 		if v.loadFile {
 			data, err := os.ReadFile(raw)
 			if err != nil {
@@ -320,4 +330,19 @@ func copyMap(m map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+// injectorSchemes are the prefixes of references that an injector
+// (Bank-Vaults vault-env, op run, vals) resolves before the app starts.
+var injectorSchemes = []string{"vault:", "op://", "ref+"}
+
+// injectorScheme returns the injector reference scheme raw starts with, or
+// "" when raw is not such a reference.
+func injectorScheme(raw string) string {
+	for _, s := range injectorSchemes {
+		if strings.HasPrefix(raw, s) {
+			return s
+		}
+	}
+	return ""
 }

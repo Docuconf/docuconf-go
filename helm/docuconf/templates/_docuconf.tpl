@@ -195,6 +195,10 @@ ConfigMap the kubelet updates in place. restart: content-hashed.
 {{- $native := $x -}}
 {{- if eq $var.type "duration" -}}
 {{- $native = include "docuconf.duration" (dict "in" (toString $x) "encoding" ($var.encoding | default "go")) -}}
+{{- if eq ($var.encoding | default "go") "seconds" -}}
+{{- /* A count of seconds is a number in the file, as #RenderOverlay writes it. */ -}}
+{{- if contains "." $native }}{{ $native = float64 $native }}{{ else }}{{ $native = int64 $native }}{{ end -}}
+{{- end -}}
 {{- else if eq $var.type "int" -}}
 {{- $native = int64 $x -}}
 {{- else if and (eq $var.type "list") (eq ($var.items | default "string") "int") -}}

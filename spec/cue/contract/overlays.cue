@@ -9,6 +9,7 @@ import (
 	"list"
 	"path"
 	"strings"
+	"time"
 )
 
 // Config-file overlays (SPEC §4.7).
@@ -92,12 +93,22 @@ import (
 			let x = values[n]
 			let v = vars[n]
 			let native = [
+				// A count of seconds is a number; other encodings are text the host parses.
+				if v.type == "duration" if v.encoding == "seconds" {(#SecondsNumber & {in: x}).out},
 				if v.type == "duration" {(#RenderDuration & {in: x, encoding: v.encoding}).out},
 				x,
 			][0]
 			(#Nest & {parts: strings.Split(v.configKey, overlay.keySeparator), value: native}).out
 		}
 	}
+}
+
+// #SecondsNumber is a duration as a number of seconds: an integer when whole,
+// otherwise a decimal with millisecond precision (90s -> 90, 1500ms -> 1.5).
+#SecondsNumber: {
+	in: #Duration
+	let ms = div(time.ParseDuration(in), 1000000)
+	out: [if mod(ms, 1000) == 0 {div(ms, 1000)}, ms / 1000][0]
 }
 
 // #RenderOverlay produces the ConfigMap, volume and mount for one overlay.
