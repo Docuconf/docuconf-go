@@ -67,3 +67,7 @@ docuconf render -contract contract.cue -values values.yaml -files files.yaml
 `vet` prints one line per problem, such as `serving-tls: certificate does not cover api.example.com`. From Go code, `docuconf.Export[Config](docuconf.Meta{Name: "billing-api"})` returns the same contract.
 
 The old builder-based generator in `gen/` and `LoadDotEnv` are deprecated.
+
+## Licence
+
+[MIT](LICENSE).

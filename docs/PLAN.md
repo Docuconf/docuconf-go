@@ -203,7 +203,7 @@ This replaces the monorepo in the previous draft. Now that SDKs are thin layers 
    - Use org-wide rulesets: protected `main`, required reviews and status checks.
    - Enable private vulnerability reporting.
 4. **Contribution terms.** Use the DCO (sign-off) rather than a CLA. It has less friction and is what CNCF projects use.
-5. **Licence.** Apache-2.0 everywhere.
+5. **Licence.** MIT everywhere: a `LICENSE` file in every repository and the licence field in every package manifest.
 6. **Releases.**
    - release-please in each repo.
    - Trusted publishing (OIDC from GitHub Actions) wherever the registry supports it, so no long-lived tokens are stored.

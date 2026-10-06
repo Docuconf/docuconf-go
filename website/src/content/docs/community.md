@@ -16,4 +16,4 @@ Everything is under the [docuconf GitHub organization](https://github.com/docuco
 
 ## Licence
 
-The licence is being finalized. Apache-2.0 is proposed, as is common for Kubernetes-adjacent projects.
+Every docuconf repository is released under the MIT licence.
