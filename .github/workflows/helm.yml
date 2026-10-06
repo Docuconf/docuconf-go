@@ -23,7 +23,8 @@ jobs:
       # The example chart's generated files must match what the CLI writes.
       - run: |
           examples/helm/gateway/generate.sh
-          git diff --exit-code -- examples/helm/gateway
+          examples/helm/catalog/generate.sh
+          git diff --exit-code -- examples/helm
       - run: pip install pyyaml
       - run: helm/test.sh
       # The walkthrough's outputs must still be what the tools produce, and

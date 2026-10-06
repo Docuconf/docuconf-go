@@ -26,7 +26,15 @@ import (
 		},
 		{},
 	][0]
-	let _requiredVars = list.SortStrings([for n, v in contract.vars if v.required && _profile[n] == _|_ {n}])
+	// A variable an overlay may carry (non-secret, with a configKey) is
+	// satisfied by values or by any overlay; the others only by values.
+	let _overlayNames = [if contract.overlays != _|_ for o, _ in contract.overlays {o}]
+	let _overlayable = {
+		for n, v in contract.vars if !v.secret && v.configKey != _|_ && len(_overlayNames) > 0 {(n): true}
+	}
+	let _requiredAll = list.SortStrings([for n, v in contract.vars if v.required && _profile[n] == _|_ {n}])
+	let _requiredVars = [for n in _requiredAll if _overlayable[n] == _|_ {n}]
+	let _requiredEither = [for n in _requiredAll if _overlayable[n] != _|_ {n}]
 	let _requiredFiles = list.SortStrings([
 		if contract.files != _|_ for n, f in contract.files if f.required {n},
 	])
@@ -58,11 +66,43 @@ import (
 					}
 					if len(_requiredFiles) > 0 {required: _requiredFiles}
 				}
+				if len(_overlayNames) > 0 {
+					overlays: {
+						type:                 "object"
+						description:          "Values written into config-file overlays instead of the environment, by overlay name."
+						additionalProperties: false
+						properties: {
+							for o, ov in contract.overlays {
+								(o): {
+									type: "object"
+									[if ov.description != _|_ {description: ov.description}, {description: "Values for \(ov.path)."}][0]
+									additionalProperties: false
+									properties: {
+										for n, v in contract.vars if _overlayable[n] != _|_ {
+											(n): {
+												description: v.description
+												anyOf: [(#HelmVar & {var: v}).literal, if !v.required {_helmNull}]
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			if len(_requiredEither) > 0 {
+				allOf: [for n in _requiredEither {
+					anyOf: [
+						{required: ["values"], properties: values: required: [n]},
+						for o in _overlayNames {required: ["overlays"], properties: overlays: {required: [o], properties: (o): required: [n]}},
+					]
+				}]
 			}
 			let req = list.Concat([[if len(_requiredVars) > 0 {"values"}], [if len(_requiredFiles) > 0 {"files"}]])
 			if len(req) > 0 {required: req}
 		}
-		if len(_requiredVars) > 0 || len(_requiredFiles) > 0 {required: ["docuconf"]}
+		if len(_requiredAll) > 0 || len(_requiredFiles) > 0 {required: ["docuconf"]}
 	}
 }
 
@@ -70,7 +110,7 @@ import (
 	var: #Var
 	out: {...}
 
-	let literal = {
+	let _literal = {
 		if var.type == "string" {
 			type: "string"
 			if var.minLength != _|_ {minLength: var.minLength}
@@ -109,8 +149,18 @@ import (
 		if var.type == "json" && var.schema != _|_ {var.schema}
 	}
 
+	// An indexed list spans several variables, so an injector may set it
+	// but not resolve one reference into it.
+	let injected = [if var.type == "list" if var.encoding == "indexed" {_helmInjectedNoRef}, _helmInjected][0]
+
+	// The schema of a literal value, also used for overlays.
+	literal: _literal
+
 	if var.secret {
-		out: _helmSecretKeyRef & {description: "\(var.description) (secret: supply a secretKeyRef)"}
+		out: {
+			description: "\(var.description) (secret: supply a secretKeyRef or injected)"
+			oneOf: [_helmSecretKeyRef, injected, if !var.required {_helmNull}]
+		}
 	}
 	if !var.secret {
 		out: {
@@ -120,6 +170,8 @@ import (
 				if var.type != "list" {_helmConfigMapKeyRef},
 				if var.type == "string" {_helmFieldRef},
 				if var.type == "int" {_helmResourceFieldRef},
+				injected,
+				if !var.required {_helmNull},
 			]
 		}
 	}
@@ -132,7 +184,9 @@ _helmRef: {
 	out: {
 		type: "object"
 		required: [key]
-		additionalProperties: false
+		// Another source's key may remain as null: overlays switch sources
+		// with `old: null`, and Helm validates before dropping nulls.
+		additionalProperties: type: "null"
 		properties: (key): {
 			type:                 "object"
 			required:             fields
@@ -147,6 +201,28 @@ _helmConfigMapKeyRef: (_helmRef & {key: "configMapKeyRef", fields: ["name", "key
 _helmFieldRef: (_helmRef & {key: "fieldRef", fields: ["fieldPath"]}).out
 _helmResourceFieldRef: (_helmRef & {key: "resourceFieldRef", fields: ["resource"]}).out
 
+// An optional input set to null in an overlay is unset.
+_helmNull: {type: "null", description: "Unset."}
+
+// Supplied at runtime by an injector (SPEC §4.5.1).
+_helmProvider: {type: "string", pattern: "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"}
+_helmInjectedOf: {
+	props: {...}
+	out: {
+		type: "object"
+		required: ["injected"]
+		additionalProperties: type: "null"
+		properties: injected: {
+			type: "object"
+			required: ["provider"]
+			additionalProperties: false
+			properties: props
+		}
+	}
+}
+_helmInjected: (_helmInjectedOf & {props: {provider: _helmProvider, ref: {type: "string", minLength: 1}}}).out
+_helmInjectedNoRef: (_helmInjectedOf & {props: provider: _helmProvider}).out
+
 #HelmFile: {
 	file: #File
 	out: {...}
@@ -159,7 +235,7 @@ _helmResourceFieldRef: (_helmRef & {key: "resourceFieldRef", fields: ["resource"
 		out: {
 			type: "object"
 			"required": [key]
-			additionalProperties: false
+			additionalProperties: type: "null"
 			properties: (key): {
 				type:                 "object"
 				additionalProperties: false
@@ -184,7 +260,7 @@ _helmResourceFieldRef: (_helmRef & {key: "resourceFieldRef", fields: ["resource"
 	let inlineText = {
 		type: "object"
 		required: ["inline"]
-		additionalProperties: false
+		additionalProperties: type: "null"
 		properties: inline: {
 			type: "string"
 			if F.type == "text" {
@@ -200,7 +276,7 @@ _helmResourceFieldRef: (_helmRef & {key: "resourceFieldRef", fields: ["resource"
 	let inlineData = {
 		type: "object"
 		required: ["inline"]
-		additionalProperties: false
+		additionalProperties: type: "null"
 		properties: inline: [if F.type == "config" && F.schema != _|_ {F.schema}, {type: ["object", "array"]}][0]
 	}
 
@@ -210,6 +286,7 @@ _helmResourceFieldRef: (_helmRef & {key: "resourceFieldRef", fields: ["resource"
 	let certificate = (source & {key: "certificate", props: {"name": name, secretName: name, resolvedCertificate}, required: ["name", "secretName"]}).out
 	let csi = (source & {key: "csi", props: {secretProviderClass: name, driver: name}, required: ["secretProviderClass"]}).out
 	let image = (source & {key: "image", props: {reference: name, pullPolicy: enum: ["Always", "IfNotPresent", "Never"]}, required: ["reference"]}).out
+	let injectedFile = (source & {key: "injected", props: {provider: _helmProvider}, required: ["provider"]}).out
 
 	out: {
 		description: F.description
@@ -218,10 +295,12 @@ _helmResourceFieldRef: (_helmRef & {key: "resourceFieldRef", fields: ["resource"
 			if F.type == "tls" {certificate},
 			if F.type != "tls" {secretSingle},
 			csi,
+			injectedFile,
 			if !F.secret && F.type != "binary" {inlineText},
 			if !F.secret && F.type == "config" {inlineData},
 			if !F.secret {configMap},
 			if !F.secret {image},
+			if !F.required {_helmNull},
 		]
 	}
 }

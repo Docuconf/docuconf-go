@@ -146,7 +146,7 @@ once, before anything reaches the cluster ([`out/vet-bad.txt`](out/vet-bad.txt))
 
 ```console
 $ docuconf vet -contract contract.cue -values platform/bad-values.yaml -files platform/bad-files.yaml -policy platform/prod-policy.cue
-DATABASE_URL: is secret, so it must come from a secretKeyRef, never a literal or another reference
+DATABASE_URL: is secret, so it must come from a secretKeyRef or an injector, never a literal or another reference
 KAFKA_BROKERS: is required, and set neither by the platform nor by the selected profile
 LOG_LEVL: is not declared in the contract (check the spelling)
 PAYMENTS_TIMEOUT: "2 seconds" is not a duration such as 1m30s
@@ -334,10 +334,14 @@ $ helm template orders-api chart -f bad.yaml    # LOG_LEVEL: verbose, LOG_LEVL: 
 Error: values don't meet the specifications of the schema(s) in the following chart(s):
 orders-api:
 - at '/docuconf/values': additional properties 'LOG_LEVL' not allowed
-- at '/docuconf/values/DATABASE_URL': got string, want object
+- at '/docuconf/values/DATABASE_URL': 'oneOf' failed, none matched
+  - at '/docuconf/values/DATABASE_URL': got string, want object
+  - at '/docuconf/values/DATABASE_URL': got string, want object
 - at '/docuconf/values/LOG_LEVEL': 'anyOf' failed
   - at '/docuconf/values/LOG_LEVEL': value must be one of 'debug', 'info', 'warn', 'error'
   - at '/docuconf/values/LOG_LEVEL': got string, want object
+  - at '/docuconf/values/LOG_LEVEL': got string, want object
+  - at '/docuconf/values/LOG_LEVEL': got string, want null
 ```
 
 A secret given as a literal fails, and Helm does not print it. The

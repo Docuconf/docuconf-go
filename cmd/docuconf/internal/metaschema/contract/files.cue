@@ -121,7 +121,7 @@ import (
 // Where the platform gets a file input's content. Fields marked
 // "resolved" are filled in by the platform tooling from the cluster
 // (never from secret contents) so more can be checked before deploy.
-#FileSource: #InlineSource | #ConfigMapSource | #SecretSource | #CertificateSource | #CSISource | #ImageSource
+#FileSource: #InlineSource | #ConfigMapSource | #SecretSource | #CertificateSource | #CSISource | #ImageSource | #InjectedFileSource
 
 // Content written into the platform repository. Only for non-secret
 // inputs; the renderer turns it into an immutable, content-hashed
@@ -181,15 +181,22 @@ import (
 	pullPolicy?: "Always" | "IfNotPresent" | "Never"
 }})
 
+// A file written at runtime by an injector, such as the Vault Agent
+// injector rendering a template to /vault/secrets. Nothing is mounted: the
+// injector writes the file at the input's path, and the SDK checks it at
+// boot.
+#InjectedFileSource: close({injected: provider: #Provider})
+
 #SourceKind: {
 	source: #FileSource
-	kind:   "inline" | "configMap" | "secret" | "certificate" | "csi" | "image"
+	kind:   "inline" | "configMap" | "secret" | "certificate" | "csi" | "image" | "injected"
 	if source.inline != _|_ {kind: "inline"}
 	if source.configMap != _|_ {kind: "configMap"}
 	if source.secret != _|_ {kind: "secret"}
 	if source.certificate != _|_ {kind: "certificate"}
 	if source.csi != _|_ {kind: "csi"}
 	if source.image != _|_ {kind: "image"}
+	if source.injected != _|_ {kind: "injected"}
 }
 
 // #CheckFile binds a file input to its source and checks everything that
@@ -205,7 +212,7 @@ import (
 	let F = file
 
 	if F.secret {
-		secretFromSecretStore: true & (kind == "secret" || kind == "certificate" || kind == "csi")
+		secretFromSecretStore: true & (kind == "secret" || kind == "certificate" || kind == "csi" || kind == "injected")
 	}
 	if kind == "certificate" {
 		certificateOnlyForTLS: true & F.type == "tls"
@@ -312,8 +319,15 @@ import (
 
 	let mode = [if F.secret {256}, 292][0] // 0400 for secrets, 0444 otherwise
 
-	volume: {name: vol}
-	volumeMount: {name: vol, mountPath: mdir, readOnly: true}
+	// One volume and mount, except for injected files, which the injector
+	// writes into the container itself.
+	volumes: [...]
+	volumeMounts: [...]
+	if S.injected == _|_ {
+		volumes: [_volume]
+		volumeMounts: [{name: vol, mountPath: mdir, readOnly: true}]
+	}
+	_volume: name: vol
 	env: [if F.pathEnv != _|_ {{name: F.pathEnv, value: strings.Replace(F.path, "$", "$$", -1)}}]
 	configMaps: [...]
 	restartTriggers: [...]
@@ -326,7 +340,7 @@ import (
 		let content = (#InlineContent & {file: F, inline: S.inline}).out
 		let hash = strings.SliceRunes(hex.Encode(sha256.Sum256(content)), 0, 10)
 		let cm = "\(service)-\(N)-\(hash)"
-		volume: configMap: {name: cm, defaultMode: mode, items: [{key: fileName, path: fileName}]}
+		_volume: configMap: {name: cm, defaultMode: mode, items: [{key: fileName, path: fileName}]}
 		configMaps: [{
 			apiVersion: "v1"
 			kind:       "ConfigMap"
@@ -336,29 +350,29 @@ import (
 		}]
 	}
 	if S.configMap != _|_ {
-		volume: configMap: {name: S.configMap.name, defaultMode: mode, items: [{key: S.configMap.key, path: fileName}]}
+		_volume: configMap: {name: S.configMap.name, defaultMode: mode, items: [{key: S.configMap.key, path: fileName}]}
 		if F.reload == "restart" {restartTriggers: [{kind: "ConfigMap", name: S.configMap.name}]}
 	}
 	if S.secret != _|_ {
 		if isDir {
-			volume: secret: {secretName: S.secret.name, defaultMode: mode}
+			_volume: secret: {secretName: S.secret.name, defaultMode: mode}
 		}
 		if !isDir {
-			volume: secret: {secretName: S.secret.name, defaultMode: mode, items: [{key: S.secret.key, path: fileName}]}
+			_volume: secret: {secretName: S.secret.name, defaultMode: mode, items: [{key: S.secret.key, path: fileName}]}
 		}
 		if F.reload == "restart" {restartTriggers: [{kind: "Secret", name: S.secret.name}]}
 	}
 	if S.certificate != _|_ {
-		volume: secret: {secretName: S.certificate.secretName, defaultMode: mode}
+		_volume: secret: {secretName: S.certificate.secretName, defaultMode: mode}
 		if F.reload == "restart" {restartTriggers: [{kind: "Secret", name: S.certificate.secretName}]}
 	}
 	if S.image != _|_ {
 		// The image's files appear under the mount directory; the file the
 		// app reads must sit at the image root under the declared name.
-		volume: image: {reference: S.image.reference, if S.image.pullPolicy != _|_ {pullPolicy: S.image.pullPolicy}}
+		_volume: image: {reference: S.image.reference, if S.image.pullPolicy != _|_ {pullPolicy: S.image.pullPolicy}}
 	}
 	if S.csi != _|_ {
-		volume: csi: {driver: S.csi.driver, readOnly: true, volumeAttributes: secretProviderClass: S.csi.secretProviderClass}
+		_volume: csi: {driver: S.csi.driver, readOnly: true, volumeAttributes: secretProviderClass: S.csi.secretProviderClass}
 		if F.reload == "restart" {restartTriggers: [{kind: "SecretProviderClass", name: S.csi.secretProviderClass}]}
 	}
 }

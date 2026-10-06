@@ -1,0 +1,100 @@
+{
+  "apiVersion": "docuconf.dev/v1alpha1",
+  "kind": "ConfigContract",
+  "metadata": {
+    "name": "catalog-api",
+    "generator": {
+      "language": "dotnet",
+      "sdk": "Docuconf.Options",
+      "version": "0.2.0"
+    }
+  },
+  "vars": {
+    "CATALOG__CACHETTL": {
+      "name": "CATALOG__CACHETTL",
+      "description": "How long catalog pages are cached",
+      "required": false,
+      "secret": false,
+      "configKey": "Catalog:CacheTtl",
+      "type": "duration",
+      "encoding": "timespan",
+      "default": "5m",
+      "max": "1h"
+    },
+    "CATALOG__DBPASSWORD": {
+      "name": "CATALOG__DBPASSWORD",
+      "description": "Catalog database password",
+      "required": true,
+      "secret": true,
+      "type": "string",
+      "configKey": "Catalog:DbPassword"
+    },
+    "CATALOG__FEATUREDCATEGORIES": {
+      "name": "CATALOG__FEATUREDCATEGORIES",
+      "description": "Categories shown on the home page",
+      "required": false,
+      "secret": false,
+      "configKey": "Catalog:FeaturedCategories",
+      "type": "list",
+      "items": "string",
+      "encoding": "indexed",
+      "maxItems": 10
+    },
+    "CATALOG__PAGESIZE": {
+      "name": "CATALOG__PAGESIZE",
+      "description": "Items per page",
+      "required": false,
+      "secret": false,
+      "configKey": "Catalog:PageSize",
+      "type": "int",
+      "default": 20,
+      "min": 1,
+      "max": 500
+    },
+    "CATALOG__SEARCH__URL": {
+      "name": "CATALOG__SEARCH__URL",
+      "description": "Search service endpoint",
+      "required": true,
+      "secret": false,
+      "configKey": "Catalog:Search:Url",
+      "type": "url",
+      "schemes": [
+        "https"
+      ]
+    },
+    "CATALOG__TRACEHEADER": {
+      "name": "CATALOG__TRACEHEADER",
+      "description": "Header carrying the trace id",
+      "required": false,
+      "secret": false,
+      "type": "string",
+      "default": "traceparent"
+    },
+    "LOGGING__LOGLEVEL__DEFAULT": {
+      "name": "LOGGING__LOGLEVEL__DEFAULT",
+      "description": "Minimum log level",
+      "required": false,
+      "secret": false,
+      "configKey": "Logging:LogLevel:Default",
+      "type": "enum",
+      "values": [
+        "Trace",
+        "Debug",
+        "Information",
+        "Warning",
+        "Error"
+      ],
+      "default": "Information"
+    }
+  },
+  "overlays": {
+    "platform": {
+      "name": "platform",
+      "description": "Platform overrides, layered over the baked-in appsettings files",
+      "format": "json",
+      "path": "/app/config/appsettings.Production.json",
+      "keySeparator": ":",
+      "reload": "watch"
+    }
+  }
+}

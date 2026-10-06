@@ -37,8 +37,36 @@ same contract; these helpers also refuse names the contract does not declare.
 {{- $raw -}}
 {{- end -}}
 
+{{/*
+The inputs, with nulls removed. Overlays switch a source with `old: null`
+(Helm cannot replace a map with another), and Helm keeps those nulls in
+.Values, so a null value or source key means "not set". Data is left
+alone: inline file content and json values may hold nulls of their own.
+*/}}
 {{- define "docuconf.inputs" -}}
-{{- toJson (default dict .Values.docuconf) -}}
+{{- $in := default dict .Values.docuconf -}}
+{{- $out := dict -}}
+{{- range $section := list "values" "files" "overlays" -}}
+{{- $clean := dict -}}
+{{- range $k, $v := (get $in $section | default dict) -}}
+{{- if not (kindIs "invalid" $v) -}}
+{{- $isSource := and (kindIs "map" $v) (or (eq $section "files") (eq $section "overlays") (gt (len (pick $v "secretKeyRef" "configMapKeyRef" "fieldRef" "resourceFieldRef" "injected")) 0)) -}}
+{{- if $isSource -}}
+{{- $m := dict -}}
+{{- range $k2, $v2 := $v -}}
+{{- if not (kindIs "invalid" $v2) -}}
+{{- $_ := set $m $k2 $v2 -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := set $clean $k $m -}}
+{{- else -}}
+{{- $_ := set $clean $k $v -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := set $out $section $clean -}}
+{{- end -}}
+{{- toJson $out -}}
 {{- end -}}
 
 {{/* Kubernetes expands $(VAR) in env values and reduces $$ to $. */}}
@@ -137,12 +165,85 @@ true
 {{- $out = append $out $e -}}
 {{- end -}}
 {{- end -}}
+{{- /*
+Config-file overlays (SPEC §4.7): each value at its configKey, in native
+types, in a file of the app's own format. watch: a stable, mutable
+ConfigMap the kubelet updates in place. restart: content-hashed.
+*/ -}}
+{{- $ovals := (include "docuconf.inputs" . | fromJson).overlays | default dict -}}
+{{- $odecl := $c.overlays | default dict -}}
+{{- range $o := keys $ovals -}}
+{{- if not (hasKey $odecl $o) -}}
+{{- fail (printf "docuconf: overlay %q is not in the %s contract" $o $c.metadata.name) -}}
+{{- end -}}
+{{- end -}}
+{{- range $o := keys $odecl | sortAlpha -}}
+{{- if hasKey $ovals $o -}}
+{{- $ov := get $odecl $o -}}
+{{- $data := dict -}}
+{{- range $n, $x := get $ovals $o -}}
+{{- if not (hasKey $c.vars $n) -}}
+{{- fail (printf "docuconf: %s (in overlay %s) is not in the %s contract" $n $o $c.metadata.name) -}}
+{{- end -}}
+{{- $var := get $c.vars $n -}}
+{{- if $var.secret -}}
+{{- fail (printf "docuconf: %s is secret, so it cannot go in overlay %s; supply it as a secretKeyRef or injected" $n $o) -}}
+{{- end -}}
+{{- if not $var.configKey -}}
+{{- fail (printf "docuconf: %s has no configKey, so overlay %s has nowhere to put it" $n $o) -}}
+{{- end -}}
+{{- $native := $x -}}
+{{- if eq $var.type "duration" -}}
+{{- $native = include "docuconf.duration" (dict "in" (toString $x) "encoding" ($var.encoding | default "go")) -}}
+{{- else if eq $var.type "int" -}}
+{{- $native = int64 $x -}}
+{{- else if and (eq $var.type "list") (eq ($var.items | default "string") "int") -}}
+{{- $l := list -}}
+{{- range $i := $x }}{{ $l = append $l (int64 $i) }}{{ end -}}
+{{- $native = $l -}}
+{{- end -}}
+{{- $parts := splitList $ov.keySeparator $var.configKey -}}
+{{- $cur := $data -}}
+{{- range $p := initial $parts -}}
+{{- if not (hasKey $cur $p) }}{{ $_ := set $cur $p dict }}{{ end -}}
+{{- $cur = get $cur $p -}}
+{{- end -}}
+{{- $_ := set $cur (last $parts) $native -}}
+{{- end -}}
+{{- $content := "" -}}
+{{- if eq $ov.format "json" -}}
+{{- $content = printf "%s\n" (toPrettyJson $data) -}}
+{{- else if eq $ov.format "yaml" -}}
+{{- $content = printf "%s\n" (toYaml $data) -}}
+{{- else -}}
+{{- $content = toToml $data -}}
+{{- end -}}
+{{- $watch := eq ($ov.reload | default "restart") "watch" -}}
+{{- $cm := printf "%s-overlay-%s" $root.Release.Name $o -}}
+{{- if not $watch }}{{ $cm = printf "%s-%s" $cm (sha256sum $content | trunc 10) }}{{ end -}}
+{{- $e := dict "name" $o "vol" (printf "dc-overlay-%s" $o) "path" $ov.path "pathEnv" "" "reload" ($ov.reload | default "restart") "isDir" false "source" (dict "overlay" $o) -}}
+{{- $_ := set $e "mountPath" (dir $ov.path) -}}
+{{- $_ := set $e "fileName" (base $ov.path) -}}
+{{- $_ := set $e "mode" 292 -}}
+{{- $_ := set $e "content" $content -}}
+{{- $_ := set $e "configMap" ($cm | trunc 63 | trimSuffix "-") -}}
+{{- $_ := set $e "mutable" $watch -}}
+{{- $out = append $out $e -}}
+{{- end -}}
+{{- end -}}
 {{- toJson $out -}}
 {{- end -}}
 
 {{- define "docuconf.env" -}}
 {{- $c := include "docuconf.contract" . | fromJson -}}
 {{- $values := (include "docuconf.inputs" . | fromJson).values | default dict -}}
+{{- range $o, $m := (include "docuconf.inputs" . | fromJson).overlays | default dict -}}
+{{- range $n := keys $m -}}
+{{- if hasKey $values $n -}}
+{{- fail (printf "docuconf: %s is set both in values and in overlay %s; set it in one place (the environment would win)" $n $o) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- range $name := keys $values -}}
 {{- if not (hasKey $c.vars $name) -}}
 {{- fail (printf "docuconf: %s is not in the %s contract" $name $c.metadata.name) -}}
@@ -152,12 +253,18 @@ true
 {{- $var := get $c.vars $name -}}
 {{- if hasKey $values $name -}}
 {{- $v := get $values $name -}}
-{{- if include "docuconf.isRef" $v }}
+{{- if and (kindIs "map" $v) (hasKey $v "injected") -}}
+{{- /* Supplied at runtime (SPEC §4.5.1): the injector's reference, or nothing. */ -}}
+{{- with $v.injected.ref }}
+- name: {{ $name }}
+  value: {{ include "docuconf.escape" . | quote }}
+{{- end -}}
+{{- else if include "docuconf.isRef" $v }}
 - name: {{ $name }}
   valueFrom:
     {{- toYaml $v | nindent 4 }}
 {{- else if $var.secret -}}
-{{- fail (printf "docuconf: %s is secret; supply it as a secretKeyRef, never as a value" $name) -}}
+{{- fail (printf "docuconf: %s is secret; supply it as a secretKeyRef or injected, never as a value" $name) -}}
 {{- else if eq $var.type "list" -}}
 {{- $enc := $var.encoding | default "csv" -}}
 {{- if eq $enc "indexed" -}}
@@ -195,15 +302,18 @@ true
 
 {{- define "docuconf.volumeMounts" -}}
 {{- range $e := include "docuconf.fileSpecs" . | fromJsonArray }}
+{{- if not (hasKey $e.source "injected") }}
 - name: {{ $e.vol }}
   mountPath: {{ $e.mountPath }}
   readOnly: true
+{{- end }}
 {{- end -}}
 {{- end -}}
 
 {{- define "docuconf.volumes" -}}
 {{- range $e := include "docuconf.fileSpecs" . | fromJsonArray }}
 {{- $s := $e.source }}
+{{- if not (hasKey $s "injected") }}
 - name: {{ $e.vol }}
 {{- if hasKey $e "configMap" }}
   configMap:
@@ -245,6 +355,7 @@ true
     pullPolicy: {{ . }}
 {{- end }}
 {{- end }}
+{{- end }}
 {{- end -}}
 {{- end -}}
 
@@ -259,7 +370,9 @@ metadata:
   name: {{ $e.configMap }}
   labels:
     app.kubernetes.io/part-of: {{ $c.metadata.name }}
+{{- if not $e.mutable }}
 immutable: true
+{{- end }}
 data:
   {{ $e.fileName }}: {{ $e.content | quote }}
 {{- end }}

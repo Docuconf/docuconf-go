@@ -8,7 +8,7 @@ Helm-based platform the same guarantees as the CUE/Crossplane path:
 | --- | --- |
 | Types, ranges, patterns, enum values, URL schemes, list bounds | `values.schema.json`, on every `helm lint`, `template`, `install` and `upgrade` |
 | Required inputs, unknown names (typos) | `values.schema.json` |
-| Secrets given only as `secretKeyRef`, never as literals | `values.schema.json` |
+| Secrets given only as `secretKeyRef` or `injected`, never as literals | `values.schema.json` |
 | Structured config-file content against the file's own JSON Schema | `values.schema.json` |
 | Wire encodings (lists, durations), `$` escaping, file projections, content-hashed ConfigMaps | the library chart's templates, identical to the CUE renderer |
 | Duration bounds, certificate details resolved from the cluster, environment policy | `docuconf vet`, in CI before `helm upgrade` |
@@ -45,6 +45,8 @@ Helm-based platform the same guarantees as the CUE/Crossplane path:
        POD_NAMESPACE: {fieldRef: {fieldPath: metadata.namespace}}
        GOMEMLIMIT: {resourceFieldRef: {resource: limits.memory}}
        PARTNER_KEYSTORE_PASSWORD: {secretKeyRef: {name: partner-keystore, key: password}}
+       DATABASE_URL:                  # resolved by Bank-Vaults when the pod starts
+         injected: {provider: bank-vaults, ref: "vault:secret/data/gateway/db#url"}
      files:                           # where each file input comes from
        serving-tls: {certificate: {name: gateway-tls, secretName: gateway-tls}}
        routes:
@@ -84,6 +86,38 @@ Helm-based platform the same guarantees as the CUE/Crossplane path:
 [`examples/helm/gateway`](../examples/helm/gateway) is a complete chart that
 uses every input kind.
 
+## Config-file overlays
+
+An app on a host that layers config files (.NET `appsettings`, Spring
+`application.yml`) can declare an overlay in its contract: one more file,
+mounted by the platform, between its baked-in files and the environment.
+Values go under `docuconf.overlays.<name>`, in native types:
+
+```yaml
+docuconf:
+  values:
+    CATALOG__DBPASSWORD:             # secrets stay in the environment
+      injected: {provider: bank-vaults, ref: "vault:secret/data/catalog/db#password"}
+  overlays:
+    platform:                        # /app/config/appsettings.Production.json
+      CATALOG__PAGESIZE: 50
+      CATALOG__CACHETTL: 90s
+      CATALOG__FEATUREDCATEGORIES: [books, games]
+```
+
+The helpers write each value at its variable's `configKey`
+(`{"Catalog": {"PageSize": 50, …}}`) and add the ConfigMap, volume and mount
+to `docuconf.configMaps`, `docuconf.volumes` and `docuconf.volumeMounts`, so a
+chart needs no extra templates. An overlay declared `reload: watch` uses a
+stable, mutable ConfigMap that the kubelet updates in place, so
+`reloadOnChange` picks changes up without a restart; `restart` uses a
+content-hashed one, so a change rolls the pods.
+
+The schema checks overlay values like env values, and rejects secrets and
+variables without a `configKey`. A variable set both in `values` and in an
+overlay fails the render, because the environment would silently win.
+[`examples/helm/catalog`](../examples/helm/catalog) is a complete chart.
+
 ## What a bad value looks like
 
 ```text
@@ -93,21 +127,26 @@ gateway:
 - at '/docuconf/values/LOG_LEVEL': 'anyOf' failed
   - at '/docuconf/values/LOG_LEVEL': value must be one of 'debug', 'info', 'warn', 'error'
   - at '/docuconf/values/LOG_LEVEL': got string, want object
+  - at '/docuconf/values/LOG_LEVEL': got string, want object
+  - at '/docuconf/values/LOG_LEVEL': got string, want null
 
 $ helm install gw . --set docuconf.values.LOG_LEVL=warn
 - at '/docuconf/values': additional properties 'LOG_LEVL' not allowed
 ```
 
-(The second `anyOf` branch is the `configMapKeyRef` form a variable may take
-instead.) A secret written as a literal fails with "got string, want
+(The other `anyOf` branches are the forms a variable may take instead of a
+literal: a `configMapKeyRef`, an `injected` value, or `null` to unset an
+optional one.) A secret written as a literal fails with "got string, want
 object", and Helm does not print the value.
 
 ## Things to know
 
-- **Switching a file's source in an overlay.** Helm merges an overlay into the
+- **Switching a source in an overlay.** Helm merges an overlay into the
   chart's defaults, so changing `routes` from `inline` to `configMap` in a
-  `-f prod.yaml` leaves both keys and the schema rejects it. Set the old key
-  to `null`:
+  `-f prod.yaml` would leave both keys. Set the old key to `null`; the schema
+  accepts a null in place of any other source, and the helpers drop it. The
+  same works for a variable (`secretKeyRef: null` next to `injected: …`), and
+  `null` on a whole optional input unsets it:
 
   ```yaml
   docuconf:
@@ -116,6 +155,13 @@ object", and Helm does not print the value.
         inline: null
         configMap: {name: routes, key: routes.json}
   ```
+
+- **Injected inputs.** A value with `injected.ref` is rendered as that
+  reference for the injector to resolve; one without `ref` is not rendered,
+  because the injector sets it. A file with an `injected` source gets no
+  volume: the injector (for example the Vault Agent injector) writes it at the
+  input's path. Enabling the injector, such as Bank-Vaults' pod annotations,
+  is up to the chart.
 
 - **`global`.** Helm copies `global` into the values of every dependency, and
   the library chart is a dependency named `docuconf`, so the schema allows a

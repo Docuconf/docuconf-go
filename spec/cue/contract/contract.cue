@@ -32,6 +32,8 @@ import (
 	}
 	vars: [N=#EnvName]: #Var & {name: N}
 	files?: [N=#InputName]: #File & {name: N}
+	// Config files the platform may mount over the app's own (overlays.cue).
+	overlays?: [N=#InputName]: #Overlay & {name: N}
 
 	// Profiles describe config files baked into the image and selected by
 	// an environment variable at runtime: appsettings.{Environment}.json
@@ -61,6 +63,14 @@ import (
 			for p, m in profiles.defaults for n, x in m if vars[n] != _|_ {
 				"\(p)/\(n)": #Check & {var: vars[n], value: x}
 			}
+		}
+	}
+
+	if overlays != _|_ {
+		for n, o in overlays {
+			let dir = path.Dir(o.path, path.Unix)
+			_mountDirs: "\(dir)": "overlay \(n)"
+			_mountNotReserved: "overlay \(n)": true & !list.Contains(#ReservedDirs, dir)
 		}
 	}
 
@@ -214,6 +224,22 @@ import (
 	}
 })
 
+// #Injected is a value supplied at runtime by something other than the pod
+// spec: a mutating webhook (Bank-Vaults), a wrapper process (op run) or an
+// operator (the OpenTelemetry operator). The SDK validates the value when
+// the process starts, after injection, so nothing about it is checked
+// before deploy except the shape of the reference.
+#Injected: close({injected: {
+	// Who supplies the value, e.g. "bank-vaults", "otel-operator".
+	provider: #Provider
+	// The reference the injector resolves, rendered verbatim as the env
+	// value, e.g. "vault:secret/data/db#url". Omitted when the injector
+	// sets the variable itself; nothing is rendered then.
+	ref?: string & !=""
+}})
+
+#Provider: =~"^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+
 // Non-secret values the platform supplies by reference rather than as a
 // literal. Their content is not known before deploy, so the SDK checks it
 // at boot.
@@ -244,9 +270,14 @@ import (
 	// Constraints go on `literal`, a copy of value, so that whether value
 	// is a reference can be decided from value without a cycle.
 	let isRef = (value & #ValueRef) != _|_
+	let isInjected = (value & #Injected) != _|_
 
 	if var.secret {
-		value: #SecretRef
+		value: #SecretRef | #Injected
+	}
+	if isInjected && value.injected.ref != _|_ && var.type == "list" {
+		// One env value cannot carry a list spread over NAME__0, NAME__1.
+		injectedRefNotIndexed: true & var.encoding != "indexed"
 	}
 	if !var.secret && isRef {
 		if value.fieldRef != _|_ {
@@ -257,7 +288,7 @@ import (
 		}
 		listCannotBeRef: true & var.type != "list"
 	}
-	if !var.secret && !isRef {
+	if !var.secret && !isRef && !isInjected {
 		literal: value
 		if var.type == "string" {
 			literal: string
@@ -327,9 +358,44 @@ import (
 			for n, _ in contract.files {(n)?: #FileSource}
 		}
 	})
+	// Values the platform writes into a config-file overlay instead of the
+	// environment, keyed by overlay name, then variable name.
+	overlays: close({
+		if contract.overlays != _|_ {
+			for o, _ in contract.overlays {
+				(o)?: close({for n, _ in contract.vars {(n)?: _}})
+			}
+		}
+	})
 	// JSON Schemas from the contract, compiled to CUE by the toolchain
 	// (cuelang.org/go/encoding/jsonschema), keyed by variable or input name.
 	#schemas: [string]: _
+
+	overlayChecks: {
+		for o, m in overlays for n, x in m {
+			let v = contract.vars[n]
+			"\(o)/\(n)": {
+				// Overlays are ConfigMaps, never a place for secret material.
+				notSecret: true & !v.secret
+				// A file holds values, not Kubernetes or injector references.
+				literalOnly: true & (x & #ValueRef) == _|_ && (x & #SecretRef) == _|_ && (x & #Injected) == _|_
+				// The value goes at the variable's configKey in the file.
+				hasConfigKey: true & v.configKey != _|_
+				if v.configKey != _|_ {
+					withinKeyDepth: true & len(strings.Split(v.configKey, contract.overlays[o].keySeparator)) <= #MaxKeyDepth
+				}
+				if !v.secret && (x & #ValueRef) == _|_ && (x & #Injected) == _|_ {
+					value: #CheckOverlayValue & {var: v, value: x, if #schemas[n] != _|_ {#schema: #schemas[n]}}
+				}
+			}
+		}
+	}
+	// A variable comes from one place: the environment or one overlay. The
+	// environment would silently win over the overlay, so both is an error.
+	_suppliedBy: {
+		for n, _ in values {(n): "env"}
+		for o, m in overlays for n, _ in m {(n): "overlay \(o)"}
+	}
 
 	checks: {
 		for n, v in contract.vars if values[n] != _|_ {
@@ -348,7 +414,7 @@ import (
 	// on another field of values (the profile selector) is a cycle.
 	missingRequired: close({
 		for n, v in contract.vars
-		if v.required && values[n] == _|_ && _fromProfile[n] == _|_ {
+		if v.required && values[n] == _|_ && _fromProfile[n] == _|_ && _inOverlay[n] == _|_ {
 			(n): "required, and not set by the platform or the selected profile"
 		}
 		if contract.files != _|_ {
@@ -358,6 +424,8 @@ import (
 		}
 	})
 	missingRequired: close({})
+
+	_inOverlay: {for o, m in overlays for n, _ in m {(n): true}}
 
 	// A required variable is satisfied by the selected profile's file.
 	_fromProfile: {...}
@@ -378,6 +446,13 @@ import (
 	contract: #Contract
 	values: [string]: _
 	files: [string]:  #FileSource
+	overlays: [string]: [string]: _
+
+	let _overlays = [
+		if contract.overlays != _|_ for o, ov in contract.overlays if overlays[o] != _|_ {
+			#RenderOverlay & {service: contract.metadata.name, overlay: ov, vars: contract.vars, values: overlays[o]}
+		},
+	]
 
 	let _files = [
 		if contract.files != _|_ for n, f in contract.files if files[n] != _|_ {
@@ -391,9 +466,9 @@ import (
 		},
 		for r in _files {r.env},
 	], 1)
-	volumes: [for r in _files {r.volume}]
-	volumeMounts: [for r in _files {r.volumeMount}]
-	configMaps: list.FlattenN([for r in _files {r.configMaps}], 1)
+	volumes: list.Concat([list.FlattenN([for r in _files {r.volumes}], 1), [for r in _overlays {r.volume}]])
+	volumeMounts: list.Concat([list.FlattenN([for r in _files {r.volumeMounts}], 1), [for r in _overlays {r.volumeMount}]])
+	configMaps: list.Concat([list.FlattenN([for r in _files {r.configMaps}], 1), [for r in _overlays {r.configMap}]])
 	restartTriggers: list.FlattenN([for r in _files {r.restartTriggers}], 1)
 }
 
@@ -409,8 +484,12 @@ import (
 	let V = value
 
 	let isRef = (V & #ValueRef) != _|_
+	let isInjected = (V & #Injected) != _|_
 
-	if var.secret || isRef {
+	if isInjected {
+		out: [if V.injected.ref != _|_ {{name: N, value: strings.Replace(V.injected.ref, "$", "$$", -1)}}]
+	}
+	if !isInjected && (var.secret || isRef) {
 		out: [{name: N, valueFrom: V}]
 	}
 
@@ -421,7 +500,7 @@ import (
 		out: strings.Replace(in, "$", "$$", -1)
 	}
 
-	if !var.secret && !isRef {
+	if !var.secret && !isRef && !isInjected {
 		if var.type == "json" {
 			out: [{name: N, value: (esc & {in: json.Marshal(V)}).out}]
 		}

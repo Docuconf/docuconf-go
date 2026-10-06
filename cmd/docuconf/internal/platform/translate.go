@@ -21,6 +21,8 @@ import (
 // fallback, and is withheld for secrets.
 type translator struct {
 	values, files cue.Value
+	overlays      cue.Value // overlay name -> variable name -> value
+	overlayDefs   map[string]cue.Value
 	vars          map[string]cue.Value
 	fileDefs      map[string]cue.Value
 	secrets       []string // literal values to scrub from every line
@@ -28,13 +30,23 @@ type translator struct {
 	out           []string
 }
 
-func newTranslator(c *Contract, values, files cue.Value) *translator {
+func newTranslator(c *Contract, values, files, overlays cue.Value) *translator {
 	t := &translator{
-		values:    values,
-		files:     files,
-		vars:      fields(c.Value.LookupPath(cue.ParsePath("vars"))),
-		fileDefs:  fields(c.Value.LookupPath(cue.ParsePath("files"))),
-		explained: map[string]bool{},
+		values:      values,
+		files:       files,
+		overlays:    overlays,
+		vars:        fields(c.Value.LookupPath(cue.ParsePath("vars"))),
+		fileDefs:    fields(c.Value.LookupPath(cue.ParsePath("files"))),
+		overlayDefs: fields(c.Value.LookupPath(cue.ParsePath("overlays"))),
+		explained:   map[string]bool{},
+	}
+	// A secret wrongly written into an overlay is scrubbed like a literal.
+	for _, m := range fields(overlays) {
+		for name, x := range fields(m) {
+			if v, ok := t.vars[name]; ok && boolean(v, "secret") {
+				collectStrings(x, &t.secrets)
+			}
+		}
 	}
 	for name, v := range t.vars {
 		x := t.value(name)
@@ -64,6 +76,78 @@ func (t *translator) declaredOnly(ctx *cue.Context, v cue.Value, declared map[st
 		out = out.FillPath(cue.MakePath(cue.Str(name)), it.Value())
 	}
 	return out
+}
+
+// declaredOverlays reports overlays the contract does not declare, names
+// they set that it does not declare, and variables set both in the
+// environment and in an overlay, and leaves them out of #Validate: CUE
+// would reject the whole input over any of them and hide every other
+// problem.
+func (t *translator) declaredOverlays(ctx *cue.Context) cue.Value {
+	out := ctx.CompileString("{}")
+	inEnv := fields(t.values)
+	it, _ := t.overlays.Fields()
+	for it != nil && it.Next() {
+		o := selName(it.Selector())
+		if _, ok := t.overlayDefs[o]; !ok {
+			t.add("overlay %s: is not declared in the contract", o)
+			continue
+		}
+		vars, _ := it.Value().Fields()
+		for vars != nil && vars.Next() {
+			name := selName(vars.Selector())
+			switch v, declared := t.vars[name]; {
+			case !declared:
+				t.add("%s: is not declared in the contract (check the spelling; in overlay %s)", name, o)
+				continue
+			case boolean(v, "secret"):
+				// Reported before anything else: secret material in a ConfigMap.
+				t.add("%s: is secret, so it cannot go in overlay %s (a ConfigMap); supply it in the environment as a secretKeyRef or injected", name, o)
+				continue
+			case inEnv[name].Exists():
+				t.add("%s: is set both in the environment and in overlay %s; set it in one place (the environment would win)", name, o)
+				continue
+			}
+			out = out.FillPath(cue.MakePath(cue.Str(o), cue.Str(name)), vars.Value())
+		}
+	}
+	return out
+}
+
+// overlayProblem explains a failed check on one overlay value
+// (overlayChecks.OVERLAY/NAME.check...).
+func (t *translator) overlayProblem(key string, rest []string, e errors.Error) {
+	o, name, _ := strings.Cut(key, "/")
+	if t.explained[key] {
+		return
+	}
+	check := ""
+	if len(rest) > 0 {
+		check = rest[0]
+	}
+	cv := t.vars[name]
+	x := t.overlays.LookupPath(cue.MakePath(cue.Str(o), cue.Str(name)))
+	switch check {
+	case "notSecret":
+		t.add("%s: is secret, so it cannot go in overlay %s (a ConfigMap); supply it in the environment as a secretKeyRef or injected", name, o)
+	case "literalOnly":
+		t.add("%s: overlay %s holds values, not references; give a literal, or supply the reference in the environment", name, o)
+	case "hasConfigKey":
+		t.add("%s: has no configKey in the contract, so overlay %s has nowhere to put it", name, o)
+	case "withinKeyDepth":
+		t.add("%s: configKey %s is nested deeper than 8 levels", name, str(cv, "configKey"))
+	case "value":
+		if lines := explainVar(name, cv, x); len(lines) > 0 {
+			for _, l := range lines {
+				t.add("%s: %s (in overlay %s)", name, l, o)
+			}
+		} else {
+			t.add("%s: %s (in overlay %s)", name, errMsg(e), o)
+		}
+	default:
+		t.add("%s: %s (in overlay %s)", name, errMsg(e), o)
+	}
+	t.explained[key] = true
 }
 
 func fields(v cue.Value) map[string]cue.Value {
@@ -204,6 +288,8 @@ func (t *translator) validate(err error) {
 			t.varProblem(name, e)
 		case "fileChecks":
 			t.fileProblem(name, p[2:], e)
+		case "overlayChecks":
+			t.overlayProblem(name, p[2:], e)
 		case "files":
 			if _, ok := t.fileDefs[name]; !ok {
 				t.add("%s: is not a file input declared in the contract", name)
@@ -260,7 +346,27 @@ func (t *translator) varProblem(name string, e errors.Error) {
 var durationRe = regexp.MustCompile(`^([0-9]+(ns|us|ms|s|m|h))+$`)
 var urlRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*://[^\s]+$`)
 
-var refKinds = []string{"configMapKeyRef", "fieldRef", "resourceFieldRef", "secretKeyRef"}
+var refKinds = []string{"configMapKeyRef", "fieldRef", "resourceFieldRef", "secretKeyRef", "injected"}
+
+var providerRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$`)
+
+// explainInjected explains a malformed injected value (SPEC §4.5.1). The
+// reference is not secret material, but it is never needed in the message.
+func explainInjected(cv, x cue.Value) []string {
+	var out []string
+	if p, err := x.LookupPath(cue.ParsePath("injected.provider")).String(); err != nil || !providerRe.MatchString(p) {
+		out = append(out, "injected.provider must name the injector as a lowercase label, such as bank-vaults")
+	}
+	ref := x.LookupPath(cue.ParsePath("injected.ref"))
+	if ref.Exists() {
+		if r, err := ref.String(); err != nil || r == "" {
+			out = append(out, "injected.ref, when given, must be a non-empty string")
+		} else if str(cv, "type") == "list" && str(cv, "encoding") == "indexed" {
+			out = append(out, "an indexed list is spread over NAME__0, NAME__1, …, so one injected reference cannot carry it; let the injector set the variables, without ref")
+		}
+	}
+	return out
+}
 
 // explainVar re-checks a value against its variable and explains what is
 // wrong, mirroring #Check. It returns nothing if it finds no problem, so
@@ -276,9 +382,12 @@ func explainVar(name string, cv, x cue.Value) []string {
 			}
 		}
 	}
+	if ref == "injected" {
+		return explainInjected(cv, x)
+	}
 	if secret {
 		if ref != "secretKeyRef" {
-			return []string{"is secret, so it must come from a secretKeyRef, never a literal or another reference"}
+			return []string{"is secret, so it must come from a secretKeyRef or an injector, never a literal or another reference"}
 		}
 		return nil
 	}
@@ -435,7 +544,7 @@ func (t *translator) fileProblem(name string, rest []string, e errors.Error) {
 	kind := sourceKind(src)
 	switch check {
 	case "secretFromSecretStore":
-		t.add("%s: is secret, so it must come from a secret, certificate or csi source, not %s", name, kind)
+		t.add("%s: is secret, so it must come from a secret, certificate, csi or injected source, not %s", name, kind)
 	case "certificateOnlyForTLS":
 		t.add("%s: a certificate source only fits a tls input, and this is a %s input", name, str(f, "type"))
 	case "binaryCannotBeInline":
@@ -500,7 +609,7 @@ func schemaMsg(path []string, e errors.Error) string {
 }
 
 func sourceKind(src cue.Value) string {
-	for _, k := range []string{"inline", "configMap", "secret", "certificate", "csi", "image"} {
+	for _, k := range []string{"inline", "configMap", "secret", "certificate", "csi", "image", "injected"} {
 		if src.LookupPath(cue.MakePath(cue.Str(k))).Exists() {
 			return k
 		}

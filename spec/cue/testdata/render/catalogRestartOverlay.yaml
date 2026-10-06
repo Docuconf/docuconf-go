@@ -1,0 +1,19 @@
+configMap:
+  apiVersion: v1
+  immutable: true
+  kind: ConfigMap
+  metadata:
+    name: catalog-api-overlay-platform-8a62dc56aa
+  data:
+    appsettings.Production.yaml: |
+      Catalog:
+        CacheTtl: "00:01:30"
+        FeaturedCategories:
+          - books
+          - games
+        PageSize: 50
+        Search:
+          Url: https://search.internal
+      Logging:
+        LogLevel:
+          Default: Warning

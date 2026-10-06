@@ -3,8 +3,45 @@
   "type": "object",
   "properties": {
     "docuconf": {
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": [
+                "values"
+              ],
+              "properties": {
+                "values": {
+                  "required": [
+                    "CATALOG__SEARCH__URL"
+                  ]
+                }
+              }
+            },
+            {
+              "required": [
+                "overlays"
+              ],
+              "properties": {
+                "overlays": {
+                  "required": [
+                    "platform"
+                  ],
+                  "properties": {
+                    "platform": {
+                      "required": [
+                        "CATALOG__SEARCH__URL"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
       "type": "object",
-      "description": "Inputs for orders-api, checked against its docuconf contract.",
+      "description": "Inputs for catalog-api, checked against its docuconf contract.",
       "additionalProperties": false,
       "properties": {
         "global": {
@@ -15,180 +52,8 @@
           "description": "Environment variables, as typed values.",
           "additionalProperties": false,
           "properties": {
-            "DATABASE_URL": {
-              "description": "Primary Postgres connection string (secret: supply a secretKeyRef or injected)",
-              "oneOf": [
-                {
-                  "type": "object",
-                  "required": [
-                    "secretKeyRef"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "secretKeyRef": {
-                      "type": "object",
-                      "required": [
-                        "name",
-                        "key"
-                      ],
-                      "additionalProperties": true,
-                      "properties": {
-                        "name": {
-                          "type": "string"
-                        },
-                        "key": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "injected"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "injected": {
-                      "type": "object",
-                      "required": [
-                        "provider"
-                      ],
-                      "additionalProperties": false,
-                      "properties": {
-                        "provider": {
-                          "type": "string",
-                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
-                        },
-                        "ref": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      }
-                    }
-                  }
-                }
-              ]
-            },
-            "KAFKA_BROKERS": {
-              "description": "Kafka brokers orders are published to",
-              "anyOf": [
-                {
-                  "minItems": 1,
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "injected"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "injected": {
-                      "type": "object",
-                      "required": [
-                        "provider"
-                      ],
-                      "additionalProperties": false,
-                      "properties": {
-                        "provider": {
-                          "type": "string",
-                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
-                        },
-                        "ref": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      }
-                    }
-                  }
-                }
-              ]
-            },
-            "LOG_LEVEL": {
-              "description": "Minimum log level emitted",
-              "anyOf": [
-                {
-                  "enum": [
-                    "debug",
-                    "info",
-                    "warn",
-                    "error"
-                  ]
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "configMapKeyRef"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "configMapKeyRef": {
-                      "type": "object",
-                      "required": [
-                        "name",
-                        "key"
-                      ],
-                      "additionalProperties": true,
-                      "properties": {
-                        "name": {
-                          "type": "string"
-                        },
-                        "key": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "injected"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "injected": {
-                      "type": "object",
-                      "required": [
-                        "provider"
-                      ],
-                      "additionalProperties": false,
-                      "properties": {
-                        "provider": {
-                          "type": "string",
-                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
-                        },
-                        "ref": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "type": "null",
-                  "description": "Unset."
-                }
-              ]
-            },
-            "PAYMENTS_TIMEOUT": {
-              "description": "Timeout for calls to the payments service",
+            "CATALOG__CACHETTL": {
+              "description": "How long catalog pages are cached",
               "anyOf": [
                 {
                   "type": "string",
@@ -255,11 +120,111 @@
                 }
               ]
             },
-            "PORT": {
-              "description": "HTTP listen port",
+            "CATALOG__DBPASSWORD": {
+              "description": "Catalog database password (secret: supply a secretKeyRef or injected)",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "secretKeyRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "secretKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "CATALOG__FEATUREDCATEGORIES": {
+              "description": "Categories shown on the home page",
               "anyOf": [
                 {
-                  "maximum": 65535,
+                  "maxItems": 10,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null",
+                  "description": "Unset."
+                }
+              ]
+            },
+            "CATALOG__PAGESIZE": {
+              "description": "Items per page",
+              "anyOf": [
+                {
+                  "maximum": 500,
                   "minimum": 1,
                   "type": "integer"
                 },
@@ -347,13 +312,171 @@
                 }
               ]
             },
-            "TRACE_SAMPLE_RATIO": {
-              "description": "Fraction of requests traced",
+            "CATALOG__SEARCH__URL": {
+              "description": "Search service endpoint",
               "anyOf": [
                 {
-                  "maximum": 1,
-                  "minimum": 0,
-                  "type": "number"
+                  "pattern": "^(https)://[^\\s]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "CATALOG__TRACEHEADER": {
+              "description": "Header carrying the trace id",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "configMapKeyRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "configMapKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "fieldRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "fieldRef": {
+                      "type": "object",
+                      "required": [
+                        "fieldPath"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "fieldPath": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null",
+                  "description": "Unset."
+                }
+              ]
+            },
+            "LOGGING__LOGLEVEL__DEFAULT": {
+              "description": "Minimum log level",
+              "anyOf": [
+                {
+                  "enum": [
+                    "Trace",
+                    "Debug",
+                    "Information",
+                    "Warning",
+                    "Error"
+                  ]
                 },
                 {
                   "type": "object",
@@ -418,374 +541,102 @@
             }
           },
           "required": [
-            "DATABASE_URL",
-            "KAFKA_BROKERS"
+            "CATALOG__DBPASSWORD"
           ]
         },
         "files": {
           "type": "object",
           "description": "Where each file input comes from.",
           "additionalProperties": false,
+          "properties": {}
+        },
+        "overlays": {
+          "type": "object",
+          "description": "Values written into config-file overlays instead of the environment, by overlay name.",
+          "additionalProperties": false,
           "properties": {
-            "serving-tls": {
-              "description": "Certificate the API serves HTTPS with",
-              "oneOf": [
-                {
-                  "type": "object",
-                  "required": [
-                    "secret"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "secret": {
-                      "required": [
-                        "name"
-                      ],
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "name": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "type": {
-                          "type": "string"
-                        },
-                        "keys": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        }
-                      }
+            "platform": {
+              "description": "Platform overrides, layered over the baked-in appsettings files",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "CATALOG__CACHETTL": {
+                  "description": "How long catalog pages are cached",
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^([0-9]+(ns|us|ms|s|m|h))+$"
+                    },
+                    {
+                      "type": "null",
+                      "description": "Unset."
                     }
-                  }
+                  ]
                 },
-                {
-                  "type": "object",
-                  "required": [
-                    "certificate"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "certificate": {
-                      "required": [
-                        "name",
-                        "secretName"
-                      ],
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "dnsNames": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        "name": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "privateKey": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "properties": {
-                            "algorithm": {
-                              "enum": [
-                                "RSA",
-                                "ECDSA",
-                                "Ed25519"
-                              ]
-                            }
-                          }
-                        },
-                        "duration": {
-                          "type": "string",
-                          "pattern": "^([0-9]+(ns|us|ms|s|m|h))+$"
-                        },
-                        "renewBefore": {
-                          "type": "string",
-                          "pattern": "^([0-9]+(ns|us|ms|s|m|h))+$"
-                        },
-                        "secretName": {
-                          "type": "string",
-                          "minLength": 1
-                        }
+                "CATALOG__FEATUREDCATEGORIES": {
+                  "description": "Categories shown on the home page",
+                  "anyOf": [
+                    {
+                      "maxItems": 10,
+                      "type": "array",
+                      "items": {
+                        "type": "string"
                       }
+                    },
+                    {
+                      "type": "null",
+                      "description": "Unset."
                     }
-                  }
+                  ]
                 },
-                {
-                  "type": "object",
-                  "required": [
-                    "csi"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "csi": {
-                      "required": [
-                        "secretProviderClass"
-                      ],
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "secretProviderClass": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "driver": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      }
+                "CATALOG__PAGESIZE": {
+                  "description": "Items per page",
+                  "anyOf": [
+                    {
+                      "maximum": 500,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null",
+                      "description": "Unset."
                     }
-                  }
+                  ]
                 },
-                {
-                  "type": "object",
-                  "required": [
-                    "injected"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "injected": {
-                      "required": [
-                        "provider"
-                      ],
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "provider": {
-                          "type": "string",
-                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
-                        }
-                      }
-                    }
-                  }
-                }
-              ]
-            },
-            "tax-rates": {
-              "description": "Tax rates by country, loaded at boot",
-              "oneOf": [
-                {
-                  "type": "object",
-                  "required": [
-                    "secret"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "secret": {
-                      "required": [
-                        "name",
-                        "key"
-                      ],
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "name": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "key": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "type": {
-                          "type": "string"
-                        },
-                        "keys": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "csi"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "csi": {
-                      "required": [
-                        "secretProviderClass"
-                      ],
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "secretProviderClass": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "driver": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "injected"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "injected": {
-                      "required": [
-                        "provider"
-                      ],
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "provider": {
-                          "type": "string",
-                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "inline"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "inline": {
+                "CATALOG__SEARCH__URL": {
+                  "description": "Search service endpoint",
+                  "anyOf": [
+                    {
+                      "pattern": "^(https)://[^\\s]+$",
                       "type": "string"
                     }
-                  }
+                  ]
                 },
-                {
-                  "type": "object",
-                  "required": [
-                    "inline"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "inline": {
-                      "type": "object",
-                      "required": [
-                        "default",
-                        "countries"
-                      ],
-                      "additionalProperties": false,
-                      "properties": {
-                        "default": {
-                          "type": "number",
-                          "description": "Rate used when a country is not listed",
-                          "minimum": 0,
-                          "maximum": 1
-                        },
-                        "countries": {
-                          "type": "object",
-                          "description": "Rates by ISO 3166-1 alpha-2 country code",
-                          "additionalProperties": {
-                            "type": "number"
-                          }
-                        }
-                      }
+                "LOGGING__LOGLEVEL__DEFAULT": {
+                  "description": "Minimum log level",
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "Trace",
+                        "Debug",
+                        "Information",
+                        "Warning",
+                        "Error"
+                      ]
+                    },
+                    {
+                      "type": "null",
+                      "description": "Unset."
                     }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "configMap"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "configMap": {
-                      "required": [
-                        "name",
-                        "key"
-                      ],
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "name": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "key": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "image"
-                  ],
-                  "additionalProperties": {
-                    "type": "null"
-                  },
-                  "properties": {
-                    "image": {
-                      "required": [
-                        "reference"
-                      ],
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "reference": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "pullPolicy": {
-                          "enum": [
-                            "Always",
-                            "IfNotPresent",
-                            "Never"
-                          ]
-                        }
-                      }
-                    }
-                  }
+                  ]
                 }
-              ]
+              }
             }
-          },
-          "required": [
-            "serving-tls",
-            "tax-rates"
-          ]
+          }
         }
       },
       "required": [
-        "values",
-        "files"
+        "values"
       ]
     }
   },
