@@ -190,4 +190,12 @@ func TestLoadContractFiles(t *testing.T) {
 	_, err = docuconf.LoadContract(c, docuconf.Options{Environment: map[string]string{}, FileRoot: root, TerminationLog: "-"})
 	require.True(t, errors.As(err, &verr), "%v", err)
 	require.Equal(t, docuconf.CodeFileMissing, verr.Violations[0].Code)
+	require.Equal(t, filepath.Join(root, "var/orders.txt")+" does not exist", verr.Violations[0].Message)
+
+	// With a pathEnv, the message names the variable that moves the file.
+	c = contractWithFiles(`"ORDERS_FILE": {"type": "string", "description": "Where the orders are"}`,
+		`"orders": {"type": "text", "description": "Orders to process", "path": "/var/orders.txt", "pathEnv": "ORDERS_FILE", "required": true}`)
+	_, err = docuconf.LoadContract(c, docuconf.Options{Environment: map[string]string{}, FileRoot: root, TerminationLog: "-"})
+	require.True(t, errors.As(err, &verr), "%v", err)
+	require.Equal(t, filepath.Join(root, "var/orders.txt")+" does not exist (mount it there, or set ORDERS_FILE)", verr.Violations[0].Message)
 }
