@@ -160,3 +160,81 @@ func TestDeclarationErrors(t *testing.T) {
 		require.Contains(t, all, want)
 	}
 }
+
+const contractCUEGolden = "testdata/contractcue.golden.cue"
+
+// TestContractCUE formats a contract built outside Go, with its keys in
+// no particular order, as Export would write it.
+func TestContractCUE(t *testing.T) {
+	in, err := os.ReadFile("testdata/contractcue.json")
+	require.NoError(t, err)
+	out, err := docuconf.ContractCUE(in, "")
+	require.NoError(t, err)
+	if *update {
+		require.NoError(t, os.WriteFile(contractCUEGolden, out, 0o644))
+	}
+	want, err := os.ReadFile(contractCUEGolden)
+	require.NoError(t, err)
+	require.Equal(t, string(want), string(out))
+
+	cue := cueBinary(t)
+	dir := t.TempDir()
+	copyDir(t, "spec/cue/cue.mod", filepath.Join(dir, "cue.mod"))
+	copyDir(t, "spec/cue/contract", filepath.Join(dir, "contract"))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "orders"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders", "contract.cue"), out, 0o644))
+	cmd := exec.Command(cue, "vet", "-c", "./orders/contract.cue")
+	cmd.Dir = dir
+	msg, err := cmd.CombinedOutput()
+	require.NoError(t, err, "cue vet failed:\n%s", msg)
+}
+
+func TestContractCUERejectsInvalidContracts(t *testing.T) {
+	_, err := docuconf.ContractCUE([]byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract",
+		"metadata": {"name": "Orders"}, "vars": {"PORT": {"type": "int", "description": "Port", "min": 2, "max": 1}}}`), "")
+	var de *docuconf.DeclarationError
+	require.True(t, errors.As(err, &de), "%v", err)
+	require.Contains(t, de.Error(), "PORT: description must be at least 5 characters")
+	require.Contains(t, de.Error(), "PORT: min is greater than max")
+
+	_, err = docuconf.ContractCUE([]byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract",
+		"metadata": {"name": "Orders"}, "vars": {}}`), "")
+	require.ErrorContains(t, err, `metadata.name "Orders" must be a DNS label`)
+}
+
+// TestExportDetails checks that a doc comment's first paragraph is the
+// description and the rest is details, and that details are bounded.
+func TestExportDetails(t *testing.T) {
+	out, err := docuconf.Export[Gateway](docuconf.Meta{Name: "gateway"})
+	require.NoError(t, err)
+	require.Contains(t, string(out), `description: "Upstream request timeout"
+			details:     "The gateway gives up on an upstream after this long and answers 504. Raise it for slow batch endpoints; keep it below the load balancer's idle timeout.\n\n# Choosing a value\n\nMeasure the upstream's p99 latency first:\n\n\thistogram_quantile(0.99, upstream_seconds_bucket)"`)
+	// A one-paragraph comment has no details.
+	require.NotContains(t, string(out), `description: "HTTP listen port"
+			details:`)
+
+	_, err = docuconf.Export[longDetails](docuconf.Meta{Name: "svc"})
+	var de *docuconf.DeclarationError
+	require.True(t, errors.As(err, &de), "%v", err)
+	require.Len(t, de.Problems, 1)
+	require.Contains(t, de.Problems[0], "PORT")
+	require.Contains(t, de.Problems[0], "details may have at most 4000")
+}
+
+func TestContractDetails(t *testing.T) {
+	for _, c := range []struct{ details, problem string }{
+		{`"  \n "`, "PORT: details must not be blank"},
+		{`"` + strings.Repeat("é", 4001) + `"`, "PORT: details must be at most 4000 characters"},
+	} {
+		_, err := docuconf.ContractCUE([]byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract",
+			"metadata": {"name": "orders"}, "vars": {"PORT": {"type": "int", "description": "Listen port", "details": `+c.details+`}}}`), "")
+		require.ErrorContains(t, err, c.problem)
+	}
+	out, err := docuconf.ContractCUE([]byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract",
+		"metadata": {"name": "orders"}, "vars": {"PORT": {"type": "int", "description": "Listen port", "details": "Why: *because*."}},
+		"files": {"routes": {"type": "text", "description": "Routing table", "path": "/etc/app/routes.txt", "details": "Reloaded on change."}}}`), "")
+	require.NoError(t, err)
+	require.Contains(t, string(out), `description: "Listen port"
+			details:     "Why: *because*."`)
+	require.Contains(t, string(out), `details:     "Reloaded on change."`)
+}

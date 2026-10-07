@@ -14,6 +14,7 @@ const (
 	gateway  = examples + "/gateway_contract.cue"
 	billing  = examples + "/billing_contract.cue"
 	catalog  = examples + "/catalog_contract.cue"
+	ledger   = examples + "/ledger_contract.cue"
 )
 
 func docuconf(t *testing.T, args ...string) (stdout, stderr string, code int) {
@@ -90,7 +91,7 @@ PARTNER_KEYSTORE_PASSWORD: "hunter2-pasted-literal"
 		"GOMEMLIMIT: a fieldRef always yields a string, but GOMEMLIMIT is an integer",
 		`LOG_LEVEL: "debug" is not allowed by policy`,
 		"LOG_LEVLE: is not declared in the contract (check the spelling)",
-		"PARTNER_KEYSTORE_PASSWORD: is secret, so it must come from a secretKeyRef or an injector, never a literal or another reference",
+		"PARTNER_KEYSTORE_PASSWORD: is secret, so it must come from a secretKeyRef, written {secretKeyRef: {name: <secret>, key: <key>}}, or an injector, never a literal or another reference",
 		"RATE_LIMITS: does not match its schema: at perMinute: invalid value 0 (out of bound >=1)",
 		"license: inline text does not match pattern ^[A-Z0-9]{5}(-[A-Z0-9]{5}){3}\\n?$",
 		"serving-tls: certificate key algorithm Ed25519 is not one of ECDSA, RSA",
@@ -113,7 +114,7 @@ LOG_LEVEL: 3
 	out, _, code := docuconf(t, "vet", "-contract", billing, "-values", write(t, "values.yaml", values))
 	requireLines(t, out, code,
 		"ALLOWED_ORIGINS: has 0 items, below minItems 1",
-		"DATABASE_URL: is secret, so it must come from a secretKeyRef or an injector, never a literal or another reference",
+		"DATABASE_URL: is secret, so it must come from a secretKeyRef, written {secretKeyRef: {name: <secret>, key: <key>}}, or an injector, never a literal or another reference",
 		"LOG_LEVEL: 3 is not one of debug, info, warn, error",
 		"PORT: 70000 is above max 65535",
 		"REQUEST_TIMEOUT: 10m is above max 5m",
@@ -162,6 +163,103 @@ ALLOWED_ORIGINS: ["https://a.example.com"]
 	requireLines(t, out, code,
 		"DATABASE_URL: injected.provider must name the injector as a lowercase label, such as bank-vaults",
 		"DATABASE_URL: injected.ref, when given, must be a non-empty string",
+	)
+}
+
+// Pod annotations and labels for injectors (SPEC §4.5.2): expanded,
+// merged into podAnnotations and podLabels, and checked for conflicts.
+func TestInjectorPodMetadata(t *testing.T) {
+	values := write(t, "values.yaml", `LOG_LEVEL: warn
+podAnnotations:
+  vault.hashicorp.com/agent-inject: "true"
+  vault.hashicorp.com/role: ledger
+`)
+	files := write(t, "files.yaml", `db-creds:
+  injected:
+    provider: vault-agent
+    podAnnotations:
+      vault.hashicorp.com/agent-inject-secret-{input}: database/creds/ledger
+      vault.hashicorp.com/agent-inject-file-{input}: "{file}"
+      vault.hashicorp.com/secret-volume-path-{input}: "{dir}"
+    podLabels:
+      example.com/secrets-from: "{input}"
+`)
+	out, errOut, code := docuconf(t, "vet", "-contract", ledger, "-values", values, "-files", files)
+	if code != 0 || out != "ledger-api: ok\n" {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+	}
+	out, errOut, code = docuconf(t, "render", "-contract", ledger, "-values", values, "-files", files)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	want := `restartTriggers: []
+podAnnotations:
+  vault.hashicorp.com/agent-inject: "true"
+  vault.hashicorp.com/role: ledger
+  vault.hashicorp.com/agent-inject-secret-db-creds: database/creds/ledger
+  vault.hashicorp.com/agent-inject-file-db-creds: db.json
+  vault.hashicorp.com/secret-volume-path-db-creds: /vault/secrets
+podLabels:
+  example.com/secrets-from: db-creds
+`
+	if !strings.HasSuffix(out, want) || !strings.Contains(out, "volumes: []\n") {
+		t.Fatalf("render output:\n%s\nwant it to end with:\n%s", out, want)
+	}
+
+	// Nothing injected: empty maps, so the keys are always there.
+	out, _, _ = docuconf(t, "render", "-contract", ledger, "-values", write(t, "v.yaml", "LOG_LEVEL: warn\n"))
+	if !strings.HasSuffix(out, "podAnnotations: {}\npodLabels: {}\n") {
+		t.Fatalf("render output:\n%s", out)
+	}
+
+	bad := write(t, "bad.yaml", `podAnnotations:
+  vault.hashicorp.com/role: ledger
+podLabels:
+  team: payments
+DB_PASSWORD:
+  injected:
+    provider: bank-vaults
+    ref: "vault:database/creds/ledger#password"
+    podAnnotations:
+      vault.hashicorp.com/role: ledger-ro
+      vault.hashicorp.com/agent-inject-file-{input}: "{file}"
+OTEL_EXPORTER_OTLP_ENDPOINT:
+  injected:
+    provider: otel-operator
+    podAnnotations:
+      instrumentation.opentelemetry.io/inject java: "true"
+    podLabels:
+      team: "{input}/primary"
+AZURE_CLIENT_ID:
+  injected: {provider: azure-workload-identity, podLabels: {azure.workload.identity/use: true}}
+`)
+	out, _, code = docuconf(t, "vet", "-contract", ledger, "-values", bad, "-files", files)
+	requireLines(t, out, code,
+		"AZURE_CLIENT_ID: injected.podLabels azure.workload.identity/use: must be a string (quote true, false and numbers in YAML)",
+		"DB_PASSWORD: podAnnotations vault.hashicorp.com/agent-inject-file-DB_PASSWORD: uses {path}, {dir} or {file}, which only a file input defines; a variable has {input}",
+		`OTEL_EXPORTER_OTLP_ENDPOINT: pod annotation key "instrumentation.opentelemetry.io/inject java" is not a Kubernetes qualified name: an optional DNS-subdomain prefix (at most 253 characters) and "/", then at most 63 letters, digits, "-", "_" and ".", starting and ending with a letter or digit`,
+		`OTEL_EXPORTER_OTLP_ENDPOINT: pod label team: value "OTEL_EXPORTER_OTLP_ENDPOINT/primary" is not a label value: at most 63 letters, digits, "-", "_" and ".", starting and ending with a letter or digit, or empty`,
+	)
+
+	// Once each source is valid on its own, conflicts between them.
+	bad = write(t, "bad.yaml", `podAnnotations:
+  vault.hashicorp.com/role: ledger
+DB_PASSWORD:
+  injected:
+    provider: bank-vaults
+    ref: "vault:database/creds/ledger#password"
+    podAnnotations: {vault.hashicorp.com/role: ledger-ro}
+`)
+	conflicting := write(t, "files.yaml", `db-creds:
+  injected:
+    provider: vault-agent
+    podAnnotations: {vault.hashicorp.com/role: ledger-rw}
+`)
+	out, _, code = docuconf(t, "vet", "-contract", ledger, "-values", bad, "-files", conflicting)
+	requireLines(t, out, code,
+		"podAnnotations vault.hashicorp.com/role: set to different values by DB_PASSWORD and db-creds",
+		"podAnnotations vault.hashicorp.com/role: set to different values by the values document's shared podAnnotations and DB_PASSWORD",
+		"podAnnotations vault.hashicorp.com/role: set to different values by the values document's shared podAnnotations and db-creds",
 	)
 }
 
@@ -372,6 +470,33 @@ type Config struct {
 	_, errOut, code = docuconf(t, "export", "-C", dir, "-pkg", ".", "-name", "app")
 	if code != 2 || !strings.Contains(errOut, "package main") {
 		t.Fatalf("exit %d: %s", code, errOut)
+	}
+
+	// Config under internal/, the usual Go layout, exports too: the
+	// generated program runs inside the module.
+	internal := filepath.Join(dir, "internal", "config")
+	if err := os.MkdirAll(internal, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(internal, "config.go"), []byte(files["config/config.go"]), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	internalOut := filepath.Join(dir, "internal.cue")
+	_, errOut, code = docuconf(t, "export", "-C", dir, "-pkg", "./internal/config", "-name", "app", "-app-version", "1.0.0", "-o", internalOut)
+	if code != 0 {
+		t.Fatalf("export of internal/config: exit %d: %s", code, errOut)
+	}
+	if read(t, internalOut) != got {
+		t.Errorf("internal/config exported differently:\n%s", read(t, internalOut))
+	}
+
+	// -check: 0 when up to date, 1 with a diff when stale.
+	if _, errOut, code := docuconf(t, "export", "-C", dir, "-pkg", "./config", "-name", "app", "-app-version", "1.0.0", "-check", out); code != 0 {
+		t.Fatalf("check: exit %d: %s", code, errOut)
+	}
+	_, errOut, code = docuconf(t, "export", "-C", dir, "-pkg", "./config", "-name", "app", "-app-version", "2.0.0", "-check", out)
+	if code != 1 || !strings.Contains(errOut, `+		appVersion: "2.0.0"`) {
+		t.Fatalf("check of a stale contract: exit %d: %s", code, errOut)
 	}
 }
 

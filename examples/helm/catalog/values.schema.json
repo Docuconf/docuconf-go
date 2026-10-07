@@ -102,6 +102,26 @@
                       ],
                       "additionalProperties": false,
                       "properties": {
+                        "podAnnotations": {
+                          "description": "Pod annotations the injector needs; {input}, and for a file {path}, {dir} and {file}, are expanded.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "podLabels": {
+                          "description": "Pod labels the injector needs; placeholders as for podAnnotations.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
                         "provider": {
                           "type": "string",
                           "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
@@ -166,6 +186,26 @@
                       ],
                       "additionalProperties": false,
                       "properties": {
+                        "podAnnotations": {
+                          "description": "Pod annotations the injector needs; {input}, and for a file {path}, {dir} and {file}, are expanded.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "podLabels": {
+                          "description": "Pod labels the injector needs; placeholders as for podAnnotations.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
                         "provider": {
                           "type": "string",
                           "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
@@ -206,6 +246,26 @@
                       ],
                       "additionalProperties": false,
                       "properties": {
+                        "podAnnotations": {
+                          "description": "Pod annotations the injector needs; {input}, and for a file {path}, {dir} and {file}, are expanded.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "podLabels": {
+                          "description": "Pod labels the injector needs; placeholders as for podAnnotations.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
                         "provider": {
                           "type": "string",
                           "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
@@ -294,6 +354,26 @@
                       ],
                       "additionalProperties": false,
                       "properties": {
+                        "podAnnotations": {
+                          "description": "Pod annotations the injector needs; {input}, and for a file {path}, {dir} and {file}, are expanded.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "podLabels": {
+                          "description": "Pod labels the injector needs; placeholders as for podAnnotations.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
                         "provider": {
                           "type": "string",
                           "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
@@ -362,6 +442,26 @@
                       ],
                       "additionalProperties": false,
                       "properties": {
+                        "podAnnotations": {
+                          "description": "Pod annotations the injector needs; {input}, and for a file {path}, {dir} and {file}, are expanded.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "podLabels": {
+                          "description": "Pod labels the injector needs; placeholders as for podAnnotations.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
                         "provider": {
                           "type": "string",
                           "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
@@ -448,6 +548,26 @@
                       ],
                       "additionalProperties": false,
                       "properties": {
+                        "podAnnotations": {
+                          "description": "Pod annotations the injector needs; {input}, and for a file {path}, {dir} and {file}, are expanded.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "podLabels": {
+                          "description": "Pod labels the injector needs; placeholders as for podAnnotations.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
                         "provider": {
                           "type": "string",
                           "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
@@ -521,6 +641,26 @@
                       ],
                       "additionalProperties": false,
                       "properties": {
+                        "podAnnotations": {
+                          "description": "Pod annotations the injector needs; {input}, and for a file {path}, {dir} and {file}, are expanded.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "podLabels": {
+                          "description": "Pod labels the injector needs; placeholders as for podAnnotations.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
                         "provider": {
                           "type": "string",
                           "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
@@ -538,6 +678,26 @@
                   "description": "Unset."
                 }
               ]
+            },
+            "podAnnotations": {
+              "description": "Pod annotations shared by every injector.",
+              "type": "object",
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "podLabels": {
+              "description": "Pod labels shared by every injector.",
+              "type": "object",
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
             }
           },
           "required": [

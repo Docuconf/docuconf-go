@@ -2,10 +2,18 @@ module github.com/docuconf/docuconf-go/cmd/docuconf
 
 go 1.25.0
 
-require cuelang.org/go v0.17.1
+// The SDK is pinned by version, not replaced with ../.., so that
+// "go install github.com/docuconf/docuconf-go/cmd/docuconf@latest" works.
+// After changing the SDK, push and bump it with
+// "go get github.com/docuconf/docuconf-go@<commit>".
+require (
+	cuelang.org/go v0.17.1
+	github.com/docuconf/docuconf-go v0.0.0-20261007224927-ce11ce72ddb3
+)
 
 require (
 	cuelabs.dev/go/oci/ociregistry v0.0.0-20260601085548-328ff8e2c943 // indirect
+	github.com/caarlos0/env/v11 v11.4.1 // indirect
 	github.com/cockroachdb/apd/v3 v3.2.3 // indirect
 	github.com/emicklei/proto v1.14.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -16,9 +24,12 @@ require (
 	github.com/protocolbuffers/txtpbfmt v0.0.0-20260420112717-c39628bde8b5 // indirect
 	github.com/rogpeppe/go-internal v1.15.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+	software.sslmate.com/src/go-pkcs12 v0.7.3 // indirect
 )

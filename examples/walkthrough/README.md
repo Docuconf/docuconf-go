@@ -146,7 +146,7 @@ once, before anything reaches the cluster ([`out/vet-bad.txt`](out/vet-bad.txt))
 
 ```console
 $ docuconf vet -contract contract.cue -values platform/bad-values.yaml -files platform/bad-files.yaml -policy platform/prod-policy.cue
-DATABASE_URL: is secret, so it must come from a secretKeyRef or an injector, never a literal or another reference
+DATABASE_URL: is secret, so it must come from a secretKeyRef, written {secretKeyRef: {name: <secret>, key: <key>}}, or an injector, never a literal or another reference
 KAFKA_BROKERS: is required, and set neither by the platform nor by the selected profile
 LOG_LEVL: is not declared in the contract (check the spelling)
 PAYMENTS_TIMEOUT: "2 seconds" is not a duration such as 1m30s
@@ -201,6 +201,8 @@ configMaps:
           FR: 0.2
           IE: 0.23
 restartTriggers: []      # serving-tls is reload: watch, so rotation needs no restart
+podAnnotations: {}       # nothing is injected, so no injector needs the pod annotated
+podLabels: {}
 ```
 
 ## 3. The same thing in plain CUE (the Crossplane path)

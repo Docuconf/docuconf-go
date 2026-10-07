@@ -2,9 +2,9 @@ name: examples
 
 on:
   push:
-    paths-ignore: ["website/**", "docs/**"]
+    paths-ignore: ["docs/**"]
   pull_request:
-    paths-ignore: ["website/**", "docs/**"]
+    paths-ignore: ["docs/**"]
 
 jobs:
   orders:
@@ -15,20 +15,29 @@ jobs:
         with:
           go-version: "1.25"
       - run: go install cuelang.org/go/cmd/cue@v0.17.1
-      - name: Build
+      - name: Install the docuconf CLI
+        working-directory: cmd/docuconf
+        run: go install .
+      # Includes readme_test.go, which checks every snippet in the SDK
+      # README against this example, smoke.sh and this workflow.
+      - name: Build and test
         working-directory: examples/orders
         run: |
           test -z "$(gofmt -l .)"
           go build ./...
           go vet ./...
-      # contract.cue is generated; it must match what the CLI exports today,
-      # except metadata.generator.version, which release PRs bump.
+          go test ./...
+      # contract.cue is generated; it must match what the exporter writes
+      # today, except metadata.generator.version, which release PRs bump.
+      # These are the README's commands.
       - name: Contract is up to date
-        working-directory: cmd/docuconf
+        working-directory: examples/orders
         run: |
-          go run . export -C ../../examples/orders -pkg ./config -type Config \
-            -name orders-api -package orders -o ../../examples/orders/contract.cue
-          ../../scripts/check-generated.sh ../../examples/orders/contract.cue
+          go tool docuconf-export -pkg ./internal/config -name orders-api -package orders -o contract.cue
+          ../../scripts/check-generated.sh contract.cue
+          # Keep the committed contract (and its version) for the docs below.
+          git checkout -- contract.cue
+          go tool docuconf-export -pkg ./internal/config -name orders-api -package orders -check contract.cue
       - name: Contract passes the meta-schema
         run: |
           mod="$(mktemp -d)"
@@ -36,5 +45,42 @@ jobs:
           mkdir "$mod/orders"
           cp examples/orders/contract.cue "$mod/orders/"
           cd "$mod" && cue vet -c ./orders
+      # CONFIG.md, CONFIG.agents.md and docs.json are generated from the
+      # contract; they must match what docuconf docs writes today, and the
+      # committed docs model must render the same docs. These are the
+      # README's commands.
+      - name: Generated docs are up to date
+        working-directory: examples/orders
+        run: |
+          docuconf docs contract.cue -o CONFIG.md
+          docuconf docs contract.cue --format agents -o CONFIG.agents.md
+          docuconf docs contract.cue --format model -o docs.json
+          git diff --exit-code -- CONFIG.md CONFIG.agents.md docs.json
+          docuconf docs contract.cue --check CONFIG.md
+          docuconf docs contract.cue --format agents --check CONFIG.agents.md
+          docuconf docs docs.json --format markdown --check CONFIG.md
+          docuconf docs docs.json --format agents --check CONFIG.agents.md
+      - name: The README's platform inputs pass vet and render
+        working-directory: examples/orders
+        run: |
+          docuconf vet -contract contract.cue -values deploy/values.yaml -files deploy/files.yaml
+          docuconf render -contract contract.cue -values deploy/values.yaml -files deploy/files.yaml
       - name: Smoke test
         run: examples/orders/smoke.sh
+
+  # The SDK and docuconf-export promise Go 1.24 without a toolchain
+  # download, as on distro packages and pinned CI images.
+  go124:
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - run: go test ./...
+      - working-directory: examples/orders
+        run: |
+          go test ./...
+          go tool docuconf-export -pkg ./internal/config -name orders-api -package orders -check contract.cue

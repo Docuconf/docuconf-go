@@ -1,0 +1,256 @@
+{
+  "apiVersion": "docs.docuconf.dev/v1alpha1",
+  "kind": "ConfigDocs",
+  "service": {
+    "name": "ledger-api",
+    "appVersion": "3.1.0",
+    "generator": {
+      "language": "go",
+      "sdk": "docuconf-go",
+      "version": "0.1.0"
+    }
+  },
+  "groups": [
+    {
+      "name": "",
+      "title": "General",
+      "inputs": [
+        {
+          "name": "AZURE_CLIENT_ID",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "required": false,
+          "secret": false,
+          "description": "Client ID of the managed identity the app signs in as",
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a string"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "fieldRef",
+              "text": "a pod field from the Downward API (`fieldRef`), such as `metadata.namespace`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "name": "DB_PASSWORD",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "required": false,
+          "secret": true,
+          "description": "Password for the ledger database user",
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a `secretKeyRef` or `injected` reference, never the value"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "secretKeyRef",
+              "text": "a key of a Kubernetes Secret (`secretKeyRef`)"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type"
+          ]
+        },
+        {
+          "name": "LOG_LEVEL",
+          "kind": "var",
+          "type": "enum",
+          "typeLabel": "enum",
+          "required": false,
+          "secret": false,
+          "description": "Minimum log level emitted",
+          "default": "info",
+          "defaultEnv": [
+            {
+              "name": "LOG_LEVEL",
+              "value": "info"
+            }
+          ],
+          "wire": {
+            "text": "one of the values, exactly as listed",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "values",
+              "params": {
+                "values": [
+                  "debug",
+                  "info",
+                  "warn",
+                  "error"
+                ]
+              },
+              "text": "one of `debug`, `info`, `warn` or `error`"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "not_in_enum"
+          ]
+        },
+        {
+          "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+          "kind": "var",
+          "type": "url",
+          "typeLabel": "URL",
+          "required": false,
+          "secret": false,
+          "description": "OTLP collector the app sends traces to",
+          "wire": {
+            "text": "an absolute URL, `scheme://...`, as is",
+            "platform": "a string"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type"
+          ]
+        },
+        {
+          "name": "db-creds",
+          "kind": "file",
+          "type": "config",
+          "typeLabel": "JSON config file",
+          "required": false,
+          "secret": true,
+          "description": "Database credentials, as {\"username\": ..., \"password\": ...}",
+          "file": {
+            "path": "/vault/secrets/db.json",
+            "pathEnv": "DB_CREDS_FILE",
+            "format": "json",
+            "reload": "restart",
+            "contents": "a JSON file, read at the path",
+            "reloadText": "the app reads the file at startup; a changed source needs a rollout"
+          },
+          "constraints": [
+            {
+              "rule": "schema",
+              "params": {
+                "schema": {
+                  "properties": {
+                    "password": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "username",
+                    "password"
+                  ],
+                  "type": "object"
+                }
+              },
+              "text": "matches the JSON Schema in the contract"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "secret",
+              "text": "a Kubernetes Secret (`secret`), one key per file"
+            },
+            {
+              "kind": "csi",
+              "text": "the Secrets Store CSI driver (`csi`)"
+            },
+            {
+              "kind": "injected",
+              "note": "the injector writes the file at the path",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "file_missing",
+            "file_unreadable",
+            "file_malformed",
+            "schema_mismatch"
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": "invalid_type",
+      "meaning": "The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`).",
+      "fix": "Write the value in the input's wire format. For an injected secret, make sure the injector runs."
+    },
+    {
+      "code": "not_in_enum",
+      "meaning": "The value is not one of the allowed values.",
+      "fix": "Use one of the listed values, spelled exactly as listed."
+    },
+    {
+      "code": "file_missing",
+      "meaning": "The file is not at its path.",
+      "fix": "Give the input a source, and check that it is mounted at the declared path (or that its path variable points at it)."
+    },
+    {
+      "code": "file_unreadable",
+      "meaning": "The file exists but cannot be read.",
+      "fix": "Check the mount, the file mode and the user the app runs as."
+    },
+    {
+      "code": "file_malformed",
+      "meaning": "The file does not parse in its format, is a directory, is not UTF-8 text, or holds too few certificates.",
+      "fix": "Fix the content so it parses in the declared format."
+    },
+    {
+      "code": "schema_mismatch",
+      "meaning": "The value or file parses, but does not match its JSON Schema.",
+      "fix": "Fix the content to match the schema; `docuconf vet` checks inline content before deploy."
+    }
+  ]
+}

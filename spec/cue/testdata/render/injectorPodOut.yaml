@@ -1,0 +1,29 @@
+vaultAgent:
+  env:
+    - name: LOG_LEVEL
+      value: warn
+    - name: DB_CREDS_FILE
+      value: /vault/secrets/db.json
+  volumes: []
+  podAnnotations:
+    vault.hashicorp.com/agent-inject: "true"
+    vault.hashicorp.com/role: ledger
+    vault.hashicorp.com/agent-inject-secret-db-creds: database/creds/ledger
+    vault.hashicorp.com/agent-inject-template-db-creds: '{{- with secret "database/creds/ledger" -}}{{ .Data | toJSON }}{{- end }}'
+    vault.hashicorp.com/secret-volume-path-db-creds: /vault/secrets
+    vault.hashicorp.com/agent-inject-file-db-creds: db.json
+  podLabels: {}
+bankVaults:
+  env:
+    - name: DB_PASSWORD
+      value: vault:database/creds/ledger#password
+  podAnnotations:
+    vault.security.banzaicloud.io/vault-addr: https://vault.vault.svc:8200
+    vault.security.banzaicloud.io/vault-role: ledger
+  podLabels: {}
+otelAndWorkloadIdentity:
+  env: []
+  podAnnotations:
+    instrumentation.opentelemetry.io/inject-java: "true"
+  podLabels:
+    azure.workload.identity/use: "true"

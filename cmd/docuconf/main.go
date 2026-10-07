@@ -2,9 +2,24 @@
 // contracts.
 //
 //	docuconf export -pkg ./internal/config -type Config -name billing-api -o contract.cue
+//	docuconf export -pkg ./internal/config -check contract.cue
 //	docuconf vet    -contract contract.cue -values values.yaml [-files files.yaml] [-policy policy.cue]
 //	docuconf render -contract contract.cue -values values.yaml [-files files.yaml]
 //	docuconf helm   -contract contract.cue -chart ./chart
+//	docuconf check  -contract contract.cue
+//	docuconf exec   -contract contract.cue -- program [args...]
+//	docuconf docs   contract.cue [--format model|markdown|agents] [-o file | --check file]
+//
+// docs generates documentation from a contract: a docs model (a
+// versioned JSON document, spec section 14), and from the model Markdown
+// for developers or a rules file for AI agents.
+//
+// check and exec validate the process environment and file inputs at
+// boot with the Go SDK's contract-first loader, for programs written in a
+// language without a docuconf SDK. exec then replaces itself with the
+// program, passing it the environment it validated: the process
+// environment, -env-file values for what that leaves unset, and the
+// contract's defaults for what is still unset (unless -no-defaults).
 //
 // docuconf conformance regenerates conformance/cases.json from
 // conformance/load, for maintainers of the spec.
@@ -29,10 +44,13 @@ import (
 const usage = `docuconf: typed configuration contracts between apps and the platform.
 
 Usage:
-  docuconf export -pkg <package> -type <Type> -name <service> [-o contract.cue]
+  docuconf export -pkg <package> [-type Config] [-name <service>] [-o contract.cue | -check contract.cue]
   docuconf vet    -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml] [-policy policy.cue]
   docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml]
   docuconf helm   -contract <contract.cue> -chart <chart directory>
+  docuconf check  -contract <contract.cue> [-env-file .env]
+  docuconf exec   -contract <contract.cue> [-env-file .env] [-no-defaults] -- <program> [args...]
+  docuconf docs   <contract.cue | docs.json> [--format model|markdown|agents] [-o file | --check file]
 
 Run "docuconf <command> -h" for a command's flags.
 `
@@ -45,7 +63,8 @@ func main() {
 }
 
 // run executes a command and returns the exit code: 0 on success, 1 when
-// the configuration has problems, 2 on usage or I/O errors.
+// the configuration has problems, 2 on usage or I/O errors, 127 when exec
+// cannot start its program.
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
@@ -61,6 +80,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runRender(args[1:], stdout, stderr)
 	case "helm":
 		err = runHelm(args[1:], stdout, stderr)
+	case "check":
+		err = runCheck(args[1:], stdout, stderr)
+	case "exec":
+		err = runExec(args[1:], stdout, stderr)
+	case "docs":
+		err = runDocs(args[1:], stdout, stderr)
 	case "conformance":
 		err = runConformance(args[1:], stdout, stderr)
 	case "help", "-h", "-help", "--help":
@@ -73,8 +98,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch {
 	case err == nil:
 		return 0
-	case errors.Is(err, errProblems):
+	case errors.Is(err, errProblems), errors.Is(err, errStale):
 		return 1
+	case errors.Is(err, errExec):
+		return 127
 	case errors.Is(err, flag.ErrHelp):
 		return 0
 	}
@@ -88,8 +115,8 @@ type platformFlags struct {
 
 func (p *platformFlags) register(fs *flag.FlagSet, policy bool) {
 	fs.StringVar(&p.contract, "contract", "contract.cue", "the service's contract")
-	fs.StringVar(&p.values, "values", "", "variable values (YAML, JSON or CUE)")
-	fs.StringVar(&p.files, "files", "", "file input sources (YAML, JSON or CUE)")
+	fs.StringVar(&p.values, "values", "", "variable values (YAML, JSON or CUE): a map of VAR: value,\nor VAR: {secretKeyRef: {name: <secret>, key: <key>}} for a secret")
+	fs.StringVar(&p.files, "files", "", "where each file input comes from (YAML, JSON or CUE), by input name:\n<input>: {secret: {name}}, {configMap: {name, key}}, {inline: <content>},\n{certificate: {name, secretName, dnsNames, duration, renewBefore}} or {csi: {secretProviderClass}}")
 	fs.StringVar(&p.overlays, "overlays", "", "values for config-file overlays, by overlay name (YAML, JSON or CUE)")
 	if policy {
 		fs.StringVar(&p.policy, "policy", "", "environment policy unified with the values (CUE)")

@@ -44,6 +44,16 @@ var fileTags = map[string][]string{
 	"maxLength":       {fileText},
 }
 
+// fileTagKeys are the struct tag keys docuconf reads on a file field.
+var fileTagKeys = func() []string {
+	keys := []string{"file"}
+	for k := range fileTags {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}()
+
 func (d *declaration) addFile(src reflect.Type, sf reflect.StructField, idx []int, fp, fileTag string) {
 	name, opts := splitTag(fileTag)
 	fi := reflect.New(sf.Type).Interface().(fileInput)
@@ -63,6 +73,9 @@ func (d *declaration) addFile(src reflect.Type, sf reflect.StructField, idx []in
 	}
 	if !inputNameRe.MatchString(name) {
 		problem("input name must be a DNS label matching %s", inputNameRe)
+	}
+	for _, p := range tagTypos(tag, fileTagKeys) {
+		problem("%s", p)
 	}
 	for _, o := range opts {
 		switch o {

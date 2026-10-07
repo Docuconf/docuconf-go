@@ -97,6 +97,9 @@ type varDecl struct {
 	separator          string
 	minItems, maxItems *int
 	itemMin, itemMax   *big.Int
+	// itemMinLength and itemMaxLength bound each item of a string list, in
+	// characters.
+	itemMinLength, itemMaxLength *int
 
 	// Wire encodings (SPEC §5). A declaration always uses the encodings
 	// caarlos0/env parses, "go" and "csv"; a contract may name any.
@@ -241,7 +244,7 @@ func (d *declaration) walk(t reflect.Type, index []int, prefix, goPath string, o
 		}
 		if base.Kind() == reflect.Struct && !isValueStruct(base, opts.funcMap) {
 			if key != "" {
-				d.problemf("%s: an env tag on struct type %v is not supported; nest it with envPrefix instead", fp, base)
+				d.problemf("%s: %v is a struct type, which caarlos0/env cannot parse from one variable; register a parser for it in FuncMap (and return that FuncMap from a DocuconfOptions method so export sees it too), or drop the env tag and nest it with envPrefix", fp, base)
 				continue
 			}
 			// caarlos0/env only descends into a nil pointer with ",init".
@@ -294,17 +297,19 @@ func splitList(s string) []string {
 // constraintTags lists the docuconf constraint tags and the contract types
 // each applies to.
 var constraintTags = map[string][]string{
-	"minLength": {typeString},
-	"maxLength": {typeString},
-	"pattern":   {typeString},
-	"min":       {typeInt, typeFloat, typeDuration},
-	"max":       {typeInt, typeFloat, typeDuration},
-	"schemes":   {typeURL},
-	"values":    {typeEnum},
-	"minItems":  {typeList},
-	"maxItems":  {typeList},
-	"itemMin":   {typeList},
-	"itemMax":   {typeList},
+	"minLength":     {typeString},
+	"maxLength":     {typeString, typeURL, typeJSON},
+	"pattern":       {typeString},
+	"min":           {typeInt, typeFloat, typeDuration},
+	"max":           {typeInt, typeFloat, typeDuration},
+	"schemes":       {typeURL},
+	"values":        {typeEnum},
+	"minItems":      {typeList},
+	"maxItems":      {typeList},
+	"itemMin":       {typeList},
+	"itemMax":       {typeList},
+	"itemMinLength": {typeList},
+	"itemMaxLength": {typeList},
 }
 
 func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int, fp, name string, envOpts []string, opts declOptions) {
@@ -326,6 +331,9 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 
 	if !envNameRe.MatchString(name) {
 		problem("variable name must match %s", envNameRe)
+	}
+	for _, p := range tagTypos(tag, varTagKeys) {
+		problem("%s", p)
 	}
 	for _, o := range envOpts {
 		switch o {
@@ -357,6 +365,12 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 		}
 		v.secret = b
 	}
+	if v.goType == secretType {
+		if !v.secret && tag.Get("secret") != "" {
+			problem("a docuconf.Secret field is always secret; remove secret:%q", tag.Get("secret"))
+		}
+		v.secret = true
+	}
 
 	v.typ = d.contractType(v, tag, opts, problem)
 	if v.typ == "" {
@@ -365,7 +379,7 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 
 	for t, types := range constraintTags {
 		if _, ok := tag.Lookup(t); ok && !slices.Contains(types, v.typ) {
-			problem("tag %s does not apply to a %s variable", t, v.typ)
+			problem("tag %s does not apply to %s %s variable", t, typeArticle(v.typ), v.typ)
 		}
 	}
 	v.parseConstraints(tag, problem)
@@ -550,6 +564,10 @@ func (v *varDecl) parseConstraints(tag reflect.StructTag, problem func(string, .
 	}
 	v.minLength, v.maxLength = nonNeg("minLength"), nonNeg("maxLength")
 	v.minItems, v.maxItems = nonNeg("minItems"), nonNeg("maxItems")
+	v.itemMinLength, v.itemMaxLength = nonNeg("itemMinLength"), nonNeg("itemMaxLength")
+	if (v.itemMinLength != nil || v.itemMaxLength != nil) && v.typ == typeList && v.items != "string" {
+		problem("itemMinLength and itemMaxLength apply only to lists of strings")
+	}
 	if p, ok := tag.Lookup("pattern"); ok {
 		re, err := regexp.Compile(p)
 		if err != nil {
@@ -697,4 +715,14 @@ func (d *declaration) varByName(name string) *varDecl {
 		}
 	}
 	return nil
+}
+
+// typeArticle returns "an" before a contract type that starts with a vowel
+// sound, and "a" otherwise.
+func typeArticle(typ string) string {
+	switch typ {
+	case typeInt, typeEnum:
+		return "an"
+	}
+	return "a"
 }

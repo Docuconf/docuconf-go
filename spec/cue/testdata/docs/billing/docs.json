@@ -1,0 +1,333 @@
+{
+  "apiVersion": "docs.docuconf.dev/v1alpha1",
+  "kind": "ConfigDocs",
+  "service": {
+    "name": "billing-api",
+    "appVersion": "1.4.0",
+    "generator": {
+      "language": "ruby",
+      "sdk": "docuconf-rails",
+      "version": "0.1.0"
+    }
+  },
+  "groups": [
+    {
+      "name": "",
+      "title": "General",
+      "inputs": [
+        {
+          "name": "ALLOWED_ORIGINS",
+          "kind": "var",
+          "type": "list",
+          "typeLabel": "list of strings",
+          "required": true,
+          "secret": false,
+          "description": "CORS origins allowed to call the API",
+          "wire": {
+            "encoding": "csv",
+            "separator": ",",
+            "text": "the items joined by `,` with nothing around it, such as `a,b`",
+            "platform": "a list of strings, such as `[a, b]`; docuconf writes it in the wire format"
+          },
+          "constraints": [
+            {
+              "rule": "itemCount",
+              "params": {
+                "minItems": 1
+              },
+              "text": "at least 1 item"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "missing_required",
+            "invalid_type",
+            "too_few_items"
+          ]
+        },
+        {
+          "name": "DATABASE_URL",
+          "kind": "var",
+          "type": "url",
+          "typeLabel": "URL",
+          "required": true,
+          "secret": true,
+          "description": "Primary Postgres connection string",
+          "wire": {
+            "text": "an absolute URL, `scheme://...`, as is",
+            "platform": "a `secretKeyRef` or `injected` reference, never the value"
+          },
+          "constraints": [
+            {
+              "rule": "schemes",
+              "params": {
+                "schemes": [
+                  "postgres",
+                  "postgresql"
+                ]
+              },
+              "text": "`postgres` or `postgresql` URL"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "secretKeyRef",
+              "text": "a key of a Kubernetes Secret (`secretKeyRef`)"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "missing_required",
+            "invalid_type",
+            "invalid_scheme"
+          ]
+        },
+        {
+          "name": "LOG_LEVEL",
+          "kind": "var",
+          "type": "enum",
+          "typeLabel": "enum",
+          "required": false,
+          "secret": false,
+          "description": "Minimum log level emitted",
+          "default": "info",
+          "defaultEnv": [
+            {
+              "name": "LOG_LEVEL",
+              "value": "info"
+            }
+          ],
+          "wire": {
+            "text": "one of the values, exactly as listed",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "values",
+              "params": {
+                "values": [
+                  "debug",
+                  "info",
+                  "warn",
+                  "error"
+                ]
+              },
+              "text": "one of `debug`, `info`, `warn` or `error`"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "not_in_enum"
+          ]
+        },
+        {
+          "name": "PORT",
+          "kind": "var",
+          "type": "int",
+          "typeLabel": "integer",
+          "required": false,
+          "secret": false,
+          "description": "HTTP listen port",
+          "default": 8080,
+          "defaultEnv": [
+            {
+              "name": "PORT",
+              "value": "8080"
+            }
+          ],
+          "wire": {
+            "text": "a base-10 integer with no leading `+` or zeros, such as `8080`",
+            "platform": "an integer"
+          },
+          "constraints": [
+            {
+              "rule": "range",
+              "params": {
+                "max": 65535,
+                "min": 1
+              },
+              "text": "between 1 and 65535"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "resourceFieldRef",
+              "text": "a container resource limit or request (`resourceFieldRef`), such as `limits.memory`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range"
+          ]
+        },
+        {
+          "name": "REQUEST_TIMEOUT",
+          "kind": "var",
+          "type": "duration",
+          "typeLabel": "duration",
+          "required": false,
+          "secret": false,
+          "description": "Upstream request timeout",
+          "default": "30s",
+          "defaultEnv": [
+            {
+              "name": "REQUEST_TIMEOUT",
+              "value": "30s"
+            }
+          ],
+          "wire": {
+            "encoding": "go",
+            "text": "a Go duration, such as `1m30s` (units `h`, `m`, `s`, `ms`, `us`, `ns`)",
+            "platform": "a duration in Go syntax, such as `90s` or `1m30s`; docuconf writes it in the wire format"
+          },
+          "constraints": [
+            {
+              "rule": "range",
+              "params": {
+                "max": "5m",
+                "min": "1s"
+              },
+              "text": "between 1s and 5m"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range"
+          ]
+        },
+        {
+          "name": "STRIPE_API_BASE",
+          "kind": "var",
+          "type": "url",
+          "typeLabel": "URL",
+          "required": false,
+          "secret": false,
+          "description": "Stripe API base URL",
+          "default": "https://api.stripe.com",
+          "defaultEnv": [
+            {
+              "name": "STRIPE_API_BASE",
+              "value": "https://api.stripe.com"
+            }
+          ],
+          "wire": {
+            "text": "an absolute URL, `scheme://...`, as is",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "schemes",
+              "params": {
+                "schemes": [
+                  "https"
+                ]
+              },
+              "text": "`https` URL"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "invalid_scheme"
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": "missing_required",
+      "meaning": "A required input is not set, and has no default.",
+      "fix": "Set it through one of its allowed sources."
+    },
+    {
+      "code": "invalid_type",
+      "meaning": "The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`).",
+      "fix": "Write the value in the input's wire format. For an injected secret, make sure the injector runs."
+    },
+    {
+      "code": "out_of_range",
+      "meaning": "A number, duration, length or list item is outside the input's bounds.",
+      "fix": "Use a value within the input's constraints."
+    },
+    {
+      "code": "not_in_enum",
+      "meaning": "The value is not one of the allowed values.",
+      "fix": "Use one of the listed values, spelled exactly as listed."
+    },
+    {
+      "code": "invalid_scheme",
+      "meaning": "The URL's scheme is not one of the allowed schemes.",
+      "fix": "Use a URL with an allowed scheme."
+    },
+    {
+      "code": "too_few_items",
+      "meaning": "The list has fewer items than its minimum.",
+      "fix": "Add items."
+    }
+  ]
+}

@@ -90,7 +90,22 @@ got = {n for k, v in annotations.items() if "reloader" in k for n in v.split(","
 if got != expected:
     problems.append(f"reloader annotations {got} != restart triggers {expected}")
 
+# Pod metadata for injectors (SPEC 4.5.2) goes on the pod template. The
+# chart adds its own selector labels (app.kubernetes.io/*) next to them.
+template_meta = deployment["spec"]["template"].get("metadata") or {}
+want_annotations = golden.get("podAnnotations") or {}
+got_annotations = template_meta.get("annotations") or {}
+if got_annotations != want_annotations:
+    problems.append(f"pod annotations: got {got_annotations} want {want_annotations}")
+want_labels = golden.get("podLabels") or {}
+got_labels = {
+    k: v for k, v in (template_meta.get("labels") or {}).items()
+    if k in want_labels or not k.startswith("app.kubernetes.io/")
+}
+if got_labels != want_labels:
+    problems.append(f"pod labels: got {got_labels} want {want_labels}")
+
 if problems:
     print("\n".join(problems))
     sys.exit(1)
-print("parity: env, volumes, mounts, ConfigMaps and restart triggers match the CUE renderer")
+print("parity: env, volumes, mounts, ConfigMaps, restart triggers and pod metadata match the CUE renderer")

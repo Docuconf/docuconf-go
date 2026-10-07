@@ -1,0 +1,937 @@
+{
+  "apiVersion": "docs.docuconf.dev/v1alpha1",
+  "kind": "ConfigDocs",
+  "service": {
+    "name": "storefront",
+    "appVersion": "2.3.0",
+    "generator": {
+      "language": "dotnet",
+      "sdk": "Docuconf.Options",
+      "version": "0.2.0"
+    }
+  },
+  "groups": [
+    {
+      "name": "",
+      "title": "General",
+      "inputs": [
+        {
+          "name": "STOREFRONT__PORT",
+          "kind": "var",
+          "type": "int",
+          "typeLabel": "integer",
+          "required": false,
+          "secret": false,
+          "description": "HTTP listen port",
+          "default": 8080,
+          "defaultEnv": [
+            {
+              "name": "STOREFRONT__PORT",
+              "value": "8080"
+            }
+          ],
+          "configKey": "Storefront:Port",
+          "wire": {
+            "text": "a base-10 integer with no leading `+` or zeros, such as `8080`",
+            "platform": "an integer"
+          },
+          "constraints": [
+            {
+              "rule": "range",
+              "params": {
+                "max": 65535,
+                "min": 1
+              },
+              "text": "between 1 and 65535"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "resourceFieldRef",
+              "text": "a container resource limit or request (`resourceFieldRef`), such as `limits.memory`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range"
+          ]
+        },
+        {
+          "name": "STOREFRONT__REQUEST_ID",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "required": false,
+          "secret": false,
+          "description": "Header that carries the request id",
+          "default": "X-Request-Id",
+          "defaultEnv": [
+            {
+              "name": "STOREFRONT__REQUEST_ID",
+              "value": "X-Request-Id"
+            }
+          ],
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "pattern",
+              "params": {
+                "pattern": "^[A-Za-z-]+$"
+              },
+              "text": "matches the RE2 pattern `^[A-Za-z-]+$`"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "fieldRef",
+              "text": "a pod field from the Downward API (`fieldRef`), such as `metadata.namespace`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "pattern_mismatch"
+          ]
+        },
+        {
+          "name": "STOREFRONT__SKU_PATTERN",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "required": false,
+          "secret": false,
+          "description": "Pattern every product SKU must contain",
+          "default": "SKU-0000",
+          "defaultEnv": [
+            {
+              "name": "STOREFRONT__SKU_PATTERN",
+              "value": "SKU-0000"
+            }
+          ],
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "pattern",
+              "params": {
+                "pattern": "[A-Z]{3}-[0-9]{4}"
+              },
+              "text": "contains a match for the RE2 pattern `[A-Z]{3}-[0-9]{4}`"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "fieldRef",
+              "text": "a pod field from the Downward API (`fieldRef`), such as `metadata.namespace`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "pattern_mismatch"
+          ]
+        },
+        {
+          "name": "catalogue",
+          "kind": "file",
+          "type": "config",
+          "typeLabel": "JSON config file",
+          "required": false,
+          "secret": false,
+          "description": "Product categories shown in the navigation",
+          "file": {
+            "path": "/etc/storefront/catalogue/catalogue.json",
+            "format": "json",
+            "reload": "watch",
+            "contents": "a JSON file, read at the path",
+            "reloadText": "the app reloads the file when it changes"
+          },
+          "constraints": [
+            {
+              "rule": "schema",
+              "params": {
+                "schema": {
+                  "properties": {
+                    "categories": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "categories"
+                  ],
+                  "type": "object"
+                }
+              },
+              "text": "matches the JSON Schema in the contract"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "inline",
+              "text": "content in the platform repository (`inline`), rendered as a content-hashed ConfigMap"
+            },
+            {
+              "kind": "configMap",
+              "text": "a ConfigMap (`configMap`), one key per file"
+            },
+            {
+              "kind": "secret",
+              "text": "a Kubernetes Secret (`secret`), one key per file"
+            },
+            {
+              "kind": "csi",
+              "text": "the Secrets Store CSI driver (`csi`)"
+            },
+            {
+              "kind": "image",
+              "text": "an OCI image volume (`image`), for content too large for a ConfigMap"
+            },
+            {
+              "kind": "injected",
+              "note": "the injector writes the file at the path",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "file_unreadable",
+            "file_malformed",
+            "schema_mismatch"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "database",
+      "title": "database",
+      "inputs": [
+        {
+          "name": "STOREFRONT__DB__PASSWORD",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "group": "database",
+          "required": true,
+          "secret": true,
+          "description": "Password of the storefront database user",
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a `secretKeyRef` or `injected` reference, never the value"
+          },
+          "constraints": [
+            {
+              "rule": "length",
+              "params": {
+                "minLength": 16
+              },
+              "text": "at least 16 characters (Unicode code points)"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "secretKeyRef",
+              "text": "a key of a Kubernetes Secret (`secretKeyRef`)"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "missing_required",
+            "invalid_type",
+            "out_of_range"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "observability",
+      "title": "observability",
+      "inputs": [
+        {
+          "name": "STOREFRONT__DEBUG",
+          "kind": "var",
+          "type": "bool",
+          "typeLabel": "boolean",
+          "group": "observability",
+          "required": false,
+          "secret": false,
+          "description": "Log every request and response body",
+          "default": false,
+          "defaultEnv": [
+            {
+              "name": "STOREFRONT__DEBUG",
+              "value": "false"
+            }
+          ],
+          "wire": {
+            "text": "`true` or `false`",
+            "platform": "a boolean"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type"
+          ]
+        },
+        {
+          "name": "STOREFRONT__SAMPLE_RATE",
+          "kind": "var",
+          "type": "float",
+          "typeLabel": "number",
+          "group": "observability",
+          "required": false,
+          "secret": false,
+          "description": "Fraction of requests traced",
+          "default": 0.1,
+          "defaultEnv": [
+            {
+              "name": "STOREFRONT__SAMPLE_RATE",
+              "value": "0.1"
+            }
+          ],
+          "wire": {
+            "text": "a decimal number with `.` as the decimal point, such as `0.5`",
+            "platform": "a number"
+          },
+          "constraints": [
+            {
+              "rule": "range",
+              "params": {
+                "max": 1,
+                "min": 0
+              },
+              "text": "between 0 and 1"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "performance",
+      "title": "performance",
+      "inputs": [
+        {
+          "name": "STOREFRONT__CACHE__TTL",
+          "kind": "var",
+          "type": "duration",
+          "typeLabel": "duration",
+          "group": "performance",
+          "required": false,
+          "secret": false,
+          "description": "How long rendered pages are cached",
+          "details": "Pages are rendered from the CMS, so a longer TTL means fewer CMS calls\nand staler content. Raise it during sales, when traffic peaks.",
+          "default": "90s",
+          "defaultEnv": [
+            {
+              "name": "STOREFRONT__CACHE__TTL",
+              "value": "00:01:30"
+            }
+          ],
+          "configKey": "Storefront:Cache:Ttl",
+          "wire": {
+            "encoding": "timespan",
+            "text": "a .NET TimeSpan, `[d.]hh:mm:ss[.fff]`, such as `00:01:30` for 90 seconds",
+            "platform": "a duration in Go syntax, such as `90s` or `1m30s`; docuconf writes it in the wire format"
+          },
+          "constraints": [
+            {
+              "rule": "range",
+              "params": {
+                "max": "1h",
+                "min": "1s"
+              },
+              "text": "between 1s and 1h"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range"
+          ]
+        },
+        {
+          "name": "STOREFRONT__RATE_LIMITS",
+          "kind": "var",
+          "type": "json",
+          "typeLabel": "JSON value",
+          "group": "performance",
+          "required": false,
+          "secret": false,
+          "description": "Per-client rate limits",
+          "default": {
+            "perMinute": 600
+          },
+          "defaultEnv": [
+            {
+              "name": "STOREFRONT__RATE_LIMITS",
+              "value": "{\"perMinute\":600}"
+            }
+          ],
+          "wire": {
+            "text": "compact JSON on one line",
+            "platform": "a JSON value (written as YAML or JSON in the values file)"
+          },
+          "constraints": [
+            {
+              "rule": "schema",
+              "params": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "perMinute": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "perMinute"
+                  ],
+                  "type": "object"
+                }
+              },
+              "text": "matches the JSON Schema in the contract"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "schema_mismatch"
+          ]
+        },
+        {
+          "name": "STOREFRONT__SHARDS",
+          "kind": "var",
+          "type": "list",
+          "typeLabel": "list of integers",
+          "group": "performance",
+          "required": false,
+          "secret": false,
+          "description": "Search shards this instance queries",
+          "default": [
+            0,
+            1
+          ],
+          "defaultEnv": [
+            {
+              "name": "STOREFRONT__SHARDS__0",
+              "value": "0"
+            },
+            {
+              "name": "STOREFRONT__SHARDS__1",
+              "value": "1"
+            }
+          ],
+          "configKey": "Storefront:Shards",
+          "wire": {
+            "encoding": "indexed",
+            "text": "one variable per item, `STOREFRONT__SHARDS__0`, `STOREFRONT__SHARDS__1` and so on, numbered from 0 with no gaps",
+            "platform": "a list of integers, such as `[1, 2]`; docuconf writes it in the wire format"
+          },
+          "constraints": [
+            {
+              "rule": "itemCount",
+              "params": {
+                "maxItems": 16,
+                "minItems": 1
+              },
+              "text": "between 1 and 16 items"
+            },
+            {
+              "rule": "itemRange",
+              "params": {
+                "itemMax": 1023,
+                "itemMin": 0
+              },
+              "text": "each item between 0 and 1023"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "injected",
+              "note": "without a `ref`: one reference cannot carry an indexed list",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range",
+            "too_few_items",
+            "too_many_items"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "security",
+      "title": "security",
+      "inputs": [
+        {
+          "name": "signing-key",
+          "kind": "file",
+          "type": "text",
+          "typeLabel": "text file",
+          "group": "security",
+          "required": true,
+          "secret": true,
+          "description": "Key that signs basket cookies",
+          "details": "Rotate it by adding the new key to the Secret and rolling the pods;\nbaskets signed with the old key are emptied.",
+          "file": {
+            "path": "/etc/storefront/signing/key.pem",
+            "pathEnv": "STOREFRONT_SIGNING_KEY_FILE",
+            "reload": "restart",
+            "maxSize": 4096,
+            "contents": "a UTF-8 text file",
+            "reloadText": "the app reads the file at startup; a changed source needs a rollout"
+          },
+          "constraints": [
+            {
+              "rule": "pattern",
+              "params": {
+                "pattern": "^-----BEGIN PRIVATE KEY-----"
+              },
+              "text": "contains a match for the RE2 pattern `^-----BEGIN PRIVATE KEY-----`"
+            },
+            {
+              "rule": "maxSize",
+              "params": {
+                "maxSize": 4096
+              },
+              "text": "at most 4 KiB (4096 bytes)"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "secret",
+              "text": "a Kubernetes Secret (`secret`), one key per file"
+            },
+            {
+              "kind": "csi",
+              "text": "the Secrets Store CSI driver (`csi`)"
+            },
+            {
+              "kind": "injected",
+              "note": "the injector writes the file at the path",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "pattern_mismatch",
+            "file_missing",
+            "file_unreadable",
+            "file_too_large",
+            "file_malformed"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ui",
+      "title": "ui",
+      "inputs": [
+        {
+          "name": "STOREFRONT__BANNER",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "group": "ui",
+          "required": false,
+          "secret": false,
+          "description": "Banner text; superseded by the CMS",
+          "deprecated": {
+            "message": "Banners are managed in the CMS now",
+            "replacedBy": "STOREFRONT__CMS__URL"
+          },
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a string"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "fieldRef",
+              "text": "a pod field from the Downward API (`fieldRef`), such as `metadata.namespace`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "name": "STOREFRONT__CMS__URL",
+          "kind": "var",
+          "type": "url",
+          "typeLabel": "URL",
+          "group": "ui",
+          "required": false,
+          "secret": false,
+          "description": "Base URL of the content management system",
+          "details": "The CMS serves banners, landing pages and legal texts.\n\n# When to change it\n\nPoint it at the staging CMS in staging. Setext headings are demoted too:\n\nCaveats\n-------\n\n```sh\n# a comment in a fenced block is not a heading\ncurl \"$STOREFRONT__CMS__URL/health\"\n```",
+          "examples": [
+            "https://cms.example.com/api/v2/spaces/storefront/environments/production/entries?content_type=banner&locale=de-AT&include=10&limit=1000&order=-sys.updatedAt"
+          ],
+          "wire": {
+            "text": "an absolute URL, `scheme://...`, as is",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "schemes",
+              "params": {
+                "schemes": [
+                  "https",
+                  "http"
+                ]
+              },
+              "text": "`https` or `http` URL"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "invalid_scheme"
+          ]
+        },
+        {
+          "name": "STOREFRONT__GREETING",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "group": "ui",
+          "required": false,
+          "secret": false,
+          "description": "Begrüßung auf der Startseite (non-ASCII: «ça va», 東京)",
+          "default": "Grüß Gott!",
+          "defaultEnv": [
+            {
+              "name": "STOREFRONT__GREETING",
+              "value": "Grüß Gott!"
+            }
+          ],
+          "examples": [
+            "Willkommen 👋",
+            "いらっしゃいませ"
+          ],
+          "configKey": "Storefront:Greeting",
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "length",
+              "params": {
+                "maxLength": 120,
+                "minLength": 1
+              },
+              "text": "between 1 and 120 characters (Unicode code points)"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "fieldRef",
+              "text": "a pod field from the Downward API (`fieldRef`), such as `metadata.namespace`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "out_of_range"
+          ]
+        },
+        {
+          "name": "STOREFRONT__LOCALES",
+          "kind": "var",
+          "type": "list",
+          "typeLabel": "list of strings",
+          "group": "ui",
+          "required": false,
+          "secret": false,
+          "description": "Locales offered in the language picker",
+          "default": [
+            "de-AT",
+            "en-GB"
+          ],
+          "defaultEnv": [
+            {
+              "name": "STOREFRONT__LOCALES",
+              "value": "de-AT;en-GB"
+            }
+          ],
+          "wire": {
+            "encoding": "csv",
+            "separator": ";",
+            "text": "the items joined by `;` with nothing around it, such as `a;b`",
+            "platform": "a list of strings, such as `[a, b]`; docuconf writes it in the wire format"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type"
+          ]
+        },
+        {
+          "name": "STOREFRONT__THEME",
+          "kind": "var",
+          "type": "enum",
+          "typeLabel": "enum",
+          "group": "ui",
+          "required": false,
+          "secret": false,
+          "description": "Colour theme of the storefront",
+          "default": "light",
+          "defaultEnv": [
+            {
+              "name": "STOREFRONT__THEME",
+              "value": "light"
+            }
+          ],
+          "wire": {
+            "text": "one of the values, exactly as listed",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "values",
+              "params": {
+                "values": [
+                  "light",
+                  "dark",
+                  "high-contrast"
+                ]
+              },
+              "text": "one of `light`, `dark` or `high-contrast`"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "not_in_enum"
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": "missing_required",
+      "meaning": "A required input is not set, and has no default.",
+      "fix": "Set it through one of its allowed sources."
+    },
+    {
+      "code": "invalid_type",
+      "meaning": "The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`).",
+      "fix": "Write the value in the input's wire format. For an injected secret, make sure the injector runs."
+    },
+    {
+      "code": "out_of_range",
+      "meaning": "A number, duration, length or list item is outside the input's bounds.",
+      "fix": "Use a value within the input's constraints."
+    },
+    {
+      "code": "pattern_mismatch",
+      "meaning": "The value does not match the input's pattern.",
+      "fix": "Use a value that matches the pattern."
+    },
+    {
+      "code": "not_in_enum",
+      "meaning": "The value is not one of the allowed values.",
+      "fix": "Use one of the listed values, spelled exactly as listed."
+    },
+    {
+      "code": "invalid_scheme",
+      "meaning": "The URL's scheme is not one of the allowed schemes.",
+      "fix": "Use a URL with an allowed scheme."
+    },
+    {
+      "code": "too_few_items",
+      "meaning": "The list has fewer items than its minimum.",
+      "fix": "Add items."
+    },
+    {
+      "code": "too_many_items",
+      "meaning": "The list has more items than its maximum.",
+      "fix": "Remove items."
+    },
+    {
+      "code": "file_missing",
+      "meaning": "The file is not at its path.",
+      "fix": "Give the input a source, and check that it is mounted at the declared path (or that its path variable points at it)."
+    },
+    {
+      "code": "file_unreadable",
+      "meaning": "The file exists but cannot be read.",
+      "fix": "Check the mount, the file mode and the user the app runs as."
+    },
+    {
+      "code": "file_too_large",
+      "meaning": "The file is larger than its maximum size.",
+      "fix": "Shrink the content, or raise `maxSize` in the app's declaration."
+    },
+    {
+      "code": "file_malformed",
+      "meaning": "The file does not parse in its format, is a directory, is not UTF-8 text, or holds too few certificates.",
+      "fix": "Fix the content so it parses in the declared format."
+    },
+    {
+      "code": "schema_mismatch",
+      "meaning": "The value or file parses, but does not match its JSON Schema.",
+      "fix": "Fix the content to match the schema; `docuconf vet` checks inline content before deploy."
+    }
+  ]
+}

@@ -28,6 +28,7 @@ import (
 type Platform struct {
 	ctx  *cue.Context
 	meta cue.Value
+	docs cue.Value // #DocsModel, compiled on first use
 	fsys fstest.MapFS
 }
 
@@ -93,11 +94,25 @@ func (p *Platform) LoadContract(file string) (*Contract, error) {
 }
 
 // ParseContract is LoadContract for a contract already in memory; file
-// names it in errors.
+// names it in errors. A .json file is the contract as JSON (cue export
+// --out json, or files/docuconf/contract.json in a chart); anything else
+// is CUE.
 func (p *Platform) ParseContract(file string, src []byte) (*Contract, error) {
-	v, err := p.build("/input/"+filepath.Base(file), map[string][]byte{"input/" + filepath.Base(file): src})
-	if err != nil {
-		return nil, contractError(file, err)
+	var v cue.Value
+	if strings.EqualFold(path.Ext(file), ".json") {
+		v = p.ctx.CompileBytes(src, cue.Filename(file))
+		if err := v.Err(); err != nil {
+			return nil, fmt.Errorf("%s: %s", file, errorLines(err))
+		}
+		if isContract(v) {
+			v = p.meta.LookupPath(cue.ParsePath("#Contract")).Unify(v)
+		}
+	} else {
+		var err error
+		v, err = p.build("/input/"+filepath.Base(file), map[string][]byte{"input/" + filepath.Base(file): src})
+		if err != nil {
+			return nil, contractError(file, err)
+		}
 	}
 	if !isContract(v) {
 		var found []cue.Value
@@ -204,8 +219,16 @@ func (p *Platform) Validate(c *Contract, values, files, overlays, policy cue.Val
 	t := newTranslator(c, values, files, overlays)
 	// An undeclared name makes CUE reject the whole values struct, which
 	// would hide every other problem, so unknown names are reported here
-	// and left out of #Validate.
-	values = t.declaredOnly(p.ctx, values, t.vars, "is not declared in the contract (check the spelling)")
+	// and left out of #Validate. The values document's shared pod metadata
+	// (SPEC §4.5.2) is not a variable, and is kept.
+	declared := map[string]cue.Value{}
+	for k, v := range t.vars {
+		declared[k] = v
+	}
+	for _, k := range sharedPodFields {
+		declared[k] = cue.Value{}
+	}
+	values = t.declaredOnly(p.ctx, values, declared, "is not declared in the contract (check the spelling)")
 	files = t.declaredOnly(p.ctx, files, t.fileDefs, "is not a file input declared in the contract")
 	overlays = t.declaredOverlays(p.ctx)
 
@@ -242,7 +265,7 @@ func (p *Platform) Render(c *Contract, values, files, overlays cue.Value) ([]byt
 		FillPath(cue.ParsePath("overlays"), overlays)
 	// Each section is encoded separately to keep this order in the output.
 	var buf bytes.Buffer
-	for _, f := range []string{"env", "volumes", "volumeMounts", "configMaps", "restartTriggers"} {
+	for _, f := range []string{"env", "volumes", "volumeMounts", "configMaps", "restartTriggers", "podAnnotations", "podLabels"} {
 		v := r.LookupPath(cue.ParsePath(f))
 		if err := v.Validate(cue.Concrete(true)); err != nil {
 			return nil, fmt.Errorf("render %s: %s", f, errorLines(err))
@@ -251,7 +274,12 @@ func (p *Platform) Render(c *Contract, values, files, overlays cue.Value) ([]byt
 		if err != nil {
 			return nil, err
 		}
-		if n, _ := v.Len().Int64(); n == 0 {
+		if v.IncompleteKind() == cue.StructKind {
+			if len(fields(v)) == 0 {
+				fmt.Fprintf(&buf, "%s: {}\n", f)
+				continue
+			}
+		} else if n, _ := v.Len().Int64(); n == 0 {
 			fmt.Fprintf(&buf, "%s: []\n", f)
 			continue
 		}
@@ -267,6 +295,11 @@ func (p *Platform) Render(c *Contract, values, files, overlays cue.Value) ([]byt
 	}
 	return buf.Bytes(), nil
 }
+
+// sharedPodFields are the values document's keys that are not variables:
+// pod metadata shared by every injector (SPEC §4.5.2). Variable names are
+// upper case, so they cannot collide.
+var sharedPodFields = []string{"podAnnotations", "podLabels"}
 
 // EnvVar is one container env entry produced by #Render.
 type EnvVar struct {
@@ -293,6 +326,26 @@ func (p *Platform) RenderEnv(c *Contract, values cue.Value) ([]EnvVar, error) {
 		return nil, err
 	}
 	return env, nil
+}
+
+// ValidateDocsModel checks a docs model document (JSON) against
+// #DocsModel, the schema in spec/cue/docs.
+func (p *Platform) ValidateDocsModel(file string, data []byte) error {
+	if !p.docs.Exists() {
+		docs, err := p.build("./docs", nil)
+		if err != nil {
+			return fmt.Errorf("docs model schema: %w", err)
+		}
+		p.docs = docs.LookupPath(cue.ParsePath("#DocsModel"))
+	}
+	v := p.ctx.CompileBytes(data, cue.Filename(file))
+	if err := v.Err(); err != nil {
+		return fmt.Errorf("%s: %s", file, errorLines(err))
+	}
+	if err := p.docs.Unify(v).Validate(cue.Concrete(true)); err != nil {
+		return fmt.Errorf("%s is not a valid docs model:\n  %s", file, strings.ReplaceAll(errorLines(err), "\n", "\n  "))
+	}
+	return nil
 }
 
 // CompileFile builds a parsed file, such as YAML extracted to CUE.

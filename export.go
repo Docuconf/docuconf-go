@@ -1,6 +1,7 @@
 package docuconf
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -33,9 +34,15 @@ type Meta struct {
 	// the package is located with go/build, then the working directory.
 	SourceDir string
 	// Prefix and FuncMap must match the env.Options the app parses with.
+	// When empty, they come from the struct's DocuconfOptions method, if
+	// it has one (see OptionsProvider).
 	Prefix  string
 	FuncMap map[reflect.Type]env.ParserFunc
 }
+
+// maxDetails is the most characters (Unicode code points) an input's
+// details may have (SPEC §4.2).
+const maxDetails = 4000
 
 var dnsLabelRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
 
@@ -50,33 +57,57 @@ func Export[T any](meta Meta) ([]byte, error) {
 	return ExportType(reflect.TypeFor[T](), meta)
 }
 
-// ExportType is Export for a reflect.Type.
+// ExportType is Export for a reflect.Type. Every problem with the
+// declaration, the name and the descriptions is reported together, in one
+// *DeclarationError.
 func ExportType(t reflect.Type, meta Meta) ([]byte, error) {
+	if t == nil || t.Kind() != reflect.Struct {
+		return nil, errNotStruct("Export", t)
+	}
+	if meta.Prefix == "" || meta.FuncMap == nil {
+		own := typeOptions(t)
+		if meta.Prefix == "" {
+			meta.Prefix = own.Prefix
+		}
+		if meta.FuncMap == nil {
+			meta.FuncMap = own.FuncMap
+		}
+	}
 	d, err := declare(t, declOptions{prefix: meta.Prefix, funcMap: meta.FuncMap})
-	if err != nil {
+	var problems []string
+	var derr *DeclarationError
+	switch {
+	case errors.As(err, &derr):
+		problems = append(problems, derr.Problems...)
+	case err != nil:
 		return nil, err
 	}
-	var problems []string
 	if !dnsLabelRe.MatchString(meta.Name) {
 		problems = append(problems, fmt.Sprintf("service name %q must be a DNS label ([a-z0-9-], at most 63 characters)", meta.Name))
 	}
 	docs := newDocResolver(meta.SourceDir)
-	describe := func(what, desc string, idx []int) string {
-		if doc := docs.fieldDoc(t, idx); doc != "" {
+	// The description is the doc comment's first paragraph (or the desc
+	// tag), and details the rest of the comment, as Markdown (splitDoc).
+	describe := func(what, desc string, idx []int) (string, string) {
+		doc, details := docs.fieldDoc(t, idx)
+		if doc != "" {
 			desc = doc
 		}
 		if utf8.RuneCountInString(desc) < 5 {
 			problems = append(problems, fmt.Sprintf("%s needs a description of at least 5 characters: write a doc comment on the field, or a desc tag", what))
 		}
-		return desc
+		if n := utf8.RuneCountInString(details); n > maxDetails {
+			problems = append(problems, fmt.Sprintf("%s: the doc comment after its first paragraph is %d characters; details may have at most %d", what, n, maxDetails))
+		}
+		return desc, details
 	}
 
 	vars := slices.Clone(d.vars)
 	slices.SortFunc(vars, func(a, b *varDecl) int { return strings.Compare(a.name, b.name) })
 	var varsObj obj
 	for _, v := range vars {
-		desc := describe(v.name+" ("+v.goPath+")", v.desc, v.index)
-		o, err := v.contract(desc, docs)
+		desc, details := describe(v.name+" ("+v.goPath+")", v.desc, v.index)
+		o, err := v.contract(desc, details, docs)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("%s: %v", v.name, err))
 		}
@@ -86,8 +117,8 @@ func ExportType(t reflect.Type, meta Meta) ([]byte, error) {
 	slices.SortFunc(files, func(a, b *fileDecl) int { return strings.Compare(a.name, b.name) })
 	var filesObj obj
 	for _, f := range files {
-		desc := describe("file input "+f.name+" ("+f.goPath+")", f.desc, f.index)
-		o, err := f.contract(desc, docs)
+		desc, details := describe("file input "+f.name+" ("+f.goPath+")", f.desc, f.index)
+		o, err := f.contract(desc, details, docs)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("file input %s: %v", f.name, err))
 		}
@@ -118,9 +149,13 @@ func ExportType(t reflect.Type, meta Meta) ([]byte, error) {
 		doc = doc.add("files", filesObj)
 	}
 
-	pkg := meta.Package
+	return contractSource(doc, meta.Name, meta.Package), nil
+}
+
+// contractSource writes a contract document as contract.cue.
+func contractSource(doc obj, name, pkg string) []byte {
 	if pkg == "" {
-		pkg = strings.ReplaceAll(meta.Name, "-", "_")
+		pkg = strings.ReplaceAll(name, "-", "_")
 		if pkg == "" || (pkg[0] >= '0' && pkg[0] <= '9') {
 			pkg = "c" + pkg
 		}
@@ -132,12 +167,15 @@ func ExportType(t reflect.Type, meta Meta) ([]byte, error) {
 	b.WriteString("contract.#Contract & ")
 	writeValue(&b, doc, 0)
 	b.WriteByte('\n')
-	return []byte(b.String()), nil
+	return []byte(b.String())
 }
 
 // contract returns the variable's fields in the order of SPEC §4.
-func (v *varDecl) contract(desc string, docs *docResolver) (obj, error) {
+func (v *varDecl) contract(desc, details string, docs *docResolver) (obj, error) {
 	o := obj{}.add("type", v.typ).add("description", desc)
+	if details != "" {
+		o = o.add("details", details)
+	}
 	if v.required {
 		o = o.add("required", true)
 	}
@@ -200,6 +238,9 @@ func (v *varDecl) contract(desc string, docs *docResolver) (obj, error) {
 		if len(v.schemes) > 0 {
 			o = o.add("schemes", stringsToList(v.schemes))
 		}
+		if v.maxLength != nil {
+			o = o.add("maxLength", int64(*v.maxLength))
+		}
 	case typeEnum:
 		o = o.add("values", stringsToList(v.values))
 	case typeList:
@@ -218,7 +259,16 @@ func (v *varDecl) contract(desc string, docs *docResolver) (obj, error) {
 		if v.itemMax != nil {
 			o = o.add("itemMax", json.Number(v.itemMax.String()))
 		}
+		if v.itemMinLength != nil {
+			o = o.add("itemMinLength", int64(*v.itemMinLength))
+		}
+		if v.itemMaxLength != nil {
+			o = o.add("itemMaxLength", int64(*v.itemMaxLength))
+		}
 	case typeJSON:
+		if v.maxLength != nil {
+			o = o.add("maxLength", int64(*v.maxLength))
+		}
 		s, err := schemaFor(v.jsonType, docs)
 		if err != nil {
 			return o, err
@@ -277,12 +327,15 @@ func (v *varDecl) defaultValue() (any, error) {
 }
 
 // contract returns the file input's fields in the order of SPEC §4.6.
-func (f *fileDecl) contract(desc string, docs *docResolver) (obj, error) {
+func (f *fileDecl) contract(desc, details string, docs *docResolver) (obj, error) {
 	o := obj{}.add("type", f.typ)
 	if f.typ == fileConfig || f.typ == fileKeystore {
 		o = o.add("format", f.format)
 	}
 	o = o.add("description", desc)
+	if details != "" {
+		o = o.add("details", details)
+	}
 	if f.required {
 		o = o.add("required", true)
 	}

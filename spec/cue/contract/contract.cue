@@ -3,7 +3,7 @@
 // An application's SDK emits a #Contract describing every input it reads:
 // environment variables (vars) and files (files.cue). The platform
 // validates what it intends to supply with #Validate, then turns it into
-// Kubernetes env entries, volumes and mounts with #Render.
+// Kubernetes env entries, volumes, mounts and pod metadata with #Render.
 package contract
 
 import (
@@ -94,9 +94,16 @@ import (
 
 #EnvName: =~"^[A-Z][A-Z0-9_]*$"
 
+// #Details is the optional long-form documentation of an input, in
+// CommonMark: not blank, and at most 4000 characters (Unicode code points).
+#Details: strings.MaxRunes(4000) & =~"[^\\s]"
+
 #Common: {
 	name:        #EnvName
 	description: strings.MinRunes(5)
+	// Markdown for docs only: why the input exists and when to change it.
+	// Never read at runtime.
+	details?: #Details
 	required:    *false | bool
 	secret:      *false | bool
 	group?:      string
@@ -179,6 +186,8 @@ import (
 	type:     "url"
 	default?: string
 	schemes?: [string, ...string]
+	// Characters (Unicode code points), as for a string's maxLength.
+	maxLength?: int & >=0
 })
 
 #EnumVar: close({
@@ -211,6 +220,13 @@ import (
 	if itemMin != _|_ || itemMax != _|_ {
 		_itemBoundsOnIntItems: true & items == "int"
 	}
+	// Bounds on the length of each item of a string list, in characters
+	// (Unicode code points), as minLength and maxLength for a string.
+	itemMinLength?: int & >=0
+	itemMaxLength?: int & >=0
+	if itemMinLength != _|_ || itemMaxLength != _|_ {
+		_itemLengthsOnStringItems: true & items == "string"
+	}
 	default?: [...]
 })
 
@@ -220,7 +236,10 @@ import (
 	#Common
 	type: "json"
 	schema?: {...}
-	default?: _
+	// Characters (Unicode code points) of the value's wire form: the
+	// compact JSON the platform renders, or the raw value the app receives.
+	maxLength?: int & >=0
+	default?:   _
 })
 
 // #SecretRef is the only accepted value for a secret variable. The
@@ -244,6 +263,10 @@ import (
 	// value, e.g. "vault:secret/data/db#url". Omitted when the injector
 	// sets the variable itself; nothing is rendered then.
 	ref?: string & !=""
+	// Pod annotations and labels the injector needs (pod.cue, SPEC
+	// §4.5.2), with {input} expanded to the variable's name.
+	podAnnotations?: #PodAnnotations
+	podLabels?:      #PodLabels
 }})
 
 #Provider: =~"^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
@@ -282,6 +305,9 @@ import (
 
 	if var.secret {
 		value: #SecretRef | #Injected
+	}
+	if isInjected {
+		pod: #PodMetadata & {input: var.name, from: value.injected}
 	}
 	if isInjected && value.injected.ref != _|_ && var.type == "list" {
 		// One env value cannot carry a list spread over NAME__0, NAME__1.
@@ -335,6 +361,7 @@ import (
 			if var.schemes != _|_ {
 				literal: =~"^(\(strings.Join([for x in var.schemes {regexp.QuoteMeta(x)}], "|")))://"
 			}
+			if var.maxLength != _|_ {literal: strings.MaxRunes(var.maxLength)}
 		}
 		if var.type == "enum" {
 			literal: or(var.values)
@@ -342,8 +369,16 @@ import (
 		if var.type == "json" && #schema != _|_ {
 			literal: #schema
 		}
+		if var.type == "json" && var.maxLength != _|_ {
+			// Measured on the compact JSON #Render writes.
+			withinMaxLength: json.Marshal(literal) & strings.MaxRunes(var.maxLength)
+		}
 		if var.type == "list" {
-			if var.items == "string" {literal: [...string]}
+			if var.items == "string" {
+				literal: [...string]
+				if var.itemMinLength != _|_ {literal: [...strings.MinRunes(var.itemMinLength)]}
+				if var.itemMaxLength != _|_ {literal: [...strings.MaxRunes(var.itemMaxLength)]}
+			}
 			if var.items == "int" {
 				literal: [...int]
 				if var.itemMin != _|_ {literal: [...>=var.itemMin]}
@@ -363,6 +398,10 @@ import (
 	contract: #Contract
 	values: close({
 		for n, _ in contract.vars {(n)?: _}
+		// Pod metadata shared by every injector (SPEC §4.5.2). Variable
+		// names are upper case, so these never collide with one.
+		podAnnotations?: #PodAnnotations
+		podLabels?:      #PodLabels
 	})
 	// The source of each file input, keyed by input name.
 	files: close({
@@ -409,7 +448,7 @@ import (
 	// A variable comes from one place: the environment or one overlay. The
 	// environment would silently win over the overlay, so both is an error.
 	_suppliedBy: {
-		for n, _ in values {(n): "env"}
+		for n, _ in values if contract.vars[n] != _|_ {(n): "env"}
 		for o, m in overlays for n, _ in m {(n): "overlay \(o)"}
 	}
 
@@ -424,6 +463,21 @@ import (
 				(n): #CheckFile & {file: f, source: files[n], if #schemas[n] != _|_ {#schema: #schemas[n]}}
 			}
 		}
+	}
+
+	// Pod annotations and labels: the shared ones are checked here, each
+	// injected source's in its own check (checks.NAME.pod,
+	// fileChecks.NAME.pod), and no two sources may disagree on a key.
+	podChecks: {
+		shared: #PodMetadata & {from: {
+			if values.podAnnotations != _|_ {podAnnotations: values.podAnnotations}
+			if values.podLabels != _|_ {podLabels: values.podLabels}
+		}}
+		#PodMetadataConflicts & {sources: {
+			"(shared)": shared.out
+			for n, c in checks if c.pod != _|_ {(n): c.pod.out}
+			for n, c in fileChecks if c.pod != _|_ {(n): c.pod.out}
+		}}
 	}
 
 	// Kept separate from values: making a field of values required based
@@ -457,7 +511,8 @@ import (
 // #Render turns validated values into the container's env entries and,
 // for file inputs, the volumes, mounts and ConfigMaps that deliver them.
 // restartTriggers lists the objects whose changes must roll the pods,
-// for inputs the app reads only at startup.
+// for inputs the app reads only at startup. podAnnotations and podLabels
+// are what injected sources ask to have on the pod template (SPEC §4.5.2).
 #Render: {
 	contract: #Contract
 	values: [string]: _
@@ -486,6 +541,24 @@ import (
 	volumeMounts: list.Concat([list.FlattenN([for r in _files {r.volumeMounts}], 1), [for r in _overlays {r.volumeMount}]])
 	configMaps: list.Concat([list.FlattenN([for r in _files {r.configMaps}], 1), [for r in _overlays {r.configMap}]])
 	restartTriggers: list.FlattenN([for r in _files {r.restartTriggers}], 1)
+
+	// Shared first, then variables and file inputs in contract order. A key
+	// set to different values by two sources fails here as a conflict;
+	// #Validate names the two sources (podChecks).
+	let _pod = [
+		(#PodMetadata & {from: {
+			if values.podAnnotations != _|_ {podAnnotations: values.podAnnotations}
+			if values.podLabels != _|_ {podLabels: values.podLabels}
+		}}).out,
+		for n, v in contract.vars if values[n] != _|_ if (values[n] & #Injected) != _|_ {
+			(#PodMetadata & {input: n, from: values[n].injected}).out
+		},
+		if contract.files != _|_ for n, f in contract.files if files[n] != _|_ if files[n].injected != _|_ {
+			(#PodMetadata & {input: n, file: f, from: files[n].injected}).out
+		},
+	]
+	podAnnotations: {for m in _pod for k, v in m.annotations {(k): v}}
+	podLabels: {for m in _pod for k, v in m.labels {(k): v}}
 }
 
 #RenderVar: {
