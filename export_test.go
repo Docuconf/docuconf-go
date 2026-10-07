@@ -139,3 +139,44 @@ func TestDeclarationErrors(t *testing.T) {
 		require.Contains(t, all, want)
 	}
 }
+
+const contractCUEGolden = "testdata/contractcue.golden.cue"
+
+// TestContractCUE formats a contract built outside Go, with its keys in
+// no particular order, as Export would write it.
+func TestContractCUE(t *testing.T) {
+	in, err := os.ReadFile("testdata/contractcue.json")
+	require.NoError(t, err)
+	out, err := docuconf.ContractCUE(in, "")
+	require.NoError(t, err)
+	if *update {
+		require.NoError(t, os.WriteFile(contractCUEGolden, out, 0o644))
+	}
+	want, err := os.ReadFile(contractCUEGolden)
+	require.NoError(t, err)
+	require.Equal(t, string(want), string(out))
+
+	cue := cueBinary(t)
+	dir := t.TempDir()
+	copyDir(t, "spec/cue/cue.mod", filepath.Join(dir, "cue.mod"))
+	copyDir(t, "spec/cue/contract", filepath.Join(dir, "contract"))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "orders"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders", "contract.cue"), out, 0o644))
+	cmd := exec.Command(cue, "vet", "-c", "./orders/contract.cue")
+	cmd.Dir = dir
+	msg, err := cmd.CombinedOutput()
+	require.NoError(t, err, "cue vet failed:\n%s", msg)
+}
+
+func TestContractCUERejectsInvalidContracts(t *testing.T) {
+	_, err := docuconf.ContractCUE([]byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract",
+		"metadata": {"name": "Orders"}, "vars": {"PORT": {"type": "int", "description": "Port", "min": 2, "max": 1}}}`), "")
+	var de *docuconf.DeclarationError
+	require.True(t, errors.As(err, &de), "%v", err)
+	require.Contains(t, de.Error(), "PORT: description must be at least 5 characters")
+	require.Contains(t, de.Error(), "PORT: min is greater than max")
+
+	_, err = docuconf.ContractCUE([]byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract",
+		"metadata": {"name": "Orders"}, "vars": {}}`), "")
+	require.ErrorContains(t, err, `metadata.name "Orders" must be a DNS label`)
+}

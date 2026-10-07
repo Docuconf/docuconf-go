@@ -28,3 +28,16 @@ jobs:
           go build ./...
           go vet ./...
           go test ./...
+      # The CLI pins the SDK by version (cmd/docuconf/go.mod), so that
+      # go install works; check and exec also run against this checkout's SDK.
+      - name: CLI check and exec against this checkout's SDK
+        working-directory: cmd/docuconf
+        run: |
+          cat > "$RUNNER_TEMP/go.work" <<EOF
+          go 1.25.0
+          use (
+          	$GITHUB_WORKSPACE
+          	$GITHUB_WORKSPACE/cmd/docuconf
+          )
+          EOF
+          GOWORK="$RUNNER_TEMP/go.work" go test -run 'Check|Exec' .

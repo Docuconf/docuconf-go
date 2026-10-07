@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"math/big"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
@@ -38,15 +40,32 @@ import (
 // *ValidationError, which is also written to the termination log. A
 // contract that is itself invalid returns a *DeclarationError.
 //
-// Options.Environment, DotEnv, TerminationLog and Logger apply; the other
-// options concern declared structs and file inputs. The contract's
-// variables are all that is loaded: a contract with files, overlays or
-// profiles is rejected, since this mode does not load them yet.
+// File inputs are loaded and checked as Parse checks the matching Go
+// types, with the same codes, and returned by input name (a DNS label,
+// so it never clashes with a variable name), as the Go type for each
+// file type:
+//
+//	tls       TLSKeyPair
+//	caBundle  CABundle
+//	keystore  Keystore
+//	text      TextFile
+//	binary    BinaryFile
+//	config    ConfigFile[any], checked against the contract's schema and
+//	          decoded as encoding/json decodes into an any
+//
+// A config file in the toml format, or a jks keystore, is a
+// *DeclarationError: the Go SDK cannot read them.
+//
+// Options.Environment, DotEnv, FileRoot, TerminationLog, Now,
+// WatchInterval and Logger apply; Prefix and FuncMap concern declared
+// structs. A contract with overlays or profiles is rejected, since this
+// mode does not load them yet.
 //
 //	vals, err := docuconf.LoadContract(contractJSON, docuconf.Options{})
 //	timeout := vals["REQUEST_TIMEOUT"].(time.Duration)
+//	licence := vals["licence"].(docuconf.TextFile).Content()
 func LoadContract(contractJSON []byte, opts Options) (map[string]any, error) {
-	vars, err := declareContract(contractJSON)
+	vars, files, err := declareContract(contractJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -59,12 +78,18 @@ func LoadContract(contractJSON []byte, opts Options) (map[string]any, error) {
 		return nil, err
 	}
 	res := checkVars(vars, environ, logger)
-	if len(res.viols) > 0 {
-		verr := &ValidationError{Violations: res.viols}
+	viols := res.viols
+	loaded := loadContractFiles(files, environ, res.raw, opts, logger)
+	out := make(map[string]any, len(vars)+len(files))
+	for _, f := range loaded {
+		viols = append(viols, f.viols...)
+		out[f.name] = f.value
+	}
+	if len(viols) > 0 {
+		verr := &ValidationError{Violations: viols}
 		writeTerminationLog(opts.TerminationLog, environ, verr, logger)
 		return nil, verr
 	}
-	out := make(map[string]any, len(vars))
 	for _, v := range vars {
 		if val, ok := res.typed[v.name]; ok {
 			out[v.name] = val
@@ -73,6 +98,77 @@ func LoadContract(contractJSON []byte, opts Options) (map[string]any, error) {
 		}
 	}
 	return out, nil
+}
+
+type loadedFile struct {
+	name  string
+	value any
+	viols []Violation
+}
+
+// loadContractFiles binds each file input to a value of its Go type, the
+// way load binds a struct's fields, so both paths run the same checks.
+func loadContractFiles(files []*fileDecl, environ, raw map[string]string, opts Options, logger *slog.Logger) []loadedFile {
+	now := opts.Now
+	if now == nil {
+		now = time.Now
+	}
+	interval := opts.WatchInterval
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+	root := opts.FileRoot
+	if root == "" {
+		root = environ[EnvFileRoot]
+	}
+	var out []loadedFile
+	for _, f := range files {
+		p := f.path
+		if f.pathEnv != "" && environ[f.pathEnv] != "" {
+			p = environ[f.pathEnv]
+		}
+		if root != "" {
+			p = filepath.Join(root, p)
+		}
+		b := &fileBinding{
+			decl:     f,
+			path:     p,
+			now:      now,
+			interval: interval,
+			logger:   logger,
+			password: func() (string, bool) {
+				// The password variable is usually declared; when it is
+				// not, it is read from the environment as it is.
+				if s, ok := raw[f.passwordVar]; ok {
+					return s, true
+				}
+				s, ok := environ[f.passwordVar]
+				return s, ok
+			},
+		}
+		var fi fileInput
+		switch f.typ {
+		case fileTLS:
+			fi = &TLSKeyPair{}
+		case fileCABundle:
+			fi = &CABundle{}
+		case fileKeystore:
+			fi = &Keystore{}
+		case fileText:
+			fi = &TextFile{}
+		case fileBinary:
+			fi = &BinaryFile{}
+		case fileConfig:
+			fi = &ConfigFile[any]{}
+		}
+		viols := fi.bind(b)
+		value := reflect.ValueOf(fi).Elem().Interface()
+		if f.deprecated != "" && len(viols) == 0 && value.(interface{ Present() bool }).Present() {
+			logger.Warn("docuconf: deprecated file input is present", "input", f.name, "message", f.deprecated)
+		}
+		out = append(out, loadedFile{name: f.name, value: value, viols: viols})
+	}
+	return out
 }
 
 // contractFields lists the fields each variable type may carry, besides
@@ -103,16 +199,17 @@ var contractGoTypes = map[string]reflect.Type{
 	typeJSON:     reflect.TypeFor[any](),
 }
 
-// declareContract builds variable declarations from a contract document,
-// so contract-first loading runs the same checks as a Go declaration.
-func declareContract(contractJSON []byte) ([]*varDecl, error) {
+// declareContract builds variable and file declarations from a contract
+// document, so contract-first loading runs the same checks as a Go
+// declaration.
+func declareContract(contractJSON []byte) ([]*varDecl, []*fileDecl, error) {
 	doc, err := decodeJSON(contractJSON)
 	if err != nil {
-		return nil, &DeclarationError{Problems: []string{fmt.Sprintf("contract is not valid JSON: %v", err)}}
+		return nil, nil, &DeclarationError{Problems: []string{fmt.Sprintf("contract is not valid JSON: %v", err)}}
 	}
 	root, ok := doc.(map[string]any)
 	if !ok {
-		return nil, &DeclarationError{Problems: []string{"contract is not a JSON object"}}
+		return nil, nil, &DeclarationError{Problems: []string{"contract is not a JSON object"}}
 	}
 	var problems []string
 	problemf := func(format string, args ...any) { problems = append(problems, fmt.Sprintf(format, args...)) }
@@ -122,9 +219,9 @@ func declareContract(contractJSON []byte) ([]*varDecl, error) {
 	if root["kind"] != "ConfigContract" {
 		problemf("kind must be ConfigContract")
 	}
-	for _, k := range []string{"files", "overlays", "profiles"} {
+	for _, k := range []string{"overlays", "profiles"} {
 		if _, ok := root[k]; ok {
-			problemf("contract-first mode loads variables only; the contract's %s are not supported", k)
+			problemf("contract-first mode loads variables and files only; the contract's %s are not supported", k)
 		}
 	}
 	varsObj, ok := root["vars"].(map[string]any)
@@ -150,10 +247,243 @@ func declareContract(contractJSON []byte) ([]*varDecl, error) {
 			vars = append(vars, v)
 		}
 	}
-	if len(problems) > 0 {
-		return nil, &DeclarationError{Problems: problems}
+	var files []*fileDecl
+	if x, ok := root["files"]; ok {
+		filesObj, ok := x.(map[string]any)
+		if !ok {
+			problemf("files must be an object")
+		}
+		fnames := make([]string, 0, len(filesObj))
+		for n := range filesObj {
+			fnames = append(fnames, n)
+		}
+		slices.Sort(fnames)
+		for _, name := range fnames {
+			obj, ok := filesObj[name].(map[string]any)
+			if !ok {
+				problemf("file input %s: must be an object", name)
+				continue
+			}
+			f := contractFile(name, obj, func(format string, args ...any) {
+				problemf("file input %s: %s", name, fmt.Sprintf(format, args...))
+			})
+			if f != nil {
+				files = append(files, f)
+			}
+		}
 	}
-	return vars, nil
+	if len(problems) > 0 {
+		return nil, nil, &DeclarationError{Problems: problems}
+	}
+	return vars, files, nil
+}
+
+// contractFileFields lists the fields each file type may carry, besides
+// the common ones (SPEC §4.6).
+var contractFileFields = map[string][]string{
+	fileConfig:   {"format", "schema"},
+	fileTLS:      {"dnsNames", "keyAlgorithms", "minRemaining", "requireCA"},
+	fileCABundle: {"minCertificates"},
+	fileKeystore: {"format", "passwordVar"},
+	fileText:     {"pattern", "minLength", "maxLength"},
+	fileBinary:   {},
+}
+
+var commonFileFields = []string{"name", "type", "description", "required", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated"}
+
+// contractFile builds one file input, reporting problems with it.
+func contractFile(name string, o map[string]any, problem func(string, ...any)) *fileDecl {
+	f := &fileDecl{name: name, goPath: name, reload: "restart", minCertificates: 1}
+	bad := false
+	fail := func(format string, args ...any) {
+		bad = true
+		problem(format, args...)
+	}
+	if !inputNameRe.MatchString(name) {
+		fail("input name must be a DNS label matching %s", inputNameRe)
+	}
+	str := func(k string) (string, bool) {
+		x, ok := o[k]
+		if !ok {
+			return "", false
+		}
+		s, isStr := x.(string)
+		if !isStr {
+			fail("%s must be a string", k)
+		}
+		return s, isStr
+	}
+	boolean := func(k string) (bool, bool) {
+		x, ok := o[k]
+		if !ok {
+			return false, false
+		}
+		b, isBool := x.(bool)
+		if !isBool {
+			fail("%s must be a bool", k)
+		}
+		return b, isBool
+	}
+	strs := func(k string) []string {
+		x, ok := o[k]
+		if !ok {
+			return nil
+		}
+		a, isArr := x.([]any)
+		var out []string
+		for _, e := range a {
+			s, isStr := e.(string)
+			if !isStr {
+				isArr = false
+				break
+			}
+			out = append(out, s)
+		}
+		if !isArr {
+			fail("%s must be a list of strings", k)
+		}
+		return out
+	}
+	count := func(k string, min int64) (int64, bool) {
+		x, ok := o[k]
+		if !ok {
+			return 0, false
+		}
+		num, isNum := x.(json.Number)
+		i, err := num.Int64()
+		if !isNum || err != nil || i < min {
+			fail("%s must be an integer of at least %d", k, min)
+			return 0, false
+		}
+		return i, true
+	}
+
+	if s, ok := str("name"); ok && s != name {
+		fail("name %q does not match its key", s)
+	}
+	f.typ, _ = str("type")
+	allowed, known := contractFileFields[f.typ]
+	if !known {
+		fail("type %q is not a file input type", f.typ)
+		return nil
+	}
+	for k := range o {
+		if !slices.Contains(commonFileFields, k) && !slices.Contains(allowed, k) {
+			fail("field %s does not apply to a %s input", k, f.typ)
+		}
+	}
+	f.desc, _ = str("description")
+	if utf8.RuneCountInString(f.desc) < 5 {
+		fail("description must be at least 5 characters")
+	}
+	f.required, _ = boolean("required")
+	f.secret, _ = boolean("secret")
+	if f.typ == fileTLS || f.typ == fileKeystore {
+		f.secret = true // always secret (SPEC §4.6)
+	}
+	f.path, _ = str("path")
+	if !absPathRe.MatchString(f.path) || dotSegRe.MatchString(f.path) ||
+		strings.Contains(f.path, "//") || strings.HasSuffix(f.path, "/") {
+		fail("path %q must be absolute and normalised", f.path)
+	}
+	if s, ok := str("pathEnv"); ok {
+		if !envNameRe.MatchString(s) {
+			fail("pathEnv must match %s", envNameRe)
+		}
+		f.pathEnv = s
+	}
+	if s, ok := str("reload"); ok {
+		if s != "restart" && s != "watch" {
+			fail("reload must be restart or watch")
+		}
+		f.reload = s
+	}
+	if n, ok := count("maxSize", 1); ok {
+		f.maxSize = &n
+	}
+	f.group, _ = str("group")
+	if d, ok := o["deprecated"]; ok {
+		m, isObj := d.(map[string]any)
+		msg, isStr := m["message"].(string)
+		if !isObj || !isStr {
+			fail("deprecated must be an object with a message")
+		}
+		f.deprecated = msg
+		if f.deprecated == "" {
+			f.deprecated = "deprecated"
+		}
+	}
+
+	switch f.typ {
+	case fileConfig:
+		f.format, _ = str("format")
+		if f.format != "json" && f.format != "yaml" {
+			fail("format %q is not supported; the Go SDK reads json and yaml config files", f.format)
+		}
+		f.schema = &jsonSchema{}
+		if s, ok := o["schema"]; ok {
+			schema, err := schemaFromJSON(s, "schema")
+			if err != nil {
+				fail("%v", err)
+			}
+			f.schema = schema
+		}
+	case fileTLS:
+		f.dnsNames = strs("dnsNames")
+		f.keyAlgorithms = strs("keyAlgorithms")
+		for _, a := range f.keyAlgorithms {
+			if a != "RSA" && a != "ECDSA" && a != "Ed25519" {
+				fail("keyAlgorithms: %q is not RSA, ECDSA or Ed25519", a)
+			}
+		}
+		if s, ok := str("minRemaining"); ok {
+			d, err := time.ParseDuration(s)
+			if err != nil || d < 0 {
+				fail("minRemaining must be a duration such as 720h")
+			}
+			f.minRemaining = &d
+		}
+		f.requireCA, _ = boolean("requireCA")
+	case fileCABundle:
+		if n, ok := count("minCertificates", 1); ok {
+			f.minCertificates = int(n)
+		}
+	case fileKeystore:
+		f.format = "pkcs12"
+		if s, ok := str("format"); ok {
+			f.format = s
+		}
+		if f.format != "pkcs12" {
+			fail("format %q is not supported; the Go SDK reads pkcs12 keystores", f.format)
+		}
+		if s, ok := str("passwordVar"); ok {
+			if !envNameRe.MatchString(s) {
+				fail("passwordVar must match %s", envNameRe)
+			}
+			f.passwordVar = s
+		}
+	case fileText:
+		if p, ok := str("pattern"); ok {
+			re, err := regexp.Compile(p)
+			if err != nil {
+				fail("pattern is not valid RE2: %v", err)
+			}
+			f.pattern = re
+		}
+		for _, l := range []struct {
+			k   string
+			dst **int
+		}{{"minLength", &f.minLength}, {"maxLength", &f.maxLength}} {
+			if n, ok := count(l.k, 0); ok {
+				m := int(n)
+				*l.dst = &m
+			}
+		}
+	}
+	if bad {
+		return nil
+	}
+	return f
 }
 
 // contractVar builds one variable, reporting problems with it.
@@ -441,4 +771,100 @@ func (v *varDecl) typedDefault(def any) (any, string) {
 		return nil, strings.Join(msgs, "; ")
 	}
 	return val, ""
+}
+
+// ContractCUE writes a contract document, given as JSON, as a contract.cue
+// in the form Export writes: the generated-code header, a package clause
+// (pkg, or the service name with dashes replaced by underscores), the
+// meta-schema import and contract.#Contract & {...}, with variables and
+// file inputs sorted by name and their fields in the order of SPEC §4.
+// It is for SDKs and generators that build the contract themselves, in a
+// language Export cannot reflect on.
+//
+// The contract is first checked as LoadContract checks it, and a
+// *DeclarationError lists every problem; so, as there, overlays and
+// profiles are not supported.
+func ContractCUE(contractJSON []byte, pkg string) ([]byte, error) {
+	if _, _, err := declareContract(contractJSON); err != nil {
+		return nil, err
+	}
+	doc, _ := decodeJSON(contractJSON) // declareContract decoded it already
+	root := doc.(map[string]any)
+	name, _ := nested(root, "metadata")["name"].(string)
+	if !dnsLabelRe.MatchString(name) {
+		return nil, &DeclarationError{Problems: []string{fmt.Sprintf("metadata.name %q must be a DNS label ([a-z0-9-], at most 63 characters)", name)}}
+	}
+	out := ordered(root, []string{"apiVersion", "kind", "metadata", "vars", "files"}, func(k string, v any) any {
+		switch k {
+		case "metadata":
+			return ordered(v, []string{"name", "appVersion", "generator"}, func(k string, v any) any {
+				if k == "generator" {
+					return ordered(v, []string{"language", "sdk", "version"}, nil)
+				}
+				return fromJSON(v)
+			})
+		case "vars":
+			return ordered(v, nil, input(varFieldOrder))
+		case "files":
+			return ordered(v, nil, input(fileFieldOrder))
+		}
+		return fromJSON(v)
+	})
+	return contractSource(out.(obj), name, pkg), nil
+}
+
+// The order Export writes a variable's and a file input's fields in.
+var (
+	varFieldOrder = []string{"type", "description", "required", "secret", "default", "group", "examples", "deprecated", "configKey",
+		"minLength", "maxLength", "pattern", "min", "max", "encoding", "schemes", "values", "items", "separator",
+		"minItems", "maxItems", "itemMin", "itemMax", "schema"}
+	fileFieldOrder = []string{"type", "format", "description", "required", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated",
+		"schema", "dnsNames", "keyAlgorithms", "minRemaining", "requireCA", "minCertificates", "passwordVar", "pattern", "minLength", "maxLength"}
+)
+
+func nested(m map[string]any, k string) map[string]any {
+	x, _ := m[k].(map[string]any)
+	return x
+}
+
+// ordered converts a decoded JSON object to obj, with the keys in order
+// first and any others after them, sorted. sub converts each value; by
+// default it is fromJSON.
+func ordered(v any, order []string, sub func(k string, v any) any) any {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return fromJSON(v)
+	}
+	if sub == nil {
+		sub = func(_ string, v any) any { return fromJSON(v) }
+	}
+	var keys, rest []string
+	for _, k := range order {
+		if _, ok := m[k]; ok {
+			keys = append(keys, k)
+		}
+	}
+	for k := range m {
+		if !slices.Contains(order, k) {
+			rest = append(rest, k)
+		}
+	}
+	slices.Sort(rest)
+	o := obj{}
+	for _, k := range append(keys, rest...) {
+		o = o.add(k, sub(k, m[k]))
+	}
+	return o
+}
+
+// input orders a variable's or file input's fields. Its name is left
+// out: the meta-schema derives it from the key.
+func input(order []string) func(string, any) any {
+	return func(_ string, v any) any {
+		if m, ok := v.(map[string]any); ok {
+			v = maps.Clone(m)
+			delete(v.(map[string]any), "name")
+		}
+		return ordered(v, order, nil)
+	}
 }

@@ -139,9 +139,13 @@ func ExportType(t reflect.Type, meta Meta) ([]byte, error) {
 		doc = doc.add("files", filesObj)
 	}
 
-	pkg := meta.Package
+	return contractSource(doc, meta.Name, meta.Package), nil
+}
+
+// contractSource writes a contract document as contract.cue.
+func contractSource(doc obj, name, pkg string) []byte {
 	if pkg == "" {
-		pkg = strings.ReplaceAll(meta.Name, "-", "_")
+		pkg = strings.ReplaceAll(name, "-", "_")
 		if pkg == "" || (pkg[0] >= '0' && pkg[0] <= '9') {
 			pkg = "c" + pkg
 		}
@@ -153,7 +157,7 @@ func ExportType(t reflect.Type, meta Meta) ([]byte, error) {
 	b.WriteString("contract.#Contract & ")
 	writeValue(&b, doc, 0)
 	b.WriteByte('\n')
-	return []byte(b.String()), nil
+	return []byte(b.String())
 }
 
 // contract returns the variable's fields in the order of SPEC §4.
