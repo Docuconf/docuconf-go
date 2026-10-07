@@ -2,6 +2,7 @@ package docuconf_test
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -107,6 +108,86 @@ func TestLoadContractInvalidContract(t *testing.T) {
 	}
 
 	_, err = docuconf.LoadContract([]byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract", "vars": {},
-		"files": {"tls": {"type": "tls"}}}`), docuconf.Options{})
-	require.ErrorContains(t, err, "contract's files are not supported")
+		"overlays": {"app": {"format": "json", "path": "/etc/app/overlay.json"}}}`), docuconf.Options{})
+	require.ErrorContains(t, err, "contract's overlays are not supported")
+
+	_, err = docuconf.LoadContract(contractWithFiles(``, `
+		"settings": {"type": "config", "description": "App settings", "path": "/etc/app/settings.toml", "format": "toml"},
+		"jks": {"type": "keystore", "description": "Java keystore", "path": "/etc/app/ks.jks", "format": "jks"},
+		"Bad_Name": {"type": "text", "description": "Bad name", "path": "/etc/x"},
+		"rel": {"type": "text", "description": "Relative path", "path": "etc/x"},
+		"odd": {"type": "binary", "description": "A binary file", "path": "/etc/odd", "pattern": "x"}`), docuconf.Options{})
+	require.True(t, errors.As(err, &de), "%v", err)
+	for _, want := range []string{
+		`file input settings: format "toml" is not supported`,
+		`file input jks: format "jks" is not supported`,
+		"file input Bad_Name: input name must be a DNS label",
+		`file input rel: path "etc/x" must be absolute and normalised`,
+		"file input odd: field pattern does not apply to a binary input",
+	} {
+		require.Contains(t, de.Error(), want)
+	}
+}
+
+func contractWithFiles(vars, files string) []byte {
+	return []byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract",
+		"metadata": {"name": "svc", "generator": {"language": "go", "sdk": "x", "version": "1"}},
+		"vars": {` + vars + `}, "files": {` + files + `}}`)
+}
+
+func TestLoadContractFiles(t *testing.T) {
+	root := t.TempDir()
+	ca := newCA(t)
+	cert, key := ca.issue(t, leafOpts{dnsNames: []string{"api.example.com"}})
+	writeTLS(t, filepath.Join(root, "etc/app/tls"), ca, cert, key)
+	writeFile(t, filepath.Join(root, "etc/app/ca.pem"), certPEM(ca.cert))
+	writeFile(t, filepath.Join(root, "etc/app/ks.p12"), keystore(t, ca, "s3cret"))
+	writeFile(t, filepath.Join(root, "data/orders.txt"), []byte("A-1 3\n"))
+	writeFile(t, filepath.Join(root, "etc/app/geo.db"), []byte{0, 1, 2})
+	writeFile(t, filepath.Join(root, "etc/app/settings.yaml"), []byte("retries: 3\n"))
+
+	c := contractWithFiles(`
+		"KS_PASSWORD": {"type": "string", "description": "Keystore password", "secret": true, "required": true},
+		"ORDERS_FILE": {"type": "string", "description": "Where the orders are"}`, `
+		"tls": {"type": "tls", "description": "Serving certificate", "path": "/etc/app/tls", "dnsNames": ["api.example.com"], "requireCA": true},
+		"ca": {"type": "caBundle", "description": "Trusted CAs", "path": "/etc/app/ca.pem"},
+		"ks": {"type": "keystore", "description": "Client keystore", "path": "/etc/app/ks.p12", "format": "pkcs12", "passwordVar": "KS_PASSWORD"},
+		"orders": {"type": "text", "description": "Orders to process", "path": "/var/orders.txt", "pathEnv": "ORDERS_FILE", "pattern": "^A-"},
+		"geo": {"type": "binary", "description": "GeoIP database", "path": "/etc/app/geo.db", "maxSize": 10},
+		"settings": {"type": "config", "description": "App settings", "path": "/etc/app/settings.yaml", "format": "yaml",
+			"schema": {"type": "object", "properties": {"retries": {"type": "integer", "minimum": 0}}, "additionalProperties": false}},
+		"optional": {"type": "text", "description": "Not mounted", "path": "/etc/app/none.txt"}`)
+	env := map[string]string{"KS_PASSWORD": "s3cret", "ORDERS_FILE": "/data/orders.txt"}
+	vals, err := docuconf.LoadContract(c, docuconf.Options{Environment: env, FileRoot: root, TerminationLog: "-"})
+	require.NoError(t, err)
+	require.True(t, vals["tls"].(docuconf.TLSKeyPair).Present())
+	require.Len(t, vals["ca"].(docuconf.CABundle).Certificates(), 1)
+	require.NotNil(t, vals["ks"].(docuconf.Keystore).PrivateKey())
+	require.Equal(t, "A-1 3\n", vals["orders"].(docuconf.TextFile).Content())
+	require.Equal(t, filepath.Join(root, "data/orders.txt"), vals["orders"].(docuconf.TextFile).Path())
+	require.True(t, vals["geo"].(docuconf.BinaryFile).Present())
+	require.Equal(t, map[string]any{"retries": float64(3)}, vals["settings"].(docuconf.ConfigFile[any]).Value())
+	require.False(t, vals["optional"].(docuconf.TextFile).Present())
+
+	// Every problem is reported together with the variables', and the
+	// keystore password never appears.
+	other, otherKey := newCA(t).issue(t, leafOpts{dnsNames: []string{"other.example.com"}})
+	writeTLS(t, filepath.Join(root, "etc/app/tls"), ca, other, otherKey)
+	writeFile(t, filepath.Join(root, "etc/app/geo.db"), make([]byte, 11))
+	writeFile(t, filepath.Join(root, "etc/app/settings.yaml"), []byte("retries: -1\n"))
+	env = map[string]string{"KS_PASSWORD": "wrong-password", "ORDERS_FILE": "/data/missing.txt"}
+	_, err = docuconf.LoadContract(c, docuconf.Options{Environment: env, FileRoot: root, TerminationLog: "-"})
+	var verr *docuconf.ValidationError
+	require.True(t, errors.As(err, &verr), "%v", err)
+	for _, code := range []docuconf.Code{docuconf.CodeCertificateNameMismatch, docuconf.CodeKeystoreUnreadable,
+		docuconf.CodeFileTooLarge, docuconf.CodeSchemaMismatch} {
+		require.True(t, verr.Has(code), "want %s in %v", code, err)
+	}
+	require.NotContains(t, err.Error(), "wrong-password")
+
+	// A required file that is missing.
+	c = contractWithFiles(``, `"orders": {"type": "text", "description": "Orders to process", "path": "/var/orders.txt", "required": true}`)
+	_, err = docuconf.LoadContract(c, docuconf.Options{Environment: map[string]string{}, FileRoot: root, TerminationLog: "-"})
+	require.True(t, errors.As(err, &verr), "%v", err)
+	require.Equal(t, docuconf.CodeFileMissing, verr.Violations[0].Code)
 }

@@ -66,7 +66,7 @@ vals, err := docuconf.LoadContract(contractJSON, docuconf.Options{})
 timeout := vals["REQUEST_TIMEOUT"].(time.Duration) // int is int64, list is []string or []int64
 ```
 
-It loads variables only: a contract with `files`, `overlays` or `profiles` is rejected.
+File inputs are loaded too, with the same checks as the Go file types, and returned by input name as those types (`TLSKeyPair`, `CABundle`, `Keystore`, `TextFile`, `BinaryFile`, or `ConfigFile[any]` checked against the contract's schema). A contract with `overlays` or `profiles` is rejected, and so is a `toml` config file or a `jks` keystore, which the Go SDK cannot read.
 
 ## Export and validate
 
