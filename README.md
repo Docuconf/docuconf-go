@@ -11,6 +11,7 @@ go install github.com/docuconf/docuconf-go/cmd/docuconf@latest   # the CLI
 
 - [Contract specification](spec/SPEC.md), with its CUE meta-schema in [`spec/cue`](spec/cue)
 - [Implementation plan](docs/PLAN.md) and [edge cases](docs/EDGE_CASES.md)
+- Example: [`examples/orders`](examples/orders), a small `net/http` service with its exported contract
 
 ## Declare
 
