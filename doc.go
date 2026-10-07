@@ -90,8 +90,8 @@
 // # Contract-first
 //
 // LoadContract validates an environment against a contract given as JSON,
-// with no Go declaration, and returns typed values. It parses every wire
-// encoding of SPEC §5, and runs the same checks as Parse. The shared
+// with no Go declaration, and returns typed values and file inputs. It
+// parses every wire encoding of SPEC §5, and runs the same checks as Parse. The shared
 // conformance suite runs through it.
 //
 // # Export

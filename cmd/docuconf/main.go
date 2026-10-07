@@ -5,6 +5,13 @@
 //	docuconf vet    -contract contract.cue -values values.yaml [-files files.yaml] [-policy policy.cue]
 //	docuconf render -contract contract.cue -values values.yaml [-files files.yaml]
 //	docuconf helm   -contract contract.cue -chart ./chart
+//	docuconf check  -contract contract.cue
+//	docuconf exec   -contract contract.cue -- program [args...]
+//
+// check and exec validate the process environment and file inputs at
+// boot with the Go SDK's contract-first loader, for programs written in a
+// language without a docuconf SDK. exec then replaces itself with the
+// program.
 //
 // docuconf conformance regenerates conformance/cases.json from
 // conformance/load, for maintainers of the spec.
@@ -33,6 +40,8 @@ Usage:
   docuconf vet    -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml] [-policy policy.cue]
   docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml]
   docuconf helm   -contract <contract.cue> -chart <chart directory>
+  docuconf check  -contract <contract.cue> [-env-file .env]
+  docuconf exec   -contract <contract.cue> [-env-file .env] -- <program> [args...]
 
 Run "docuconf <command> -h" for a command's flags.
 `
@@ -45,7 +54,8 @@ func main() {
 }
 
 // run executes a command and returns the exit code: 0 on success, 1 when
-// the configuration has problems, 2 on usage or I/O errors.
+// the configuration has problems, 2 on usage or I/O errors, 127 when exec
+// cannot start its program.
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
@@ -61,6 +71,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runRender(args[1:], stdout, stderr)
 	case "helm":
 		err = runHelm(args[1:], stdout, stderr)
+	case "check":
+		err = runCheck(args[1:], stdout, stderr)
+	case "exec":
+		err = runExec(args[1:], stdout, stderr)
 	case "conformance":
 		err = runConformance(args[1:], stdout, stderr)
 	case "help", "-h", "-help", "--help":
@@ -75,6 +89,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case errors.Is(err, errProblems):
 		return 1
+	case errors.Is(err, errExec):
+		return 127
 	case errors.Is(err, flag.ErrHelp):
 		return 0
 	}
