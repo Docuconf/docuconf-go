@@ -5017,6 +5017,265 @@
       ]
     },
     {
+      "id": "list/an indexed list with a gap",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "INDEXED_L__0": "x",
+        "INDEXED_L__2": "z"
+      },
+      "errors": [
+        {
+          "var": "INDEXED_L",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "list/an indexed list starts at 0",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "INDEXED_L__1": "y"
+      },
+      "errors": [
+        {
+          "var": "INDEXED_L",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "list/a non-numeric suffix is not an item",
+      "source": "load/list.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-list",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "CSV_L": {
+            "name": "CSV_L",
+            "description": "Strings separated by semicolons",
+            "required": false,
+            "secret": false,
+            "separator": ";",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "INDEXED_L": {
+            "name": "INDEXED_L",
+            "description": "Strings in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "maxItems": 2
+          },
+          "JSON_L": {
+            "name": "JSON_L",
+            "description": "Ints as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "int",
+            "encoding": "json"
+          },
+          "ORIGINS": {
+            "name": "ORIGINS",
+            "description": "Allowed CORS origins",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 3,
+            "default": [
+              "https://app.example.com"
+            ]
+          },
+          "SHARDS": {
+            "name": "SHARDS",
+            "description": "Shard ids this instance owns",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "int",
+            "encoding": "csv",
+            "itemMin": 0,
+            "itemMax": 1023
+          }
+        }
+      },
+      "env": {
+        "INDEXED_L__0": "x",
+        "INDEXED_L__HOST": "other"
+      },
+      "expect": {
+        "CSV_L": null,
+        "INDEXED_L": [
+          "x"
+        ],
+        "JSON_L": null,
+        "ORIGINS": [
+          "https://app.example.com"
+        ],
+        "SHARDS": null
+      }
+    },
+    {
       "id": "list/too many items",
       "source": "load/list.yaml",
       "requires": [],

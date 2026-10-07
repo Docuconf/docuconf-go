@@ -60,6 +60,15 @@ cases:
   - name: indexed list with too many items
     env: {INDEXED_L__0: x, INDEXED_L__1: y, INDEXED_L__2: z}
     errors: [{var: INDEXED_L, code: too_many_items}]
+  - name: an indexed list with a gap
+    env: {INDEXED_L__0: x, INDEXED_L__2: z}
+    errors: [{var: INDEXED_L, code: invalid_type}]
+  - name: an indexed list starts at 0
+    env: {INDEXED_L__1: y}
+    errors: [{var: INDEXED_L, code: invalid_type}]
+  - name: a non-numeric suffix is not an item
+    env: {INDEXED_L__0: x, INDEXED_L__HOST: other}
+    expect: {INDEXED_L: [x]}
   - name: too many items
     env: {ORIGINS: "a,b,c,d"}
     errors: [{var: ORIGINS, code: too_many_items}]

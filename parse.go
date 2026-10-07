@@ -235,7 +235,12 @@ func checkVars(vars []*varDecl, environ map[string]string, logger *slog.Logger) 
 		var ok bool
 		indexed := v.typ == typeList && v.listEncoding == encIndexed
 		if indexed {
-			items, ok = indexedItems(environ, v.name)
+			var missing int
+			items, ok, missing = indexedItems(environ, v.name)
+			if ok && missing >= 0 {
+				fail(v, CodeInvalidType, fmt.Sprintf("items must be numbered from %s__0 with no gap, but %s__%d is not set", v.name, v.name, missing))
+				continue
+			}
 		} else {
 			raw, ok = environ[v.name]
 		}
