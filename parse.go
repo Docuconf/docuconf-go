@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/caarlos0/env/v11"
+
+	"github.com/docuconf/docuconf-go/internal/dotenv"
 )
 
 // Environment variables that configure docuconf itself.
@@ -314,7 +316,7 @@ func loadEnvironment(opts Options, logger *slog.Logger) (map[string]string, erro
 	}
 	environ = copyMap(environ)
 	for _, p := range opts.DotEnv {
-		vals, err := readDotEnv(p)
+		vals, err := dotenv.Read(p)
 		if errors.Is(err, fs.ErrNotExist) && !opts.DotEnvRequired {
 			logger.Debug("docuconf: .env file not found, skipped", "path", p)
 			continue
