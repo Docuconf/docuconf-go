@@ -8,7 +8,7 @@
 //
 //	type Config struct {
 //		// Primary Postgres connection string.
-//		DatabaseURL string `env:"DATABASE_URL,required" secret:"true" schemes:"postgres,postgresql"`
+//		DatabaseURL docuconf.Secret `env:"DATABASE_URL,required" schemes:"postgres,postgresql"`
 //
 //		// HTTP listen port.
 //		Port int `env:"PORT" envDefault:"8080" min:"1" max:"65535"`
@@ -17,7 +17,7 @@
 //		TLS docuconf.TLSKeyPair `file:"serving-tls,required" path:"/etc/app/tls" dnsNames:"api.example.com" minRemaining:"720h" reload:"watch"`
 //	}
 //
-//	cfg, err := docuconf.Parse[Config]()
+//	cfg := docuconf.ParseOrExit[Config]() // prints every problem and exits 1
 //
 // # Variables
 //
@@ -37,6 +37,18 @@
 //	minItems maxItems       list length
 //	itemMin:"0" itemMax:"9" bounds on each item of an integer list
 //	group, examples ("a|b"), deprecated, configKey
+//
+// A tag key that is not one of these but is close to one (secrte, mni) is
+// a declaration error, so a typo never drops a rule silently. Keys of
+// common libraries (json, yaml, validate, default, ...) are left alone.
+//
+// # Secrets
+//
+// A field of type Secret is a secret variable that prints as *** under
+// fmt, log/slog and encoding/json; Reveal returns its value. For other
+// types, secret:"true" marks the variable secret in the contract and in
+// messages, and Redacted and LogValue give the whole configuration with
+// every secret replaced by ***.
 //
 // The contract type follows from the Go type: string, bool, every int and
 // uint kind, float32/64, time.Duration (encoding "go"), url.URL, slices of
@@ -94,9 +106,25 @@
 // encoding of SPEC §5, and runs the same checks as Parse. The shared
 // conformance suite runs through it.
 //
+// # Options
+//
+// A configuration struct parsed with a Prefix or a FuncMap should return
+// them from a DocuconfOptions method (see OptionsProvider). Parse, Export
+// and the export commands all use it, so the app and its contract agree.
+//
+// # Testing
+//
+// ParseWithOptions with Options.Environment loads from a map, without
+// reading or changing the process environment; set TerminationLog to "-"
+// in tests. FileRoot and Now control file inputs and the clock.
+//
 // # Export
 //
 // Export renders the declaration as a contract.cue for the platform. The
-// docuconf command (cmd/docuconf) wraps it as "docuconf export", and adds
-// "docuconf vet" and "docuconf render" for the platform side.
+// docuconf-export command (cmd/docuconf-export, in this module) and
+// "docuconf export" (cmd/docuconf) wrap it: they compile and run a small
+// program inside the app's module with go run, so export needs the Go
+// toolchain and the module's dependencies, but no environment values.
+// The docuconf command adds "docuconf vet" and "docuconf render" for the
+// platform side.
 package docuconf
