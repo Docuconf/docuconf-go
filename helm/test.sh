@@ -81,6 +81,58 @@ for helm in "${helms[@]}"; do
     echo "FAIL $version injected value and file"; echo "$out" | head -20; fail=1
   fi
 
+  # Pod metadata for injectors (SPEC §4.5.2): placeholders expanded, merged
+  # with the shared annotations, on the pod template.
+  printf '%s\n' 'docuconf:' '  values:' \
+    '    podAnnotations: {vault.hashicorp.com/agent-inject: "true", vault.hashicorp.com/role: gateway}' \
+    '    PARTNER_KEYSTORE_PASSWORD:' \
+    '      secretKeyRef: null' \
+    '      injected: {provider: vault-agent, podAnnotations: {vault.hashicorp.com/agent-inject: "true"}, podLabels: {example.com/injected: "{input}"}}' \
+    '  files:' '    partner-keystore:' '      csi: null' \
+    '      injected:' '        provider: vault-agent' '        podAnnotations:' \
+    '          vault.hashicorp.com/agent-inject-secret-{input}: kv/data/gateway/partner' \
+    '          vault.hashicorp.com/secret-volume-path-{input}: "{dir}"' \
+    '          vault.hashicorp.com/agent-inject-file-{input}: "{file}"' >"$tmp/pod.yaml"
+  if "$helm" template gateway "$chart" -f "$tmp/pod.yaml" >"$tmp/pod-rendered.yaml" 2>"$tmp/err" &&
+    python3 - "$tmp/pod-rendered.yaml" <<'PY'
+import sys, yaml
+d = next(x for x in yaml.safe_load_all(open(sys.argv[1])) if x and x["kind"] == "Deployment")
+m = d["spec"]["template"]["metadata"]
+assert m["annotations"] == {
+    "vault.hashicorp.com/agent-inject": "true",
+    "vault.hashicorp.com/role": "gateway",
+    "vault.hashicorp.com/agent-inject-secret-partner-keystore": "kv/data/gateway/partner",
+    "vault.hashicorp.com/secret-volume-path-partner-keystore": "/etc/gateway/partner",
+    "vault.hashicorp.com/agent-inject-file-partner-keystore": "keystore.p12",
+}, m
+assert m["labels"]["example.com/injected"] == "PARTNER_KEYSTORE_PASSWORD", m
+assert "annotations" not in d["metadata"] or not any(k.startswith("vault.") for k in d["metadata"]["annotations"]), d["metadata"]
+PY
+  then
+    echo "PASS $version pod annotations and labels"
+  else
+    echo "FAIL $version pod annotations and labels"; cat "$tmp/err"; fail=1
+  fi
+  # ... and the same failures as docuconf vet.
+  pod_cases=(
+    'docuconf: {values: {podAnnotations: {vault.hashicorp.com/role: a}, PARTNER_KEYSTORE_PASSWORD: {secretKeyRef: null, injected: {provider: vault-agent, podAnnotations: {vault.hashicorp.com/role: b}}}}}|set to different values by docuconf.values and PARTNER_KEYSTORE_PASSWORD'
+    'docuconf: {values: {PARTNER_KEYSTORE_PASSWORD: {secretKeyRef: null, injected: {provider: vault-agent, podAnnotations: {"a/{path}": x}}}}}|uses a placeholder that PARTNER_KEYSTORE_PASSWORD does not define'
+    'docuconf: {values: {podLabels: {team: "a/b"}}}|is not a label value'
+    'docuconf: {values: {podAnnotations: {"bad key": x}}}|is not a Kubernetes qualified name'
+    'docuconf: {values: {podAnnotations: {vault.hashicorp.com/agent-inject: true}}}|podAnnotations'
+  )
+  for c in "${pod_cases[@]}"; do
+    overlay="${c%%|*}"; want="${c##*|}"
+    printf '%s\n' "$overlay" >"$tmp/bad.yaml"
+    if out=$("$helm" template gateway "$chart" -f "$tmp/bad.yaml" 2>&1); then
+      echo "FAIL $version accepted: $overlay"; fail=1
+    elif grep -qF -- "$want" <<<"$out"; then
+      echo "PASS $version rejects $overlay"
+    else
+      echo "FAIL $version rejected for another reason: $overlay"; echo "$out" | head -5; fail=1
+    fi
+  done
+
   # Switching a source in an overlay: the old key set to null is dropped.
   printf '%s\n' 'docuconf:' '  files:' '    routes:' '      inline: null' \
     '      configMap: {name: routes, key: routes.yaml}' >"$tmp/switch.yaml"

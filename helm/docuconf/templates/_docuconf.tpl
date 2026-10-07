@@ -24,6 +24,10 @@ content-hashed ConfigMaps.
   ConfigMaps:   {{ include "docuconf.configMaps" . }}   (in their own template)
   annotations:  {{ include "docuconf.reloaderAnnotations" . | trim | nindent 4 }}
                 (empty when no input restarts the pod; wrap it in `with`)
+  pod template annotations: {{ include "docuconf.podAnnotations" . | trim | nindent 8 }}
+  pod template labels:      {{ include "docuconf.podLabels" . | trim | nindent 8 }}
+                (what injected inputs ask for, SPEC §4.5.2; empty when none
+                do, so wrap them in `with`)
 
 Values are checked by the chart's values.schema.json, generated from the
 same contract; these helpers also refuse names the contract does not declare.
@@ -249,7 +253,7 @@ ConfigMap the kubelet updates in place. restart: content-hashed.
 {{- end -}}
 {{- end -}}
 {{- range $name := keys $values -}}
-{{- if not (hasKey $c.vars $name) -}}
+{{- if and (not (hasKey $c.vars $name)) (not (has $name (list "podAnnotations" "podLabels"))) -}}
 {{- fail (printf "docuconf: %s is not in the %s contract" $name $c.metadata.name) -}}
 {{- end -}}
 {{- end -}}
@@ -405,4 +409,86 @@ configmap.reloader.stakater.com/reload: {{ join "," (uniq .) | quote }}
 {{- with $secrets }}
 secret.reloader.stakater.com/reload: {{ join "," (uniq .) | quote }}
 {{- end }}
+{{- end -}}
+
+{{/*
+Pod metadata for injectors (SPEC §4.5.2), as JSON {"annotations": {...},
+"labels": {...}}: the shared docuconf.values.podAnnotations and podLabels,
+then those of each injected variable and file input, with {input}, and for
+a file {path}, {dir} and {file}, expanded. Fails, as `docuconf vet` does, on
+a placeholder the source does not define, a key that is not a qualified
+name, a bad label value, or two sources giving one key different values.
+*/}}
+{{- define "docuconf.podMetadata" -}}
+{{- $c := include "docuconf.contract" . | fromJson -}}
+{{- $in := include "docuconf.inputs" . | fromJson -}}
+{{- $values := $in.values | default dict -}}
+{{- $sources := list (dict "name" "docuconf.values" "from" (pick $values "podAnnotations" "podLabels") "repl" list) -}}
+{{- range $n := keys $c.vars | sortAlpha -}}
+{{- $v := get $values $n -}}
+{{- if and (kindIs "map" $v) (hasKey $v "injected") -}}
+{{- $sources = append $sources (dict "name" $n "from" $v.injected "repl" (list (list "{input}" $n))) -}}
+{{- end -}}
+{{- end -}}
+{{- $files := $in.files | default dict -}}
+{{- $declared := $c.files | default dict -}}
+{{- range $n := keys $declared | sortAlpha -}}
+{{- $s := get $files $n -}}
+{{- if and (kindIs "map" $s) (hasKey $s "injected") -}}
+{{- $f := get $declared $n -}}
+{{- $dir := ternary $f.path (dir $f.path) (eq $f.type "tls") -}}
+{{- $sources = append $sources (dict "name" $n "from" $s.injected "repl" (list (list "{input}" $n) (list "{path}" $f.path) (list "{dir}" $dir) (list "{file}" (base $f.path)))) -}}
+{{- end -}}
+{{- end -}}
+{{- $out := dict "annotations" dict "labels" dict -}}
+{{- $setBy := dict -}}
+{{- range $src := $sources -}}
+{{- range $field := list "podAnnotations" "podLabels" -}}
+{{- $kind := ternary "annotations" "labels" (eq $field "podAnnotations") -}}
+{{- $target := get $out $kind -}}
+{{- range $k, $v := (get $src.from $field | default dict) -}}
+{{- if not (kindIs "invalid" $v) -}}
+{{- $k2 := $k -}}
+{{- $v2 := toString $v -}}
+{{- range $r := $src.repl -}}
+{{- $k2 = replace (index $r 0) (index $r 1) $k2 -}}
+{{- $v2 = replace (index $r 0) (index $r 1) $v2 -}}
+{{- end -}}
+{{- if regexMatch "\\{(input|path|dir|file)\\}" (printf "%s %s" $k2 $v2) -}}
+{{- fail (printf "docuconf: %s %s: uses a placeholder that %s does not define" $field $k2 $src.name) -}}
+{{- end -}}
+{{- if not (and (regexMatch "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$" $k2) (regexMatch "^([^/]{1,253}/)?[^/]+$" $k2)) -}}
+{{- fail (printf "docuconf: %s: %s key %q is not a Kubernetes qualified name" $src.name $field $k2) -}}
+{{- end -}}
+{{- if and (eq $kind "labels") (not (regexMatch "^([A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?)?$" $v2)) -}}
+{{- fail (printf "docuconf: %s: pod label %s: value %q is not a label value" $src.name $k2 $v2) -}}
+{{- end -}}
+{{- $id := printf "%s %s" $field $k2 -}}
+{{- if and (hasKey $target $k2) (ne (get $target $k2) $v2) -}}
+{{- fail (printf "docuconf: %s: set to different values by %s and %s" $id (get $setBy $id) $src.name) -}}
+{{- end -}}
+{{- $_ := set $target $k2 $v2 -}}
+{{- if not (hasKey $setBy $id) }}{{ $_ := set $setBy $id $src.name }}{{ end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $out -}}
+{{- end -}}
+
+{{/*
+Annotations and labels for the pod template's metadata (spec.template.metadata),
+not the Deployment's: injectors' webhooks see pods. Empty when no injected
+input asks for any; wrap them in `with`.
+*/}}
+{{- define "docuconf.podAnnotations" -}}
+{{- with (include "docuconf.podMetadata" . | fromJson).annotations -}}
+{{- toYaml . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "docuconf.podLabels" -}}
+{{- with (include "docuconf.podMetadata" . | fromJson).labels -}}
+{{- toYaml . -}}
+{{- end -}}
 {{- end -}}
