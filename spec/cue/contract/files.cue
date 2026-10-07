@@ -185,8 +185,14 @@ import (
 // A file written at runtime by an injector, such as the Vault Agent
 // injector rendering a template to /vault/secrets. Nothing is mounted: the
 // injector writes the file at the input's path, and the SDK checks it at
-// boot.
-#InjectedFileSource: close({injected: provider: #Provider})
+// boot. podAnnotations and podLabels are what the injector needs on the
+// pod to do so (pod.cue, SPEC §4.5.2), with {input}, {path}, {dir} and
+// {file} expanded.
+#InjectedFileSource: close({injected: {
+	provider:        #Provider
+	podAnnotations?: #PodAnnotations
+	podLabels?:      #PodLabels
+}})
 
 #SourceKind: {
 	source: #FileSource
@@ -217,6 +223,9 @@ import (
 	}
 	if kind == "certificate" {
 		certificateOnlyForTLS: true & F.type == "tls"
+	}
+	if kind == "injected" {
+		pod: #PodMetadata & {input: F.name, file: F, from: source.injected}
 	}
 	if kind == "inline" {
 		binaryCannotBeInline: true & F.type != "binary"

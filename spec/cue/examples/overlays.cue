@@ -23,6 +23,8 @@ catalogOut: {
 	volumeMounts:    r.volumeMounts
 	configMaps:      r.configMaps
 	restartTriggers: r.restartTriggers
+	podAnnotations:  r.podAnnotations
+	podLabels:       r.podLabels
 }
 
 // With reload: restart the ConfigMap is content-hashed and immutable, so a

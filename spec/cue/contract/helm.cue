@@ -54,7 +54,12 @@ import (
 					type:                 "object"
 					description:          "Environment variables, as typed values."
 					additionalProperties: false
-					properties: {for n, v in contract.vars {(n): (#HelmVar & {var: v}).out}}
+					properties: {
+						for n, v in contract.vars {(n): (#HelmVar & {var: v}).out}
+						// Shared by every injector (SPEC §4.5.2).
+						podAnnotations: _helmPodAnnotations & {description: "Pod annotations shared by every injector."}
+						podLabels: _helmPodLabels & {description: "Pod labels shared by every injector."}
+					}
 					if len(_requiredVars) > 0 {required: _requiredVars}
 				}
 				files: {
@@ -215,6 +220,18 @@ _helmNull: {type: "null", description: "Unset."}
 
 // Supplied at runtime by an injector (SPEC §4.5.1).
 _helmProvider: {type: "string", pattern: "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"}
+
+// Pod metadata for the injector (SPEC §4.5.2). Keys and values may hold
+// placeholders such as {input}, so the schema checks only that values are
+// strings; the library chart checks the expanded keys and values, and
+// fails on an undefined placeholder or a conflict. A null value is
+// dropped, so an overlay can remove a key.
+_helmPodAnnotations: {type: "object", additionalProperties: type: ["string", "null"], ...}
+_helmPodLabels: {type: "object", additionalProperties: type: ["string", "null"], ...}
+_helmPodMetadata: {
+	podAnnotations: _helmPodAnnotations & {description: "Pod annotations the injector needs; {input}, and for a file {path}, {dir} and {file}, are expanded."}
+	podLabels: _helmPodLabels & {description: "Pod labels the injector needs; placeholders as for podAnnotations."}
+}
 _helmInjectedOf: {
 	props: {...}
 	out: {
@@ -229,8 +246,8 @@ _helmInjectedOf: {
 		}
 	}
 }
-_helmInjected: (_helmInjectedOf & {props: {provider: _helmProvider, ref: {type: "string", minLength: 1}}}).out
-_helmInjectedNoRef: (_helmInjectedOf & {props: provider: _helmProvider}).out
+_helmInjected: (_helmInjectedOf & {props: {provider: _helmProvider, ref: {type: "string", minLength: 1}, _helmPodMetadata}}).out
+_helmInjectedNoRef: (_helmInjectedOf & {props: {provider: _helmProvider, _helmPodMetadata}}).out
 
 #HelmFile: {
 	file: #File
@@ -295,7 +312,7 @@ _helmInjectedNoRef: (_helmInjectedOf & {props: provider: _helmProvider}).out
 	let certificate = (source & {key: "certificate", props: {"name": name, secretName: name, resolvedCertificate}, required: ["name", "secretName"]}).out
 	let csi = (source & {key: "csi", props: {secretProviderClass: name, driver: name}, required: ["secretProviderClass"]}).out
 	let image = (source & {key: "image", props: {reference: name, pullPolicy: enum: ["Always", "IfNotPresent", "Never"]}, required: ["reference"]}).out
-	let injectedFile = (source & {key: "injected", props: {provider: _helmProvider}, required: ["provider"]}).out
+	let injectedFile = (source & {key: "injected", props: {provider: _helmProvider, _helmPodMetadata}, required: ["provider"]}).out
 
 	out: {
 		description: F.description

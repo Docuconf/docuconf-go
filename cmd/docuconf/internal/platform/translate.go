@@ -3,6 +3,7 @@ package platform
 import (
 	"fmt"
 	"math/big"
+	"path"
 	"regexp"
 	"slices"
 	"strconv"
@@ -51,9 +52,17 @@ func newTranslator(c *Contract, values, files, overlays cue.Value) *translator {
 	}
 	for name, v := range t.vars {
 		x := t.value(name)
-		if boolean(v, "secret") && !x.LookupPath(cue.ParsePath("secretKeyRef")).Exists() {
-			collectStrings(x, &t.secrets) // a literal wrongly supplied for a secret
+		if !boolean(v, "secret") || x.LookupPath(cue.ParsePath("secretKeyRef")).Exists() {
+			continue
 		}
+		if inj := x.LookupPath(cue.ParsePath("injected")); inj.Exists() && inj.Kind() == cue.StructKind {
+			// Pod metadata is injector configuration, never secret material
+			// (SPEC §4.5.2), and messages name it.
+			collectStrings(inj.LookupPath(cue.ParsePath("provider")), &t.secrets)
+			collectStrings(inj.LookupPath(cue.ParsePath("ref")), &t.secrets)
+			continue
+		}
+		collectStrings(x, &t.secrets) // a literal wrongly supplied for a secret
 	}
 	for name, f := range t.fileDefs {
 		if boolean(f, "secret") {
@@ -280,20 +289,40 @@ func (t *translator) validate(err error) {
 		section, name := p[0], p[1]
 		switch section {
 		case "checks":
+			if len(p) > 3 && p[2] == "pod" {
+				t.podProblem(name, p[3:], false)
+				continue
+			}
 			t.varProblem(name, e)
+		case "podChecks":
+			t.podChecksProblem(p[1:], e)
 		case "values":
+			if slices.Contains(sharedPodFields, name) {
+				t.add("%s: %s", strings.Join(p[1:], " "), podTypeHint(e))
+				continue
+			}
 			if _, ok := t.vars[name]; !ok {
 				t.add("%s: is not declared in the contract (check the spelling)", name)
 				continue
 			}
 			t.varProblem(name, e)
 		case "fileChecks":
+			if len(p) > 3 && p[2] == "pod" {
+				t.podProblem(name, p[3:], true)
+				continue
+			}
 			t.fileProblem(name, p[2:], e)
 		case "overlayChecks":
 			t.overlayProblem(name, p[2:], e)
 		case "files":
 			if _, ok := t.fileDefs[name]; !ok {
 				t.add("%s: is not a file input declared in the contract", name)
+				continue
+			}
+			if lines := explainPodFields(t.source(name)); len(lines) > 0 {
+				for _, l := range lines {
+					t.add("%s: %s", name, l)
+				}
 				continue
 			}
 			t.add("%s: source is not valid: %s", name, errMsg(e))
@@ -351,10 +380,142 @@ var refKinds = []string{"configMapKeyRef", "fieldRef", "resourceFieldRef", "secr
 
 var providerRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$`)
 
+// Pod metadata (SPEC §4.5.2). Keys and values are references and settings
+// for an injector, never secret material, so they are named in messages.
+const (
+	qualifiedNameRule = `a Kubernetes qualified name: an optional DNS-subdomain prefix (at most 253 characters) and "/", then at most 63 letters, digits, "-", "_" and ".", starting and ending with a letter or digit`
+	labelValueRule    = `at most 63 letters, digits, "-", "_" and ".", starting and ending with a letter or digit, or empty`
+)
+
+// podProblem explains a failed check on one injected source's pod
+// metadata (checks.NAME.pod.CHECK.KEY or fileChecks.NAME.pod.CHECK.KEY).
+func (t *translator) podProblem(name string, rest []string, file bool) {
+	if len(rest) < 2 {
+		t.add("%s: pod annotations or labels are not valid", name)
+		return
+	}
+	check, key := rest[0], rest[1]
+	switch check {
+	case "undefinedPlaceholder":
+		if file {
+			t.add("%s: %s: uses a placeholder this input does not define", name, key)
+		} else {
+			t.add("%s: %s: uses {path}, {dir} or {file}, which only a file input defines; a variable has {input}", name, key)
+		}
+	case "podAnnotationKey":
+		t.add("%s: pod annotation key %q is not %s", name, key, qualifiedNameRule)
+	case "podLabelKey":
+		t.add("%s: pod label key %q is not %s", name, key, qualifiedNameRule)
+	case "podLabelValue":
+		v := t.podLabelValue(name, key, file)
+		t.add("%s: pod label %s: value %q is not a label value: %s", name, key, v, labelValueRule)
+	default:
+		t.add("%s: pod annotations or labels are not valid (%s)", name, strings.Join(rest, " "))
+	}
+}
+
+// podLabelValue finds the expanded value of an input's label, as
+// #PodMetadata expands it, for a message.
+func (t *translator) podLabelValue(name, key string, file bool) string {
+	src := t.value(name)
+	repl := []string{"{input}", name}
+	if file {
+		src = t.source(name)
+		f := t.fileDefs[name]
+		p := str(f, "path")
+		dir := path.Dir(p)
+		if str(f, "type") == "tls" {
+			dir = p
+		}
+		repl = append(repl, "{path}", p, "{dir}", dir, "{file}", path.Base(p))
+	}
+	r := strings.NewReplacer(repl...)
+	for k, v := range fields(src.LookupPath(cue.ParsePath("injected.podLabels"))) {
+		if r.Replace(k) == key {
+			s, _ := v.String()
+			return r.Replace(s)
+		}
+	}
+	return ""
+}
+
+// podChecksProblem explains a failed check on the shared pod metadata
+// (podChecks.shared.CHECK.KEY) or a conflict between two sources
+// (podChecks.conflictingPodAnnotation.KEY."A and B").
+func (t *translator) podChecksProblem(p []string, e errors.Error) {
+	if len(p) < 3 {
+		t.add("pod metadata: %s", errMsg(e))
+		return
+	}
+	shared := func(s, field string) string {
+		return strings.ReplaceAll(s, "(shared)", "the values document's shared "+field)
+	}
+	switch p[0] {
+	case "conflictingPodAnnotation":
+		if len(p) > 2 {
+			t.add("podAnnotations %s: set to different values by %s", p[1], shared(p[2], "podAnnotations"))
+			return
+		}
+	case "conflictingPodLabel":
+		if len(p) > 2 {
+			t.add("podLabels %s: set to different values by %s", p[1], shared(p[2], "podLabels"))
+			return
+		}
+	case "shared":
+		switch p[1] {
+		case "undefinedPlaceholder":
+			t.add("%s: uses a placeholder, which only an injected input's own podAnnotations and podLabels can", p[2])
+			return
+		case "podAnnotationKey":
+			t.add("podAnnotations: key %q is not %s", p[2], qualifiedNameRule)
+			return
+		case "podLabelKey":
+			t.add("podLabels: key %q is not %s", p[2], qualifiedNameRule)
+			return
+		case "podLabelValue":
+			v, _ := t.values.LookupPath(cue.MakePath(cue.Str("podLabels"), cue.Str(p[2]))).String()
+			t.add("podLabels %s: value %q is not a label value: %s", p[2], v, labelValueRule)
+			return
+		}
+	}
+	t.add("%s: %s", strings.Join(p, " "), errMsg(e))
+}
+
+// podTypeHint explains a pod annotation or label that is not a string.
+func podTypeHint(e errors.Error) string {
+	msg := errMsg(e)
+	if strings.Contains(msg, "mismatched types") {
+		return "must be a string (quote true, false and numbers in YAML)"
+	}
+	return msg
+}
+
+// explainPodFields checks that an injected source's pod annotations and
+// labels are maps of strings.
+func explainPodFields(x cue.Value) []string {
+	var out []string
+	for _, f := range sharedPodFields {
+		m := x.LookupPath(cue.MakePath(cue.Str("injected"), cue.Str(f)))
+		if !m.Exists() {
+			continue
+		}
+		if m.Kind() != cue.StructKind {
+			out = append(out, fmt.Sprintf("injected.%s must map keys to strings", f))
+			continue
+		}
+		for k, v := range fields(m) {
+			if v.Kind() != cue.StringKind {
+				out = append(out, fmt.Sprintf("injected.%s %s: must be a string (quote true, false and numbers in YAML)", f, k))
+			}
+		}
+	}
+	return out
+}
+
 // explainInjected explains a malformed injected value (SPEC §4.5.1). The
 // reference is not secret material, but it is never needed in the message.
 func explainInjected(cv, x cue.Value) []string {
-	var out []string
+	out := explainPodFields(x)
 	if p, err := x.LookupPath(cue.ParsePath("injected.provider")).String(); err != nil || !providerRe.MatchString(p) {
 		out = append(out, "injected.provider must name the injector as a lowercase label, such as bank-vaults")
 	}
