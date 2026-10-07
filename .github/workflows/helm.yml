@@ -28,7 +28,8 @@ jobs:
       - run: pip install pyyaml
       - run: helm/test.sh
       # The walkthrough's outputs must still be what the tools produce, and
-      # the CLI, plain CUE and Helm must still agree on them.
+      # the CLI, plain CUE and Helm must still agree on them. The exported
+      # contract's metadata.generator.version is ignored: release PRs bump it.
       - run: |
           examples/walkthrough/run.sh
-          git diff --exit-code -- examples/walkthrough
+          scripts/check-generated.sh examples/walkthrough
