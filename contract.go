@@ -1,6 +1,7 @@
 package docuconf
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -179,10 +180,10 @@ var contractFields = map[string][]string{
 	typeFloat:    {"min", "max"},
 	typeBool:     {},
 	typeDuration: {"min", "max", "encoding"},
-	typeURL:      {"schemes"},
+	typeURL:      {"schemes", "maxLength"},
 	typeEnum:     {"values"},
-	typeList:     {"items", "encoding", "separator", "minItems", "maxItems", "itemMin", "itemMax"},
-	typeJSON:     {"schema"},
+	typeList:     {"items", "encoding", "separator", "minItems", "maxItems", "itemMin", "itemMax", "itemMinLength", "itemMaxLength"},
+	typeJSON:     {"schema", "maxLength"},
 }
 
 var commonFields = []string{"name", "type", "description", "required", "secret", "default", "group", "examples", "deprecated", "configKey"}
@@ -640,6 +641,7 @@ func contractVar(name string, o map[string]any, problem func(string, ...any)) *v
 		if _, ok := o["schemes"]; ok && len(v.schemes) == 0 {
 			fail("schemes must list at least one scheme")
 		}
+		v.maxLength = nonNeg("maxLength")
 	case typeEnum:
 		v.values = strs("values")
 		if len(v.values) == 0 {
@@ -677,7 +679,12 @@ func contractVar(name string, o map[string]any, problem func(string, ...any)) *v
 		if (v.itemMin != nil || v.itemMax != nil) && v.items != "int" {
 			fail("itemMin and itemMax apply only to lists of integers")
 		}
+		v.itemMinLength, v.itemMaxLength = nonNeg("itemMinLength"), nonNeg("itemMaxLength")
+		if (v.itemMinLength != nil || v.itemMaxLength != nil) && v.items != "string" {
+			fail("itemMinLength and itemMaxLength apply only to lists of strings")
+		}
 	case typeJSON:
+		v.maxLength = nonNeg("maxLength")
 		if s, ok := o["schema"]; ok {
 			schema, err := schemaFromJSON(s, "schema")
 			if err != nil {
@@ -754,9 +761,14 @@ func (v *varDecl) typedDefault(def any) (any, string) {
 	case typeList, typeJSON:
 		_, isList := def.([]any)
 		ok = isList || v.typ == typeJSON
-		b, err := json.Marshal(def)
+		// Compact and without HTML escaping, as CUE's json.Marshal renders
+		// it, so that maxLength counts what the platform would send.
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		enc.SetEscapeHTML(false)
+		err := enc.Encode(def)
 		ok = ok && err == nil
-		raw = string(b)
+		raw = strings.TrimSuffix(buf.String(), "\n")
 		w.listEncoding = encJSON
 	}
 	if !ok {
@@ -817,7 +829,7 @@ func ContractCUE(contractJSON []byte, pkg string) ([]byte, error) {
 var (
 	varFieldOrder = []string{"type", "description", "required", "secret", "default", "group", "examples", "deprecated", "configKey",
 		"minLength", "maxLength", "pattern", "min", "max", "encoding", "schemes", "values", "items", "separator",
-		"minItems", "maxItems", "itemMin", "itemMax", "schema"}
+		"minItems", "maxItems", "itemMin", "itemMax", "itemMinLength", "itemMaxLength", "schema"}
 	fileFieldOrder = []string{"type", "format", "description", "required", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated",
 		"schema", "dnsNames", "keyAlgorithms", "minRemaining", "requireCA", "minCertificates", "passwordVar", "pattern", "minLength", "maxLength"}
 )

@@ -219,7 +219,7 @@ Then run with `DOCUCONF_FILE_ROOT=./dev`. `.env` files are read only when listed
 
 ### Tags
 
-Doc comments are the descriptions (a `desc` tag is the fallback). docuconf's tags: `secret`, `min`/`max`, `minLength`/`maxLength`, `pattern` (RE2), `values` (enum), `schemes` (url), `minItems`/`maxItems`, and `itemMin`/`itemMax` on integer lists (`` Shards []int `env:"SHARDS" itemMin:"0" itemMax:"1023"` ``). Integer bounds always include the range caarlos0/env parses the Go type with: an `int` exports `min: -2147483648, max: 2147483647` because caarlos0/env parses it as 32 bits, and a `[]uint16` exports `itemMin: 0, itemMax: 65535`. `JSON[T]` holds a structured variable. The full tag reference is in the [package docs](doc.go).
+Doc comments are the descriptions (a `desc` tag is the fallback). docuconf's tags: `secret`, `min`/`max`, `minLength`/`maxLength` (in characters; `maxLength` also bounds a url or a `JSON[T]` value), `pattern` (RE2), `values` (enum), `schemes` (url), `minItems`/`maxItems`, `itemMin`/`itemMax` on integer lists, and `itemMinLength`/`itemMaxLength` on string lists (`` Shards []int `env:"SHARDS" itemMin:"0" itemMax:"1023"` ``). Integer bounds always include the range caarlos0/env parses the Go type with: an `int` exports `min: -2147483648, max: 2147483647` because caarlos0/env parses it as 32 bits, and a `[]uint16` exports `itemMin: 0, itemMax: 65535`. `JSON[T]` holds a structured variable. The full tag reference is in the [package docs](doc.go).
 
 A comma-separated list keeps empty items, as caarlos0/env does: `ALLOWED_ORIGINS=","` is two empty strings and satisfies `minItems:"1"`. The contract accepts empty items too, so `vet` and boot agree. Check for empty items in your code if they matter.
 

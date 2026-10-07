@@ -179,6 +179,8 @@ import (
 	type:     "url"
 	default?: string
 	schemes?: [string, ...string]
+	// Characters (Unicode code points), as for a string's maxLength.
+	maxLength?: int & >=0
 })
 
 #EnumVar: close({
@@ -211,6 +213,13 @@ import (
 	if itemMin != _|_ || itemMax != _|_ {
 		_itemBoundsOnIntItems: true & items == "int"
 	}
+	// Bounds on the length of each item of a string list, in characters
+	// (Unicode code points), as minLength and maxLength for a string.
+	itemMinLength?: int & >=0
+	itemMaxLength?: int & >=0
+	if itemMinLength != _|_ || itemMaxLength != _|_ {
+		_itemLengthsOnStringItems: true & items == "string"
+	}
 	default?: [...]
 })
 
@@ -220,7 +229,10 @@ import (
 	#Common
 	type: "json"
 	schema?: {...}
-	default?: _
+	// Characters (Unicode code points) of the value's wire form: the
+	// compact JSON the platform renders, or the raw value the app receives.
+	maxLength?: int & >=0
+	default?:   _
 })
 
 // #SecretRef is the only accepted value for a secret variable. The
@@ -335,6 +347,7 @@ import (
 			if var.schemes != _|_ {
 				literal: =~"^(\(strings.Join([for x in var.schemes {regexp.QuoteMeta(x)}], "|")))://"
 			}
+			if var.maxLength != _|_ {literal: strings.MaxRunes(var.maxLength)}
 		}
 		if var.type == "enum" {
 			literal: or(var.values)
@@ -342,8 +355,16 @@ import (
 		if var.type == "json" && #schema != _|_ {
 			literal: #schema
 		}
+		if var.type == "json" && var.maxLength != _|_ {
+			// Measured on the compact JSON #Render writes.
+			withinMaxLength: json.Marshal(literal) & strings.MaxRunes(var.maxLength)
+		}
 		if var.type == "list" {
-			if var.items == "string" {literal: [...string]}
+			if var.items == "string" {
+				literal: [...string]
+				if var.itemMinLength != _|_ {literal: [...strings.MinRunes(var.itemMinLength)]}
+				if var.itemMaxLength != _|_ {literal: [...strings.MaxRunes(var.itemMaxLength)]}
+			}
 			if var.items == "int" {
 				literal: [...int]
 				if var.itemMin != _|_ {literal: [...>=var.itemMin]}
