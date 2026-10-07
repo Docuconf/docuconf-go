@@ -44,6 +44,15 @@ type fileBinding struct {
 	password func() (string, bool)
 }
 
+// missing reports a required file that is not there, naming the variable
+// that moves it when the input has one.
+func (b *fileBinding) missing(p string) Violation {
+	if b.decl.pathEnv != "" {
+		return b.violation(CodeFileMissing, "%s does not exist (mount it there, or set %s)", p, b.decl.pathEnv)
+	}
+	return b.violation(CodeFileMissing, "%s does not exist", p)
+}
+
 func (b *fileBinding) violation(code Code, format string, args ...any) Violation {
 	return Violation{Input: b.decl.name, Code: code, Message: fmt.Sprintf(format, args...)}
 }
@@ -57,7 +66,7 @@ func (b *fileBinding) readFile(p string, required bool) (data []byte, absent boo
 		if !required {
 			return nil, true, nil
 		}
-		return nil, false, []Violation{b.violation(CodeFileMissing, "%s does not exist", p)}
+		return nil, false, []Violation{b.missing(p)}
 	case errors.Is(err, fs.ErrPermission):
 		return nil, false, []Violation{b.unreadable(p)}
 	case err != nil:
@@ -380,7 +389,7 @@ func (f *BinaryFile) bind(b *fileBinding) []Violation {
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		if b.decl.required {
-			return []Violation{b.violation(CodeFileMissing, "%s does not exist", b.path)}
+			return []Violation{b.missing(b.path)}
 		}
 		return nil
 	case errors.Is(err, fs.ErrPermission):
