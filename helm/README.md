@@ -66,6 +66,16 @@ Helm-based platform the same guarantees as the CUE/Crossplane path:
      {{- end }}
    spec:
      template:
+       metadata:
+         labels:
+           app.kubernetes.io/instance: {{ .Release.Name }}
+           {{- with include "docuconf.podLabels" . | trim }}
+           {{- . | nindent 8 }}
+           {{- end }}
+         {{- with include "docuconf.podAnnotations" . | trim }}
+         annotations:
+           {{- . | nindent 8 }}
+         {{- end }}
        spec:
          containers:
            - name: app
@@ -160,8 +170,34 @@ object", and Helm does not print the value.
   reference for the injector to resolve; one without `ref` is not rendered,
   because the injector sets it. A file with an `injected` source gets no
   volume: the injector (for example the Vault Agent injector) writes it at the
-  input's path. Enabling the injector, such as Bank-Vaults' pod annotations,
-  is up to the chart.
+  input's path.
+
+- **Enabling the injector.** An `injected` value or file may carry the pod
+  annotations and labels its injector needs, and `docuconf.values` may carry
+  shared ones (SPEC §4.5.2). `docuconf.podAnnotations` and
+  `docuconf.podLabels` return them merged, with `{input}` (and for a file
+  `{path}`, `{dir}` and `{file}`) expanded, for the **pod template's**
+  metadata, not the Deployment's: webhooks see pods. They fail the render,
+  as `docuconf vet` does, on an undefined placeholder, an invalid key or
+  label value, or two inputs giving one key different values. Keep the
+  chart's own selector labels out of them: a key in both would be written
+  twice.
+
+  ```yaml
+  docuconf:
+    values:
+      podAnnotations:                # shared by every injected input
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: gateway
+    files:
+      partner-keystore:
+        injected:
+          provider: vault-agent
+          podAnnotations:
+            vault.hashicorp.com/agent-inject-secret-{input}: kv/data/gateway/partner
+            vault.hashicorp.com/secret-volume-path-{input}: "{dir}"
+            vault.hashicorp.com/agent-inject-file-{input}: "{file}"
+  ```
 
 - **`global`.** Helm copies `global` into the values of every dependency, and
   the library chart is a dependency named `docuconf`, so the schema allows a

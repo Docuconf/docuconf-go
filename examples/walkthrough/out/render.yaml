@@ -45,3 +45,5 @@ configMaps:
           FR: 0.2
           IE: 0.23
 restartTriggers: []
+podAnnotations: {}
+podLabels: {}

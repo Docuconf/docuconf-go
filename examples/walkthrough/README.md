@@ -201,6 +201,8 @@ configMaps:
           FR: 0.2
           IE: 0.23
 restartTriggers: []      # serving-tls is reload: watch, so rotation needs no restart
+podAnnotations: {}       # nothing is injected, so no injector needs the pod annotated
+podLabels: {}
 ```
 
 ## 3. The same thing in plain CUE (the Crossplane path)

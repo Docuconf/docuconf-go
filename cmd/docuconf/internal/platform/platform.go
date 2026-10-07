@@ -204,8 +204,16 @@ func (p *Platform) Validate(c *Contract, values, files, overlays, policy cue.Val
 	t := newTranslator(c, values, files, overlays)
 	// An undeclared name makes CUE reject the whole values struct, which
 	// would hide every other problem, so unknown names are reported here
-	// and left out of #Validate.
-	values = t.declaredOnly(p.ctx, values, t.vars, "is not declared in the contract (check the spelling)")
+	// and left out of #Validate. The values document's shared pod metadata
+	// (SPEC §4.5.2) is not a variable, and is kept.
+	declared := map[string]cue.Value{}
+	for k, v := range t.vars {
+		declared[k] = v
+	}
+	for _, k := range sharedPodFields {
+		declared[k] = cue.Value{}
+	}
+	values = t.declaredOnly(p.ctx, values, declared, "is not declared in the contract (check the spelling)")
 	files = t.declaredOnly(p.ctx, files, t.fileDefs, "is not a file input declared in the contract")
 	overlays = t.declaredOverlays(p.ctx)
 
@@ -242,7 +250,7 @@ func (p *Platform) Render(c *Contract, values, files, overlays cue.Value) ([]byt
 		FillPath(cue.ParsePath("overlays"), overlays)
 	// Each section is encoded separately to keep this order in the output.
 	var buf bytes.Buffer
-	for _, f := range []string{"env", "volumes", "volumeMounts", "configMaps", "restartTriggers"} {
+	for _, f := range []string{"env", "volumes", "volumeMounts", "configMaps", "restartTriggers", "podAnnotations", "podLabels"} {
 		v := r.LookupPath(cue.ParsePath(f))
 		if err := v.Validate(cue.Concrete(true)); err != nil {
 			return nil, fmt.Errorf("render %s: %s", f, errorLines(err))
@@ -251,7 +259,12 @@ func (p *Platform) Render(c *Contract, values, files, overlays cue.Value) ([]byt
 		if err != nil {
 			return nil, err
 		}
-		if n, _ := v.Len().Int64(); n == 0 {
+		if v.IncompleteKind() == cue.StructKind {
+			if len(fields(v)) == 0 {
+				fmt.Fprintf(&buf, "%s: {}\n", f)
+				continue
+			}
+		} else if n, _ := v.Len().Int64(); n == 0 {
 			fmt.Fprintf(&buf, "%s: []\n", f)
 			continue
 		}
@@ -267,6 +280,11 @@ func (p *Platform) Render(c *Contract, values, files, overlays cue.Value) ([]byt
 	}
 	return buf.Bytes(), nil
 }
+
+// sharedPodFields are the values document's keys that are not variables:
+// pod metadata shared by every injector (SPEC §4.5.2). Variable names are
+// upper case, so they cannot collide.
+var sharedPodFields = []string{"podAnnotations", "podLabels"}
 
 // EnvVar is one container env entry produced by #Render.
 type EnvVar struct {

@@ -101,3 +101,5 @@ restartTriggers:
     name: internal-ca-bundle
   - kind: SecretProviderClass
     name: partner-keystore
+podAnnotations: {}
+podLabels: {}

@@ -43,7 +43,11 @@ objects: [
 		spec: {
 			selector: matchLabels: "app.kubernetes.io/name": orders.metadata.name
 			template: {
-				metadata: labels: "app.kubernetes.io/name": orders.metadata.name
+				// What injected inputs ask for (SPEC §4.5.2); none here.
+				metadata: {
+					labels: {"app.kubernetes.io/name": orders.metadata.name, _render.podLabels}
+					if len(_render.podAnnotations) > 0 {annotations: _render.podAnnotations}
+				}
 				spec: {
 					containers: [{
 						name:         orders.metadata.name

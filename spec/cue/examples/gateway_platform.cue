@@ -65,6 +65,8 @@ gatewayOut: {
 	volumeMounts:    gatewayRendered.volumeMounts
 	configMaps:      gatewayRendered.configMaps
 	restartTriggers: gatewayRendered.restartTriggers
+	podAnnotations:  gatewayRendered.podAnnotations
+	podLabels:       gatewayRendered.podLabels
 }
 
 // values.schema.json for a Helm chart that deploys the gateway.

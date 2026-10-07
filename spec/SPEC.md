@@ -222,7 +222,103 @@ The contract does not change: it describes what the app accepts, not who supplie
 - An injected value is checked only at boot, by the SDK, after injection. Before deploy, `#Validate` checks only that the reference is well-formed and that an `indexed` list (one variable per item) is not given a single reference.
 - A secret variable may be injected; that is often the point. Like a `secretKeyRef`, the reference is not secret material.
 
-Making sure the injector actually runs (for Bank-Vaults, the pod annotations or namespace label that enable its webhook) is the platform's job and outside the contract. When it does not run, the app receives the raw reference, and the SDK's boot check is what catches it: a URL or pattern fails its constraints, and section 11.2 asks SDKs to recognise an unresolved reference outright.
+Making sure the injector actually runs is the platform's job and outside the contract. Most injectors are switched on, and told what to do, by annotations or labels on the pod; the values and files documents may declare those next to the `injected` source, and `#Render` puts them on the pod template (section 4.5.2). Anything else an injector needs (the webhook installed in the cluster, a namespace label, a ServiceAccount annotation, a custom resource) stays the platform's. When the injector does not run, the app receives the raw reference, and the SDK's boot check is what catches it: a URL or pattern fails its constraints, and section 11.2 asks SDKs to recognise an unresolved reference outright.
+
+#### 4.5.2 Enabling the injector
+
+An `injected` source, for a variable or for a file input (section 4.6.1), MAY carry the pod annotations and labels its injector needs:
+
+| Field | Type | Rule |
+|---|---|---|
+| `podAnnotations` | map of string to string | Keys are Kubernetes qualified names after expansion: an optional DNS-subdomain prefix of at most 253 characters and `/`, then a name of at most 63 characters matching `[A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?`. Values are any string. |
+| `podLabels` | map of string to string | Keys as for `podAnnotations`. Values are empty, or at most 63 characters matching the same pattern as a name. |
+
+Values are strings: YAML's unquoted `true` is a boolean and is rejected, so write `"true"`.
+
+The values document MAY also have its own `podAnnotations` and `podLabels`, beside the variables, for settings shared by every injected input, such as `vault.hashicorp.com/agent-inject: "true"` or the Vault role. Variable names are upper case (section 4.2), so these two keys never collide with one. The files document has no shared fields; its inputs' annotations merge with the values document's.
+
+docuconf knows no injector. `provider` stays an uninterpreted label (section 4.5.1), and keys and values are passed through after one step, **placeholder expansion**, so an annotation that names one input can be written once, beside it:
+
+| Placeholder | Expands to | Defined for |
+|---|---|---|
+| `{input}` | the variable's or file input's name | variables, file inputs |
+| `{path}` | the file input's `path` | file inputs |
+| `{dir}` | the directory the input occupies: `path` for a `tls` input, its parent directory otherwise (the mount directory of section 4.6) | file inputs |
+| `{file}` | the last element of `path` | file inputs |
+
+Expansion replaces every occurrence of these four tokens in keys and values, and nothing else: there is no escape, and other braces, such as a Vault Agent template's `{{ .Data }}`, are left alone. A token the source does not define (`{path}` on a variable, any token in the values document's shared maps) is a `#Validate` error (`undefinedPlaceholder`), so a typo never reaches the pod. Keys and values are checked after expansion.
+
+**Rendering.** `#Render` emits two maps, `podAnnotations` and `podLabels`, merged from the values document's shared ones and then every injected variable and file input in contract order. They belong on the **pod template's** metadata (`spec.template.metadata` of a Deployment, StatefulSet, Job or CronJob's job template), not on the workload's own metadata: mutating webhooks see pods, never Deployments. A change to either map changes the pod template and so rolls the pods, which is what a changed injector setting needs. A source that is not `injected` cannot carry these fields, so nothing is ever emitted for a literal, a reference or a mounted file. A platform without injectors gets two empty maps.
+
+**Merging.** The same key with the same value from several sources is fine: two Vault Agent inputs may each repeat `agent-inject: "true"`. The same key with different values is a `#Validate` error (`conflictingPodAnnotation`, `conflictingPodLabel`) naming the key and both sources, because one of them would otherwise silently lose. The render itself fails on such a conflict too.
+
+**Not secret.** Annotations and labels are visible to anyone who can read the pod, and are copied into events, audit logs and monitoring. They MUST hold references and settings (a Vault path, a role, an address, a template), never secret material, by the same argument as `ref` in section 4.5.1. docuconf cannot tell a password from a path, so this rule is the platform's; `#Validate` treats the values as plain data and error messages print them.
+
+**Why the contract does not change.** The contract describes what the app reads; the same image runs under the Vault Agent injector in one cluster, Bank-Vaults in another and a CSI volume in a third. Which injector runs, and what it needs on the pod, is a fact about the cluster, so it lives only in the platform's values and files documents. SDKs, exporters and the contract meta-schema are unchanged by this section.
+
+Three examples, rendered in [`cue/testdata/render/injectorPodOut.yaml`](cue/testdata/render/injectorPodOut.yaml) from [`cue/examples/injector_pod.cue`](cue/examples/injector_pod.cue). The **Vault Agent injector** writes a secret config file `db-creds` declared at `path: /vault/secrets/db.json`. The agent writes each secret to `<secret-volume-path>/<agent-inject-file>`, defaulting to `/vault/secrets/<name>`, where `<name>` is the suffix of `agent-inject-secret-<name>`, lower-cased unless `preserve-secret-case` is set. Using `{input}`, a DNS label, as that name, and setting the directory and file name from `{dir}` and `{file}`, puts the file at exactly `path`, wherever the contract declares it; a template makes the file JSON rather than the agent's default Go-map format:
+
+```yaml
+# values.yaml
+podAnnotations:                      # shared: one agent per pod, one role
+  vault.hashicorp.com/agent-inject: "true"
+  vault.hashicorp.com/role: ledger
+# files.yaml
+db-creds:
+  injected:
+    provider: vault-agent
+    podAnnotations:
+      vault.hashicorp.com/agent-inject-secret-{input}: database/creds/ledger
+      vault.hashicorp.com/agent-inject-template-{input}: '{{- with secret "database/creds/ledger" -}}{{ .Data | toJSON }}{{- end }}'
+      vault.hashicorp.com/secret-volume-path-{input}: "{dir}"
+      vault.hashicorp.com/agent-inject-file-{input}: "{file}"
+```
+
+renders
+
+```yaml
+podAnnotations:
+  vault.hashicorp.com/agent-inject: "true"
+  vault.hashicorp.com/role: ledger
+  vault.hashicorp.com/agent-inject-secret-db-creds: database/creds/ledger
+  vault.hashicorp.com/agent-inject-template-db-creds: '{{- with secret "database/creds/ledger" -}}{{ .Data | toJSON }}{{- end }}'
+  vault.hashicorp.com/secret-volume-path-db-creds: /vault/secrets
+  vault.hashicorp.com/agent-inject-file-db-creds: db.json
+podLabels: {}
+```
+
+**Bank-Vaults** resolves the reference in an env value; its webhook takes the Vault address and role from annotations:
+
+```yaml
+DB_PASSWORD:
+  injected:
+    provider: bank-vaults
+    ref: "vault:database/creds/ledger#password"
+    podAnnotations:
+      vault.security.banzaicloud.io/vault-addr: https://vault.vault.svc:8200
+      vault.security.banzaicloud.io/vault-role: ledger
+```
+
+renders `DB_PASSWORD=vault:database/creds/ledger#password` in `env` and those two annotations. Not every injector handles secrets. The **OpenTelemetry operator** sets `OTEL_EXPORTER_OTLP_ENDPOINT` on pods carrying its annotation, and some injectors key on a label instead, such as Azure Workload Identity:
+
+```yaml
+OTEL_EXPORTER_OTLP_ENDPOINT:
+  injected: {provider: otel-operator, podAnnotations: {instrumentation.opentelemetry.io/inject-java: "true"}}
+AZURE_CLIENT_ID:
+  injected: {provider: azure-workload-identity, podLabels: {azure.workload.identity/use: "true"}}
+```
+
+renders no env entries, `podAnnotations: {instrumentation.opentelemetry.io/inject-java: "true"}` and `podLabels: {azure.workload.identity/use: "true"}`.
+
+Edge cases:
+
+- **Injector disabled or not installed.** The annotations are on the pod, but no webhook acts on them, and Kubernetes ignores annotations nobody reads. The app starts with the raw reference in its env value, or without the variable or file. The SDK's boot check catches it: an unresolved reference (section 11.2), `missing_required`, or `file_missing` for an injected file. docuconf cannot see from the values document whether a webhook is installed.
+- **Injectors that read the namespace.** Some injectors are enabled by a label on the Namespace (Istio's `istio-injection`, Bank-Vaults' namespace selector, Linkerd's annotation on the Namespace). Namespace metadata is not part of a workload's render and is out of scope; set it where the platform manages namespaces. Pod-level settings for the same injectors still work here.
+- **Pod template, not the workload.** Webhooks see pods, so `#Render`'s maps go on the pod template. Putting them on the Deployment's own metadata does nothing. Some tools put the same key on both; only the pod template's counts.
+- **Labels and selectors.** A workload's selector labels are the platform's own. A `podLabels` key that is also a selector label is a conflict the platform must refuse when it assembles the pod template; changing a selector label of an existing Deployment is not allowed by Kubernetes.
+- **Length limits.** Key length (prefix 253, name 63) and label values (63) are checked after expansion, so an `{input}` or `{file}` that makes a key too long fails `#Validate`. Kubernetes also caps a pod's annotations at 256 KiB in total; a large Vault Agent template counts toward it. That limit is not checked before deploy.
+- **ServiceAccount and other objects.** Some injectors need metadata elsewhere: Azure Workload Identity and EKS's IAM roles for service accounts read an annotation on the ServiceAccount, the OpenTelemetry operator needs an `Instrumentation` resource, the Vault Agent injector a Kubernetes auth role in Vault. These are out of scope; `podAnnotations` and `podLabels` only cover the pod.
+- **Reserved prefixes.** Keys under `kubernetes.io/` and `k8s.io/` are reserved by Kubernetes. They are valid qualified names and are not rejected, but a platform policy (section 7) may forbid them.
 
 ### 4.6 File inputs
 
@@ -292,7 +388,7 @@ The platform chooses where each file comes from:
 | `certificate` (cert-manager) | `tls` | From the Certificate's spec, which is not secret: it covers every name in `dnsNames` (wildcards count for one label), uses an allowed key algorithm, and its `renewBefore` is at least `minRemaining`, since cert-manager renews when that much validity is left. |
 | `csi` (Secrets Store CSI driver) | any | Nothing about the content; it is checked at boot. |
 | `image` (image volume) | non-secret files | Nothing about the content. For data too large for a ConfigMap's 1 MiB limit. Needs a cluster with image volumes enabled. |
-| `injected` | any | Nothing about the content. An injector, such as the Vault Agent injector rendering a template to `/vault/secrets`, writes the file at `path` when the pod starts. `#Render` emits no volume or mount for it; the platform must make the injector write to the declared `path`. |
+| `injected` | any | Nothing about the content. An injector, such as the Vault Agent injector rendering a template to `/vault/secrets`, writes the file at `path` when the pod starts. `#Render` emits no volume or mount for it. The source may carry the pod annotations and labels that make the injector write to the declared `path` (section 4.5.2), with `{path}`, `{dir}` and `{file}` expanded from the input. |
 
 Inline content is a string, written to the file as given. For a `json` or `yaml` config file it may instead be structured data, which is checked against the file's `schema` and serialized in the file's `format`. The exact bytes of serialized content, and so the ConfigMap's hash, belong to the renderer: the CUE renderer keeps the order fields are written in, while Helm sorts object keys and indents lists differently. Two renderers MUST produce content that parses to the same data, and each MUST name the ConfigMap from a hash of the bytes it wrote; they need not agree on the bytes. A platform that needs byte-identical output across tools gives the content as a string.
 
@@ -430,9 +526,10 @@ The meta-schema provides two definitions, both exercised by `cue/test.sh`:
 - every `required` variable must be set by the platform or by the selected profile (section 4.4), and any that are not are listed in `missingRequired`,
 - every value must satisfy its variable's type and constraints (`checks.<NAME>`), and every file source must pass the checks in section 4.6.1 (`fileChecks.<name>`),
 - every required file input must have a source,
-- any value or file source not declared in the contract is rejected. A typo like `DATABSE_URL` is the most common environment bug, so this check is on by default.
+- any value or file source not declared in the contract is rejected. A typo like `DATABSE_URL` is the most common environment bug, so this check is on by default,
+- the pod annotations and labels of injected sources, and the values document's shared ones, are valid after placeholder expansion and do not set one key to two values (`podChecks`, section 4.5.2).
 
-**`#Render`**: produces the container's `env` entries (in each variable's wire encoding, plus every `pathEnv`), the `volumes` and `volumeMounts` for file inputs and overlays, the ConfigMaps for inline content and overlays (section 4.7), and the `restartTriggers` (section 4.6.2).
+**`#Render`**: produces the container's `env` entries (in each variable's wire encoding, plus every `pathEnv`), the `volumes` and `volumeMounts` for file inputs and overlays, the ConfigMaps for inline content and overlays (section 4.7), the `restartTriggers` (section 4.6.2), and the `podAnnotations` and `podLabels` that injected sources ask for, for the pod template's metadata (section 4.5.2).
 
 **Policy** is plain CUE unified with the values:
 
@@ -586,5 +683,6 @@ The suite covers variables in v1. File inputs, profiles and overlays are tested 
 6. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?
 7. Should a file input be able to take a whole directory of arbitrary files (for example, every `*.crt` in a trust directory), rather than one file or a TLS key pair?
 8. Should file inputs support profiles, so a baked-in `routes.yaml` can be the default for some environments, as `appsettings.{Environment}.json` is for variables?
+9. Pod annotations for injectors live only in the platform's documents (section 4.5.2), because the injector is a fact about the cluster. Should SDKs additionally let an app author declare a *default* injector hint in the contract (for example "this file is usually written by the Vault Agent injector from `database/creds/<app>`"), which a platform could adopt or ignore? It would save each platform team from rediscovering the annotations, but it would put a cluster detail into the image's contract and invite drift between clusters.
 
-Resolved in this draft: per-item bounds for `int` lists (`itemMin`, `itemMax`, section 4.3); length limits for fixed-width hosts: `maxLength` on `url` and `json` values, and `itemMinLength`/`itemMaxLength` on `string` lists, counted in characters (section 4.3); config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
+Resolved in this draft: per-item bounds for `int` lists (`itemMin`, `itemMax`, section 4.3); length limits for fixed-width hosts: `maxLength` on `url` and `json` values, and `itemMinLength`/`itemMaxLength` on `string` lists, counted in characters (section 4.3); config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1), with the pod annotations and labels that enable them (section 4.5.2); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
