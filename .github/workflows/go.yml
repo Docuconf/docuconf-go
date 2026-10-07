@@ -2,9 +2,9 @@ name: go
 
 on:
   push:
-    paths-ignore: ["website/**", "docs/**"]
+    paths-ignore: ["docs/**"]
   pull_request:
-    paths-ignore: ["website/**", "docs/**"]
+    paths-ignore: ["docs/**"]
 
 jobs:
   test:
