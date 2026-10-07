@@ -52,11 +52,11 @@ func TestCheckReportsEveryProblem(t *testing.T) {
 	if code != 1 || out != "" {
 		t.Fatalf("exit %d, want 1\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
 	}
-	want := `docuconf: orders-batch: 4 configuration problems:
+	want := `docuconf: 4 configuration problems:
   DATABASE_URL: scheme is not one of postgres (invalid_scheme)
   PORT: 0 is below min 1 (out_of_range)
   REQUEST_TIMEOUT: 10m is above max 5m (out_of_range)
-  orders: ` + root + `/data/missing.txt does not exist (file_missing)
+  orders: ` + root + `/data/missing.txt does not exist (mount it there, or set ORDERS_FILE) (file_missing)
 `
 	if errOut != want {
 		t.Fatalf("stderr:\n%s\nwant:\n%s", errOut, want)
@@ -169,7 +169,92 @@ func TestExecRefusesInvalidConfiguration(t *testing.T) {
 func TestExecMissingProgram(t *testing.T) {
 	bootEnv(t)
 	out, code := docuconfProcess(t, "exec", "-contract", batch, "--", "docuconf-no-such-program")
-	if code != 127 || !strings.Contains(out, "docuconf-no-such-program") {
+	if code != 127 || !strings.Contains(out, "docuconf exec: cannot start docuconf-no-such-program: not found in PATH\n") {
 		t.Fatalf("exit %d\n%s", code, out)
+	}
+	out, code = docuconfProcess(t, "exec", "-contract", batch, "--", "./nope")
+	if code != 127 || !strings.Contains(out, "docuconf exec: cannot start ./nope: no such file\n") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	notExec := write(t, "data.txt", "not a program\n")
+	out, code = docuconfProcess(t, "exec", "-contract", batch, "--", notExec)
+	if code != 127 || !strings.Contains(out, "permission denied (is it executable?)") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+}
+
+// printEnv is a program that prints the variables exec sets.
+const printEnv = `for v in DATABASE_URL PORT ALLOWED_ORIGINS REQUEST_TIMEOUT ORDERS_FILE; do eval "echo $v=\${$v-unset}"; done`
+
+func TestExecPassesEnvFileValues(t *testing.T) {
+	bootEnv(t)
+	os.Unsetenv("DATABASE_URL")
+	os.Unsetenv("ORDERS_FILE")
+	dotEnv := write(t, ".env", "DATABASE_URL=postgres://orders:pw@db/orders\nPORT=9000\nORDERS_FILE=/data/in.txt\n")
+	t.Setenv("PORT", "9100") // the environment wins over the file
+	out, code := docuconfProcess(t, "exec", "-contract", batch, "-env-file", dotEnv, "-no-defaults", "--", "sh", "-c", printEnv)
+	want := "DATABASE_URL=postgres://orders:pw@db/orders\nPORT=9100\nALLOWED_ORIGINS=unset\nREQUEST_TIMEOUT=unset\nORDERS_FILE=/data/in.txt\n"
+	if code != 0 || !strings.HasSuffix(out, want) {
+		t.Fatalf("exit %d\n%s\nwant suffix:\n%s", code, out, want)
+	}
+}
+
+func TestExecMissingEnvFile(t *testing.T) {
+	bootEnv(t)
+	out, code := docuconfProcess(t, "exec", "-contract", batch, "-env-file", "no-such.env", "--", "true")
+	if code != 2 || !strings.Contains(out, "-env-file no-such.env: no such file") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+}
+
+func TestExecAppliesDefaults(t *testing.T) {
+	root := bootEnv(t)
+	os.Unsetenv("ORDERS_FILE")
+	if err := os.WriteFile(filepath.Join(root, "data", "orders.txt"), []byte("A-1 3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REQUEST_TIMEOUT", "") // empty is unset for a duration
+	out, code := docuconfProcess(t, "exec", "-contract", batch, "--", "sh", "-c", printEnv)
+	want := "DATABASE_URL=postgres://orders:hunter2@db/orders\nPORT=8080\nALLOWED_ORIGINS=http://localhost:3000\nREQUEST_TIMEOUT=30s\nORDERS_FILE=" + filepath.Join(root, "data/orders.txt") + "\n"
+	if code != 0 || !strings.HasSuffix(out, want) {
+		t.Fatalf("exit %d\n%s\nwant suffix:\n%s", code, out, want)
+	}
+
+	// -no-defaults leaves them unset.
+	out, code = docuconfProcess(t, "exec", "-contract", batch, "-no-defaults", "--", "sh", "-c", printEnv)
+	want = "PORT=unset\nALLOWED_ORIGINS=unset\nREQUEST_TIMEOUT=\nORDERS_FILE=unset\n"
+	if code != 0 || !strings.HasSuffix(out, want) {
+		t.Fatalf("exit %d\n%s\nwant suffix:\n%s", code, out, want)
+	}
+}
+
+// Defaults are exported in each variable's wire encoding.
+func TestExecDefaultsUseTheWireEncoding(t *testing.T) {
+	bootEnv(t)
+	contract := write(t, "enc.cue", `package enc
+
+import "docuconf.dev/contract"
+
+contract.#Contract & {
+	metadata: {name: "enc", generator: {language: "cobol", sdk: "docuconf-test", version: "1"}}
+	vars: {
+		ISO: {type: "duration", description: "An ISO duration", encoding: "iso8601", default: "1m30s"}
+		SECS: {type: "duration", description: "Whole seconds", encoding: "seconds", default: "2m"}
+		SEMI: {type: "list", description: "A semicolon list", items: "string", separator: ";", default: ["a", "b"]}
+		JSONL: {type: "list", description: "A json list", items: "int", encoding: "json", default: [1, 2]}
+		IDX: {type: "list", description: "An indexed list", items: "string", encoding: "indexed", default: ["x", "y"]}
+		SET: {type: "list", description: "An indexed list that is set", items: "string", encoding: "indexed", default: ["d"]}
+		PRICE: {type: "float", description: "A price in dollars", default: 0.5}
+		MSG: {type: "string", description: "A message", default: "costs $5"}
+		FLAG: {type: "bool", description: "A flag", default: true}
+	}
+}
+`)
+	t.Setenv("SET__0", "mine")
+	out, code := docuconfProcess(t, "exec", "-contract", contract, "--", "sh", "-c",
+		`for v in ISO SECS SEMI JSONL IDX__0 IDX__1 SET__0 PRICE MSG FLAG; do eval "echo $v=\${$v-unset}"; done`)
+	want := "ISO=PT90S\nSECS=120\nSEMI=a;b\nJSONL=[1,2]\nIDX__0=x\nIDX__1=y\nSET__0=mine\nPRICE=0.5\nMSG=costs $5\nFLAG=true\n"
+	if code != 0 || !strings.HasSuffix(out, want) {
+		t.Fatalf("exit %d\n%s\nwant suffix:\n%s", code, out, want)
 	}
 }

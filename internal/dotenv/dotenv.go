@@ -1,4 +1,6 @@
-package docuconf
+// Package dotenv reads .env files. The SDK and the docuconf CLI share it,
+// so docuconf exec passes a program exactly the values it validated.
+package dotenv
 
 import (
 	"fmt"
@@ -6,18 +8,19 @@ import (
 	"strings"
 )
 
-// readDotEnv parses a .env file: KEY=value lines, with optional "export "
+// Read parses a .env file: KEY=value lines, with optional "export "
 // prefixes, # comments, and single- or double-quoted values. Double-quoted
 // values may span lines and understand \n, \t, \" and \\ escapes.
-func readDotEnv(path string) (map[string]string, error) {
+func Read(path string) (map[string]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return parseDotEnv(string(data), path)
+	return Parse(string(data), path)
 }
 
-func parseDotEnv(s, name string) (map[string]string, error) {
+// Parse parses .env content; name is used in error messages.
+func Parse(s, name string) (map[string]string, error) {
 	out := map[string]string{}
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	line := 1

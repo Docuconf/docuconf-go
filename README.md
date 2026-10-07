@@ -252,22 +252,23 @@ A program written in a language without a docuconf SDK (a shell script, a COBOL 
 ```dockerfile
 COPY --from=docuconf /docuconf /usr/local/bin/docuconf
 COPY contract.cue /etc/docuconf/contract.cue
-ENTRYPOINT ["docuconf", "exec", "--contract", "/etc/docuconf/contract.cue", "--", "/app/orders"]
+ENTRYPOINT ["docuconf", "exec", "-contract", "/etc/docuconf/contract.cue", "--", "/app/orders"]
 ```
 
-- On success it `exec`s the program (`execve`): the program gets docuconf's PID, so it is PID 1 in the container and receives `SIGTERM` directly, and the environment is passed on unchanged. docuconf prints nothing.
+- On success it `exec`s the program (`execve`): the program gets docuconf's PID, so it is PID 1 in the container and receives `SIGTERM` directly. docuconf prints nothing.
+- The program gets exactly the environment that was validated: the process environment, then any `-env-file` values for variables it does not set (the process environment wins), then the contract's `default` for every variable still unset (empty counts as unset except for `string`). Defaults are exported in the variable's wire encoding (a list joined by its `separator`, or as `json` or `NAME__0`, `NAME__1`; a duration as `go`, `iso8601`, `seconds` or `timespan`), and a file input whose `pathEnv` is unset gets its path. A shell script or vendor binary therefore never repeats the contract's defaults. `-no-defaults` turns this off and passes only what was set.
 - On failure it prints every violation on its own line, never a secret value, writes them to the termination log (`DOCUCONF_TERMINATION_LOG`, else `/dev/termination-log` when it exists), and exits 1 without starting the program:
 
   ```
-  docuconf: orders-batch: 2 configuration problems:
+  docuconf: 2 configuration problems:
     DATABASE_URL: is required but not set (missing_required)
     PORT: 0 is below min 1 (out_of_range)
   ```
 - File paths honour each input's `pathEnv` and `DOCUCONF_FILE_ROOT`, as an SDK does.
-- `-env-file .env` (repeatable) reads a .env file for local runs; the environment wins over it.
+- `-env-file .env` (repeatable) reads a .env file for local runs. Its values are validated and passed to the program; the process environment wins over it.
 - Exit codes: 1 for configuration problems, 2 for a bad contract or usage, 127 when the program cannot be started.
 
-`docuconf check --contract contract.cue` runs the same validation and exits 0 (printing `<name>: ok`) or 1, without starting anything. Use it in an init container or in CI.
+`docuconf check -contract contract.cue` runs the same validation and exits 0 (printing `<name>: ok`) or 1, without starting anything. Use it in an init container or in CI.
 
 The checks are the SDK's: contract-first mode loads variables and files, but not `overlays` or `profiles` (a contract with them is rejected), and it reads `json` and `yaml` config files and `pkcs12` keystores only.
 
