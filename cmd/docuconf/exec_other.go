@@ -11,8 +11,9 @@ import (
 
 // execProgram runs argv as a child, where the process cannot be
 // replaced, forwarding interrupts and exiting with its exit code.
-func execProgram(argv []string) error {
+func execProgram(argv, env []string) error {
 	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Env = env
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
 		return err

@@ -11,7 +11,9 @@
 // check and exec validate the process environment and file inputs at
 // boot with the Go SDK's contract-first loader, for programs written in a
 // language without a docuconf SDK. exec then replaces itself with the
-// program.
+// program, passing it the environment it validated: the process
+// environment, -env-file values for what that leaves unset, and the
+// contract's defaults for what is still unset (unless -no-defaults).
 //
 // docuconf conformance regenerates conformance/cases.json from
 // conformance/load, for maintainers of the spec.
@@ -41,7 +43,7 @@ Usage:
   docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml]
   docuconf helm   -contract <contract.cue> -chart <chart directory>
   docuconf check  -contract <contract.cue> [-env-file .env]
-  docuconf exec   -contract <contract.cue> [-env-file .env] -- <program> [args...]
+  docuconf exec   -contract <contract.cue> [-env-file .env] [-no-defaults] -- <program> [args...]
 
 Run "docuconf <command> -h" for a command's flags.
 `
