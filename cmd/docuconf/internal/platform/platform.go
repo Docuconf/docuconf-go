@@ -28,6 +28,7 @@ import (
 type Platform struct {
 	ctx  *cue.Context
 	meta cue.Value
+	docs cue.Value // #DocsModel, compiled on first use
 	fsys fstest.MapFS
 }
 
@@ -93,11 +94,25 @@ func (p *Platform) LoadContract(file string) (*Contract, error) {
 }
 
 // ParseContract is LoadContract for a contract already in memory; file
-// names it in errors.
+// names it in errors. A .json file is the contract as JSON (cue export
+// --out json, or files/docuconf/contract.json in a chart); anything else
+// is CUE.
 func (p *Platform) ParseContract(file string, src []byte) (*Contract, error) {
-	v, err := p.build("/input/"+filepath.Base(file), map[string][]byte{"input/" + filepath.Base(file): src})
-	if err != nil {
-		return nil, contractError(file, err)
+	var v cue.Value
+	if strings.EqualFold(path.Ext(file), ".json") {
+		v = p.ctx.CompileBytes(src, cue.Filename(file))
+		if err := v.Err(); err != nil {
+			return nil, fmt.Errorf("%s: %s", file, errorLines(err))
+		}
+		if isContract(v) {
+			v = p.meta.LookupPath(cue.ParsePath("#Contract")).Unify(v)
+		}
+	} else {
+		var err error
+		v, err = p.build("/input/"+filepath.Base(file), map[string][]byte{"input/" + filepath.Base(file): src})
+		if err != nil {
+			return nil, contractError(file, err)
+		}
 	}
 	if !isContract(v) {
 		var found []cue.Value
@@ -293,6 +308,26 @@ func (p *Platform) RenderEnv(c *Contract, values cue.Value) ([]EnvVar, error) {
 		return nil, err
 	}
 	return env, nil
+}
+
+// ValidateDocsModel checks a docs model document (JSON) against
+// #DocsModel, the schema in spec/cue/docs.
+func (p *Platform) ValidateDocsModel(file string, data []byte) error {
+	if !p.docs.Exists() {
+		docs, err := p.build("./docs", nil)
+		if err != nil {
+			return fmt.Errorf("docs model schema: %w", err)
+		}
+		p.docs = docs.LookupPath(cue.ParsePath("#DocsModel"))
+	}
+	v := p.ctx.CompileBytes(data, cue.Filename(file))
+	if err := v.Err(); err != nil {
+		return fmt.Errorf("%s: %s", file, errorLines(err))
+	}
+	if err := p.docs.Unify(v).Validate(cue.Concrete(true)); err != nil {
+		return fmt.Errorf("%s is not a valid docs model:\n  %s", file, strings.ReplaceAll(errorLines(err), "\n", "\n  "))
+	}
+	return nil
 }
 
 // CompileFile builds a parsed file, such as YAML extracted to CUE.

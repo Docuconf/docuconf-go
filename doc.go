@@ -24,8 +24,11 @@
 // caarlos0/env's own tags work unchanged: env (with the options required,
 // file, notEmpty, expand, unset and init), envDefault, envSeparator and
 // envPrefix. Every variable needs a description of at least five
-// characters, taken from the field's doc comment, or from a desc tag when
-// there is none. docuconf adds:
+// characters: the first paragraph of the field's doc comment, or a desc
+// tag when there is none. Later paragraphs of the doc comment become the
+// variable's details, converted to Markdown (headings, lists and code
+// blocks carry over), for generated docs only: at most 4000 characters.
+// File inputs follow the same rule. docuconf adds:
 //
 //	secret:"true"           the value comes from a Secret; never printed, no default
 //	min:"1" max:"65535"     int, float and duration bounds (durations as "1s")

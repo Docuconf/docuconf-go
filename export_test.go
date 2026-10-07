@@ -180,3 +180,40 @@ func TestContractCUERejectsInvalidContracts(t *testing.T) {
 		"metadata": {"name": "Orders"}, "vars": {}}`), "")
 	require.ErrorContains(t, err, `metadata.name "Orders" must be a DNS label`)
 }
+
+// TestExportDetails checks that a doc comment's first paragraph is the
+// description and the rest is details, and that details are bounded.
+func TestExportDetails(t *testing.T) {
+	out, err := docuconf.Export[Gateway](docuconf.Meta{Name: "gateway"})
+	require.NoError(t, err)
+	require.Contains(t, string(out), `description: "Upstream request timeout"
+			details:     "The gateway gives up on an upstream after this long and answers 504. Raise it for slow batch endpoints; keep it below the load balancer's idle timeout.\n\n# Choosing a value\n\nMeasure the upstream's p99 latency first:\n\n\thistogram_quantile(0.99, upstream_seconds_bucket)"`)
+	// A one-paragraph comment has no details.
+	require.NotContains(t, string(out), `description: "HTTP listen port"
+			details:`)
+
+	_, err = docuconf.Export[longDetails](docuconf.Meta{Name: "svc"})
+	var de *docuconf.DeclarationError
+	require.True(t, errors.As(err, &de), "%v", err)
+	require.Len(t, de.Problems, 1)
+	require.Contains(t, de.Problems[0], "PORT")
+	require.Contains(t, de.Problems[0], "details may have at most 4000")
+}
+
+func TestContractDetails(t *testing.T) {
+	for _, c := range []struct{ details, problem string }{
+		{`"  \n "`, "PORT: details must not be blank"},
+		{`"` + strings.Repeat("é", 4001) + `"`, "PORT: details must be at most 4000 characters"},
+	} {
+		_, err := docuconf.ContractCUE([]byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract",
+			"metadata": {"name": "orders"}, "vars": {"PORT": {"type": "int", "description": "Listen port", "details": `+c.details+`}}}`), "")
+		require.ErrorContains(t, err, c.problem)
+	}
+	out, err := docuconf.ContractCUE([]byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract",
+		"metadata": {"name": "orders"}, "vars": {"PORT": {"type": "int", "description": "Listen port", "details": "Why: *because*."}},
+		"files": {"routes": {"type": "text", "description": "Routing table", "path": "/etc/app/routes.txt", "details": "Reloaded on change."}}}`), "")
+	require.NoError(t, err)
+	require.Contains(t, string(out), `description: "Listen port"
+			details:     "Why: *because*."`)
+	require.Contains(t, string(out), `details:     "Reloaded on change."`)
+}

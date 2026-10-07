@@ -3,6 +3,7 @@ package docuconf
 import (
 	"go/ast"
 	"go/build"
+	"go/doc/comment"
 	"go/parser"
 	"go/token"
 	"os"
@@ -20,10 +21,12 @@ type docResolver struct {
 	types map[reflect.Type]*structDocs // resolved named struct types
 }
 
-// structDocs holds the doc comments of one struct type's fields.
+// structDocs holds the doc comments of one struct type's fields, split
+// into a description and details (see splitDoc).
 type structDocs struct {
-	docs   map[string]string
-	inline map[string]*structDocs // fields whose type is an inline struct
+	docs    map[string]string
+	details map[string]string
+	inline  map[string]*structDocs // fields whose type is an inline struct
 }
 
 func newDocResolver(dir string) *docResolver {
@@ -53,18 +56,18 @@ func (r *docResolver) forType(t reflect.Type) *structDocs {
 	return sd
 }
 
-// fieldDoc returns the doc comment for the field at index path idx below
-// root, following inline struct types.
-func (r *docResolver) fieldDoc(root reflect.Type, idx []int) string {
+// fieldDoc returns the description and details from the doc comment of
+// the field at index path idx below root, following inline struct types.
+func (r *docResolver) fieldDoc(root reflect.Type, idx []int) (desc, details string) {
 	t := root
 	sd := r.forType(t)
 	for n, i := range idx {
 		f := t.Field(i)
 		if n == len(idx)-1 {
 			if sd == nil {
-				return ""
+				return "", ""
 			}
-			return sd.docs[f.Name]
+			return sd.docs[f.Name], sd.details[f.Name]
 		}
 		next := f.Type
 		if next.Kind() == reflect.Pointer {
@@ -77,7 +80,7 @@ func (r *docResolver) fieldDoc(root reflect.Type, idx []int) string {
 		}
 		t = next
 	}
-	return ""
+	return "", ""
 }
 
 func (r *docResolver) candidateDirs(pkgPath string) []string {
@@ -137,11 +140,11 @@ func (r *docResolver) find(dir, name string) *structDocs {
 }
 
 func docsFromAST(st *ast.StructType) *structDocs {
-	sd := &structDocs{docs: map[string]string{}, inline: map[string]*structDocs{}}
+	sd := &structDocs{docs: map[string]string{}, details: map[string]string{}, inline: map[string]*structDocs{}}
 	for _, field := range st.Fields.List {
-		doc := cleanDoc(field.Doc.Text())
+		doc, details := splitDoc(field.Doc.Text())
 		if doc == "" {
-			doc = cleanDoc(field.Comment.Text())
+			doc, details = cleanDoc(field.Comment.Text()), ""
 		}
 		names := field.Names
 		if len(names) == 0 { // embedded field
@@ -155,6 +158,9 @@ func docsFromAST(st *ast.StructType) *structDocs {
 		}
 		for _, n := range names {
 			sd.docs[n.Name] = doc
+			if details != "" {
+				sd.details[n.Name] = details
+			}
 			if inner, ok := typ.(*ast.StructType); ok {
 				sd.inline[n.Name] = docsFromAST(inner)
 			}
@@ -177,6 +183,42 @@ func embeddedName(e ast.Expr) string {
 		return embeddedName(x.X)
 	}
 	return ""
+}
+
+// splitDoc splits a field's doc comment into the contract's description
+// and details (SPEC §4.2):
+//
+//   - The first paragraph is the description, on one line, without a
+//     final period: "HTTP listen port." becomes "HTTP listen port".
+//   - Every later paragraph, heading, list or code block is details,
+//     converted from Go doc comment syntax to Markdown: "# Heading"
+//     becomes a Markdown heading, indented text a code block, and
+//     [pkg.Name] doc links links to pkg.go.dev.
+//
+// A comment that does not start with a paragraph (it starts with a list
+// or a code block) is all description, as before details existed.
+func splitDoc(text string) (desc, details string) {
+	if strings.TrimSpace(text) == "" {
+		return "", ""
+	}
+	var p comment.Parser
+	doc := p.Parse(text)
+	if len(doc.Content) == 0 {
+		return "", ""
+	}
+	if _, ok := doc.Content[0].(*comment.Paragraph); !ok {
+		return cleanDoc(text), ""
+	}
+	pr := &comment.Printer{
+		HeadingLevel:   1, // renderers nest details headings under the input's own
+		HeadingID:      func(*comment.Heading) string { return "" },
+		DocLinkBaseURL: "https://pkg.go.dev",
+	}
+	desc = cleanDoc(string(pr.Text(&comment.Doc{Content: doc.Content[:1], Links: doc.Links})))
+	if len(doc.Content) > 1 {
+		details = strings.TrimSpace(string(pr.Markdown(&comment.Doc{Content: doc.Content[1:], Links: doc.Links})))
+	}
+	return desc, details
 }
 
 // cleanDoc turns a doc comment into a one-line description: whitespace is

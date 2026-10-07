@@ -127,6 +127,7 @@ contract.#Contract & {
 		REQUEST_TIMEOUT: {
 			type:        "duration"
 			description: "Upstream request timeout"
+			details:     "The gateway gives up on an upstream after this long and answers 504. Raise it for slow batch endpoints; keep it below the load balancer's idle timeout.\n\n# Choosing a value\n\nMeasure the upstream's p99 latency first:\n\n\thistogram_quantile(0.99, upstream_seconds_bucket)"
 			default:     "30s"
 			min:         "1s"
 			max:         "5m"

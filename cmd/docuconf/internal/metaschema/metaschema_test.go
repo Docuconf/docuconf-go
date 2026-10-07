@@ -34,7 +34,8 @@ func TestInSyncWithSpec(t *testing.T) {
 		t.Fatal(err)
 	}
 	specFiles, _ := filepath.Glob(filepath.Join(spec, "contract", "*.cue"))
-	if n != len(specFiles)+1 {
-		t.Errorf("embedded %d files, spec has %d contract files plus module.cue", n, len(specFiles))
+	docsFiles, _ := filepath.Glob(filepath.Join(spec, "docs", "*.cue"))
+	if n != len(specFiles)+len(docsFiles)+1 {
+		t.Errorf("embedded %d files, spec has %d contract files, %d docs files and module.cue", n, len(specFiles), len(docsFiles))
 	}
 }

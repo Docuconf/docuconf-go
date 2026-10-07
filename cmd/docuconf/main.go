@@ -8,6 +8,11 @@
 //	docuconf helm   -contract contract.cue -chart ./chart
 //	docuconf check  -contract contract.cue
 //	docuconf exec   -contract contract.cue -- program [args...]
+//	docuconf docs   contract.cue [--format model|markdown|agents] [-o file | --check file]
+//
+// docs generates documentation from a contract: a docs model (a
+// versioned JSON document, spec section 14), and from the model Markdown
+// for developers or a rules file for AI agents.
 //
 // check and exec validate the process environment and file inputs at
 // boot with the Go SDK's contract-first loader, for programs written in a
@@ -45,6 +50,7 @@ Usage:
   docuconf helm   -contract <contract.cue> -chart <chart directory>
   docuconf check  -contract <contract.cue> [-env-file .env]
   docuconf exec   -contract <contract.cue> [-env-file .env] [-no-defaults] -- <program> [args...]
+  docuconf docs   <contract.cue | docs.json> [--format model|markdown|agents] [-o file | --check file]
 
 Run "docuconf <command> -h" for a command's flags.
 `
@@ -78,6 +84,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runCheck(args[1:], stdout, stderr)
 	case "exec":
 		err = runExec(args[1:], stdout, stderr)
+	case "docs":
+		err = runDocs(args[1:], stdout, stderr)
 	case "conformance":
 		err = runConformance(args[1:], stdout, stderr)
 	case "help", "-h", "-help", "--help":

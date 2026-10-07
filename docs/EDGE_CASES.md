@@ -73,3 +73,18 @@ Things that will go wrong in real clusters, and what docuconf does about each. S
 | Renames | Renaming `DB_URL` to `DATABASE_URL` breaks every environment at once. | Use `deprecated.replacedBy`. The SDK reads the new name, then falls back to the old one with a warning, for one release. `diff` flags the removal. | Spec |
 | Tests and CI | Unit tests and `assets:precompile` boot the app without production values. | Every SDK documents a test mode and skips validation for build-time tasks (see the Rails note in PLAN.md). | Build |
 | Feature flags in disguise | `ENABLE_NEW_CHECKOUT` gets toggled by redeploying. | A naming lint and the SPEC §10 guidance. | Handled (lint is Build) |
+
+## Generated docs
+
+`docuconf docs` builds a docs model from the contract and renders it (SPEC §14). These cases are covered by the `storefront` example contract, whose generated docs are in `spec/cue/testdata/docs/storefront`, and by the CLI's unit tests.
+
+| Case | What goes wrong | Response | Status |
+|---|---|---|---|
+| Inputs without a group | Some inputs have a `group`, others none, and `group: ""` is legal. | Absent and `""` are the same: those inputs form the group titled "General", listed first, then the named groups in code point order. A group with no inputs never appears. When no input has a group, the Markdown has no group headings. | Handled |
+| Deprecated input with a replacement | Readers keep using `STOREFRONT__BANNER` because nothing points at its successor. | The model carries `deprecated.replacedBy`. Markdown shows a notice that links to the replacement; the agents file adds a hard rule against new uses. | Handled |
+| Indexed lists | An `indexed` list is several variables (`NAME__0`, `NAME__1`), and one injector reference cannot carry it. | The wire phrase names the item variables, the default is listed per item, and the `injected` source notes "without a `ref`". | Handled |
+| Secret files | A secret file documented like any other invites `inline` content or a ConfigMap. | Its sources are only `secret`, `certificate` (TLS), `csi` and `injected`, and it is listed among the secrets in the agents file's first hard rule. The model never holds a value for a secret: `#DocsModel` rejects a default, example or profile default. | Handled |
+| Headings in details | A `# When to change it` in an input's details would break the document's outline. | Renderers demote details headings below the input's heading (level n becomes the input's level plus n, at most 6), turn setext headings into ATX headings, and leave fenced code alone. | Handled |
+| Very long examples | A 200-character URL example breaks a table or list layout. | Markdown keeps examples of up to 60 characters on one line in a list, and puts longer or multi-line ones in fenced code blocks. The agents file keeps each on one line, as a JSON string when it has a newline or surrounding spaces. | Handled |
+| Non-ASCII text | Umlauts, CJK and emoji in descriptions, defaults and examples get escaped or mangled. | Output is UTF-8, with no escaping in docs.json (no `\u` or HTML escapes). Length bounds are phrased in Unicode code points, and heading anchors keep letters, as GitHub's do. | Handled |
+| Markdown in descriptions | A description with `*`, `_`, `<` or `|` renders as emphasis, HTML or a broken table. | Descriptions are plain text, so the Markdown renderer escapes them; details are Markdown and are used as written. Every table cell escapes `|`. | Handled |

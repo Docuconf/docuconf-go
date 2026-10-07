@@ -94,9 +94,16 @@ import (
 
 #EnvName: =~"^[A-Z][A-Z0-9_]*$"
 
+// #Details is the optional long-form documentation of an input, in
+// CommonMark: not blank, and at most 4000 characters (Unicode code points).
+#Details: strings.MaxRunes(4000) & =~"[^\\s]"
+
 #Common: {
 	name:        #EnvName
 	description: strings.MinRunes(5)
+	// Markdown for docs only: why the input exists and when to change it.
+	// Never read at runtime.
+	details?: #Details
 	required:    *false | bool
 	secret:      *false | bool
 	group?:      string
