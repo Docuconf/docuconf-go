@@ -80,6 +80,32 @@ docuconf render -contract contract.cue -values values.yaml -files files.yaml
 
 The old builder-based generator in `gen/` and `LoadDotEnv` are deprecated.
 
+## Boot validation for any language: `docuconf exec` and `docuconf check`
+
+A program written in a language without a docuconf SDK (a shell script, a COBOL batch job, a vendor binary) can still be checked at boot against its contract. `docuconf exec` validates the environment and file inputs with the Go SDK's contract-first loader (`LoadContract`, which passes the whole conformance suite), then replaces itself with the program:
+
+```dockerfile
+COPY --from=docuconf /docuconf /usr/local/bin/docuconf
+COPY contract.cue /etc/docuconf/contract.cue
+ENTRYPOINT ["docuconf", "exec", "--contract", "/etc/docuconf/contract.cue", "--", "/app/orders"]
+```
+
+- On success it `exec`s the program (`execve`): the program gets docuconf's PID, so it is PID 1 in the container and receives `SIGTERM` directly, and the environment is passed on unchanged. docuconf prints nothing.
+- On failure it prints every violation on its own line, never a secret value, writes them to the termination log (`DOCUCONF_TERMINATION_LOG`, else `/dev/termination-log` when it exists), and exits 1 without starting the program:
+
+  ```
+  docuconf: orders-batch: 2 configuration problems:
+    DATABASE_URL: is required but not set (missing_required)
+    PORT: 0 is below min 1 (out_of_range)
+  ```
+- File paths honour each input's `pathEnv` and `DOCUCONF_FILE_ROOT`, as an SDK does.
+- `-env-file .env` (repeatable) reads a .env file for local runs; the environment wins over it.
+- Exit codes: 1 for configuration problems, 2 for a bad contract or usage, 127 when the program cannot be started.
+
+`docuconf check --contract contract.cue` runs the same validation and exits 0 (printing `<name>: ok`) or 1, without starting anything. Use it in an init container or in CI.
+
+The checks are the SDK's: contract-first mode loads variables and files, but not `overlays` or `profiles` (a contract with them is rejected), and it reads `json` and `yaml` config files and `pkcs12` keystores only.
+
 ## Conformance
 
 `go test ./...` runs the shared conformance suite (spec section 12) from [`conformance/cases.json`](conformance/cases.json) through `LoadContract`, one subtest per case id. To run another copy of the suite, set `DOCUCONF_CONFORMANCE` to its `cases.json`:
