@@ -60,4 +60,35 @@ contract.#Contract & {
 			max:         64
 		}
 	}
+	files: {
+		discounts: {
+			type:        "config"
+			format:      "yaml"
+			description: "Discount codes accepted at checkout"
+			path:        "/etc/orders/discounts/discounts.yaml"
+			schema: {
+				type: "object"
+				required: ["codes"]
+				additionalProperties: false
+				properties: {
+					codes: {
+						type:        "object"
+						description: "Percent off for each discount code"
+						additionalProperties: {
+							type: "integer"
+						}
+					}
+				}
+			}
+		}
+		"serving-tls": {
+			type:        "tls"
+			description: "Certificate to serve HTTPS with. Without it, the service serves HTTP"
+			secret:      true
+			path:        "/etc/orders/tls"
+			reload:      "watch"
+			dnsNames: ["orders.example.com"]
+			minRemaining: "720h"
+		}
+	}
 }

@@ -90,7 +90,7 @@ PARTNER_KEYSTORE_PASSWORD: "hunter2-pasted-literal"
 		"GOMEMLIMIT: a fieldRef always yields a string, but GOMEMLIMIT is an integer",
 		`LOG_LEVEL: "debug" is not allowed by policy`,
 		"LOG_LEVLE: is not declared in the contract (check the spelling)",
-		"PARTNER_KEYSTORE_PASSWORD: is secret, so it must come from a secretKeyRef or an injector, never a literal or another reference",
+		"PARTNER_KEYSTORE_PASSWORD: is secret, so it must come from a secretKeyRef, written {secretKeyRef: {name: <secret>, key: <key>}}, or an injector, never a literal or another reference",
 		"RATE_LIMITS: does not match its schema: at perMinute: invalid value 0 (out of bound >=1)",
 		"license: inline text does not match pattern ^[A-Z0-9]{5}(-[A-Z0-9]{5}){3}\\n?$",
 		"serving-tls: certificate key algorithm Ed25519 is not one of ECDSA, RSA",
@@ -113,7 +113,7 @@ LOG_LEVEL: 3
 	out, _, code := docuconf(t, "vet", "-contract", billing, "-values", write(t, "values.yaml", values))
 	requireLines(t, out, code,
 		"ALLOWED_ORIGINS: has 0 items, below minItems 1",
-		"DATABASE_URL: is secret, so it must come from a secretKeyRef or an injector, never a literal or another reference",
+		"DATABASE_URL: is secret, so it must come from a secretKeyRef, written {secretKeyRef: {name: <secret>, key: <key>}}, or an injector, never a literal or another reference",
 		"LOG_LEVEL: 3 is not one of debug, info, warn, error",
 		"PORT: 70000 is above max 65535",
 		"REQUEST_TIMEOUT: 10m is above max 5m",
@@ -372,6 +372,33 @@ type Config struct {
 	_, errOut, code = docuconf(t, "export", "-C", dir, "-pkg", ".", "-name", "app")
 	if code != 2 || !strings.Contains(errOut, "package main") {
 		t.Fatalf("exit %d: %s", code, errOut)
+	}
+
+	// Config under internal/, the usual Go layout, exports too: the
+	// generated program runs inside the module.
+	internal := filepath.Join(dir, "internal", "config")
+	if err := os.MkdirAll(internal, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(internal, "config.go"), []byte(files["config/config.go"]), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	internalOut := filepath.Join(dir, "internal.cue")
+	_, errOut, code = docuconf(t, "export", "-C", dir, "-pkg", "./internal/config", "-name", "app", "-app-version", "1.0.0", "-o", internalOut)
+	if code != 0 {
+		t.Fatalf("export of internal/config: exit %d: %s", code, errOut)
+	}
+	if read(t, internalOut) != got {
+		t.Errorf("internal/config exported differently:\n%s", read(t, internalOut))
+	}
+
+	// -check: 0 when up to date, 1 with a diff when stale.
+	if _, errOut, code := docuconf(t, "export", "-C", dir, "-pkg", "./config", "-name", "app", "-app-version", "1.0.0", "-check", out); code != 0 {
+		t.Fatalf("check: exit %d: %s", code, errOut)
+	}
+	_, errOut, code = docuconf(t, "export", "-C", dir, "-pkg", "./config", "-name", "app", "-app-version", "2.0.0", "-check", out)
+	if code != 1 || !strings.Contains(errOut, `+		appVersion: "2.0.0"`) {
+		t.Fatalf("check of a stale contract: exit %d: %s", code, errOut)
 	}
 }
 

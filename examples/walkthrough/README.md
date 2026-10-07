@@ -146,7 +146,7 @@ once, before anything reaches the cluster ([`out/vet-bad.txt`](out/vet-bad.txt))
 
 ```console
 $ docuconf vet -contract contract.cue -values platform/bad-values.yaml -files platform/bad-files.yaml -policy platform/prod-policy.cue
-DATABASE_URL: is secret, so it must come from a secretKeyRef or an injector, never a literal or another reference
+DATABASE_URL: is secret, so it must come from a secretKeyRef, written {secretKeyRef: {name: <secret>, key: <key>}}, or an injector, never a literal or another reference
 KAFKA_BROKERS: is required, and set neither by the platform nor by the selected profile
 LOG_LEVL: is not declared in the contract (check the spelling)
 PAYMENTS_TIMEOUT: "2 seconds" is not a duration such as 1m30s

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -11,18 +12,13 @@ import (
 	"strconv"
 
 	"github.com/docuconf/docuconf-go"
-	"github.com/docuconf/docuconf-go/examples/orders/config"
+	"github.com/docuconf/docuconf-go/examples/orders/internal/config"
 )
 
 func main() {
-	// Parse reads the environment and runs every check in one pass. On
-	// failure it returns every violation at once, each with a stable code
-	// such as missing_required, and never prints a secret's value.
-	cfg, err := docuconf.Parse[config.Config]()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	// On bad configuration, ParseOrExit prints every problem and exits 1.
+	cfg := docuconf.ParseOrExit[config.Config]()
+	slog.Info("config loaded", "config", docuconf.LogValue(cfg)) // secrets print as ***
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -30,14 +26,11 @@ func main() {
 	})
 	mux.HandleFunc("GET /config", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"PORT":            cfg.Port,
-			"LOG_LEVEL":       cfg.LogLevel,
-			"DATABASE_URL":    "***", // secret: true in the contract
-			"ALLOWED_ORIGINS": cfg.AllowedOrigins,
-			"REQUEST_TIMEOUT": cfg.RequestTimeout.String(),
-			"WORKER_COUNT":    cfg.WorkerCount,
-		})
+		json.NewEncoder(w).Encode(docuconf.Redacted(cfg))
+	})
+	mux.HandleFunc("GET /discounts", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(cfg.Discounts.Value().Codes)
 	})
 
 	srv := &http.Server{
@@ -45,9 +38,15 @@ func main() {
 		Handler:     http.TimeoutHandler(mux, cfg.RequestTimeout, "request timed out"),
 		ReadTimeout: cfg.RequestTimeout,
 	}
-	slog.Info("orders listening", "port", cfg.Port, "workers", cfg.WorkerCount)
-	if err := srv.ListenAndServe(); err != nil {
-		slog.Error("server stopped", "err", err)
-		os.Exit(1)
+	var err error
+	if cfg.TLS.Present() {
+		srv.TLSConfig = &tls.Config{GetCertificate: cfg.TLS.GetCertificate}
+		slog.Info("orders listening with HTTPS", "port", cfg.Port)
+		err = srv.ListenAndServeTLS("", "")
+	} else {
+		slog.Info("orders listening", "port", cfg.Port)
+		err = srv.ListenAndServe()
 	}
+	slog.Error("server stopped", "err", err)
+	os.Exit(1)
 }

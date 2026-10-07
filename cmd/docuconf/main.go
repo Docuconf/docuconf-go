@@ -2,6 +2,7 @@
 // contracts.
 //
 //	docuconf export -pkg ./internal/config -type Config -name billing-api -o contract.cue
+//	docuconf export -pkg ./internal/config -check contract.cue
 //	docuconf vet    -contract contract.cue -values values.yaml [-files files.yaml] [-policy policy.cue]
 //	docuconf render -contract contract.cue -values values.yaml [-files files.yaml]
 //	docuconf helm   -contract contract.cue -chart ./chart
@@ -38,7 +39,7 @@ import (
 const usage = `docuconf: typed configuration contracts between apps and the platform.
 
 Usage:
-  docuconf export -pkg <package> -type <Type> -name <service> [-o contract.cue]
+  docuconf export -pkg <package> [-type Config] [-name <service>] [-o contract.cue | -check contract.cue]
   docuconf vet    -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml] [-policy policy.cue]
   docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml]
   docuconf helm   -contract <contract.cue> -chart <chart directory>
@@ -89,7 +90,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch {
 	case err == nil:
 		return 0
-	case errors.Is(err, errProblems):
+	case errors.Is(err, errProblems), errors.Is(err, errStale):
 		return 1
 	case errors.Is(err, errExec):
 		return 127
@@ -106,8 +107,8 @@ type platformFlags struct {
 
 func (p *platformFlags) register(fs *flag.FlagSet, policy bool) {
 	fs.StringVar(&p.contract, "contract", "contract.cue", "the service's contract")
-	fs.StringVar(&p.values, "values", "", "variable values (YAML, JSON or CUE)")
-	fs.StringVar(&p.files, "files", "", "file input sources (YAML, JSON or CUE)")
+	fs.StringVar(&p.values, "values", "", "variable values (YAML, JSON or CUE): a map of VAR: value,\nor VAR: {secretKeyRef: {name: <secret>, key: <key>}} for a secret")
+	fs.StringVar(&p.files, "files", "", "where each file input comes from (YAML, JSON or CUE), by input name:\n<input>: {secret: {name}}, {configMap: {name, key}}, {inline: <content>},\n{certificate: {name, secretName, dnsNames, duration, renewBefore}} or {csi: {secretProviderClass}}")
 	fs.StringVar(&p.overlays, "overlays", "", "values for config-file overlays, by overlay name (YAML, JSON or CUE)")
 	if policy {
 		fs.StringVar(&p.policy, "policy", "", "environment policy unified with the values (CUE)")
