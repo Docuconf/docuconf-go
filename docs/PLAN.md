@@ -47,11 +47,11 @@ type Config struct {
     Timeout time.Duration `env:"REQUEST_TIMEOUT" envDefault:"30s" max:"5m"`
 }
 
-cfg, err := docuconf.ParseAs[Config]() // env.ParseAs, then docuconf's constraints; all violations in one error
+cfg, err := docuconf.Parse[Config]() // env.ParseAs, then docuconf's constraints; all violations in one error
 ```
 
 - Teams already on caarlos0/env can keep calling `env.ParseAs` and add `docuconf.Validate(cfg)` afterwards.
-- `docuconf export ./internal/config.Config` reads the struct by static analysis (`go/packages`), so exporting needs no running program and no environment. Descriptions come from each field's doc comment, the idiomatic place in Go, with a `desc` tag as a fallback.
+- `docuconf export -pkg ./internal/config -type Config` compiles and runs a tiny program inside the app's module (via `go run`) that reflects over the struct and reads its doc comments from source. It needs the Go toolchain and the module's dependencies, but no environment values. The config package's `init` functions, and those of everything it imports, run during export, so keep the config package free of side-effecting imports. Descriptions come from each field's doc comment, the idiomatic place in Go, with a `desc` tag as a fallback.
 
 **TypeScript, on T3 Env.**
 

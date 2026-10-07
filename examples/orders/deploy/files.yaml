@@ -1,0 +1,11 @@
+# files.yaml: where each file input comes from.
+serving-tls:
+  certificate: # a cert-manager Certificate
+    name: orders-tls
+    secretName: orders-tls
+    dnsNames: [orders.example.com]
+    duration: 2160h
+    renewBefore: 720h
+discounts:
+  inline:
+    codes: {WELCOME10: 10, SPRING25: 25}

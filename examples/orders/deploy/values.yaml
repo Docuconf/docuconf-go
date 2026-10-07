@@ -1,0 +1,6 @@
+# values.yaml: what the platform sets each variable to.
+LOG_LEVEL: warn
+ALLOWED_ORIGINS: [https://shop.example.com]
+WORKER_COUNT: 8
+DATABASE_URL: # a secret: always a reference, never a literal
+  secretKeyRef: {name: orders-db, key: url}

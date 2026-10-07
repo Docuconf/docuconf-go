@@ -509,7 +509,7 @@ Every language already has an environment library that teams trust. A docuconf S
 
 | Language | Host library | Declaration the team already writes | docuconf adds |
 |---|---|---|---|
-| Go | [caarlos0/env](https://github.com/caarlos0/env) v11 | struct with `env`, `envDefault`, `required` tags | `desc`, `secret`, constraint tags; export by static analysis of the struct |
+| Go | [caarlos0/env](https://github.com/caarlos0/env) v11 | struct with `env`, `envDefault`, `required` tags | `desc`, `secret`, constraint tags; export runs a generated program in the app's module that reflects over the struct and reads doc comments from source |
 | TypeScript | [T3 Env](https://env.t3.gg) with any [Standard Schema](https://standardschema.dev) validator (Zod, Valibot, ArkType) | `createEnv({ server: {...} })` | export through Standard JSON Schema; `secret` via schema metadata |
 | Ruby | [anyway_config](https://github.com/palkan/anyway_config) | `Anyway::Config` subclass with `attr_config`, `required`, `coerce_types` | `describe`, `secret`, constraints, a `:duration` coercion; `rails docuconf:export` |
 | .NET | Microsoft.Extensions.Options with DataAnnotations and the `[OptionsValidator]` source generator | options class with `[Required]`, `[Range]`, `[RegularExpression]`, `[AllowedValues]` | a source generator that emits the contract at build; `[Secret]`; env names from the configuration path |
