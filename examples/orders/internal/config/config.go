@@ -10,7 +10,8 @@ import (
 )
 
 // Config is everything the orders service reads at boot.
-// Doc comments become the descriptions in the contract.
+// Doc comments become the descriptions in the contract: the first
+// paragraph is the description, and any later paragraphs are its details.
 type Config struct {
 	// HTTP listen port.
 	Port int `env:"PORT" envDefault:"8080" min:"1" max:"65535"`
@@ -28,6 +29,10 @@ type Config struct {
 	RequestTimeout time.Duration `env:"REQUEST_TIMEOUT" envDefault:"30s" min:"1s" max:"5m"`
 
 	// Number of background workers processing orders.
+	//
+	// Each worker holds one database connection, so keep it below the
+	// database's connection limit divided by the number of replicas.
+	// Raise it when the order queue grows faster than it drains.
 	WorkerCount int `env:"WORKER_COUNT" envDefault:"4" min:"1" max:"64"`
 
 	// Certificate to serve HTTPS with. Without it, the service serves HTTP.

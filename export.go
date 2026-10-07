@@ -40,6 +40,10 @@ type Meta struct {
 	FuncMap map[reflect.Type]env.ParserFunc
 }
 
+// maxDetails is the most characters (Unicode code points) an input's
+// details may have (SPEC §4.2).
+const maxDetails = 4000
+
 var dnsLabelRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
 
 // Export returns the contract for configuration struct T as CUE source
@@ -82,22 +86,28 @@ func ExportType(t reflect.Type, meta Meta) ([]byte, error) {
 		problems = append(problems, fmt.Sprintf("service name %q must be a DNS label ([a-z0-9-], at most 63 characters)", meta.Name))
 	}
 	docs := newDocResolver(meta.SourceDir)
-	describe := func(what, desc string, idx []int) string {
-		if doc := docs.fieldDoc(t, idx); doc != "" {
+	// The description is the doc comment's first paragraph (or the desc
+	// tag), and details the rest of the comment, as Markdown (splitDoc).
+	describe := func(what, desc string, idx []int) (string, string) {
+		doc, details := docs.fieldDoc(t, idx)
+		if doc != "" {
 			desc = doc
 		}
 		if utf8.RuneCountInString(desc) < 5 {
 			problems = append(problems, fmt.Sprintf("%s needs a description of at least 5 characters: write a doc comment on the field, or a desc tag", what))
 		}
-		return desc
+		if n := utf8.RuneCountInString(details); n > maxDetails {
+			problems = append(problems, fmt.Sprintf("%s: the doc comment after its first paragraph is %d characters; details may have at most %d", what, n, maxDetails))
+		}
+		return desc, details
 	}
 
 	vars := slices.Clone(d.vars)
 	slices.SortFunc(vars, func(a, b *varDecl) int { return strings.Compare(a.name, b.name) })
 	var varsObj obj
 	for _, v := range vars {
-		desc := describe(v.name+" ("+v.goPath+")", v.desc, v.index)
-		o, err := v.contract(desc, docs)
+		desc, details := describe(v.name+" ("+v.goPath+")", v.desc, v.index)
+		o, err := v.contract(desc, details, docs)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("%s: %v", v.name, err))
 		}
@@ -107,8 +117,8 @@ func ExportType(t reflect.Type, meta Meta) ([]byte, error) {
 	slices.SortFunc(files, func(a, b *fileDecl) int { return strings.Compare(a.name, b.name) })
 	var filesObj obj
 	for _, f := range files {
-		desc := describe("file input "+f.name+" ("+f.goPath+")", f.desc, f.index)
-		o, err := f.contract(desc, docs)
+		desc, details := describe("file input "+f.name+" ("+f.goPath+")", f.desc, f.index)
+		o, err := f.contract(desc, details, docs)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("file input %s: %v", f.name, err))
 		}
@@ -161,8 +171,11 @@ func contractSource(doc obj, name, pkg string) []byte {
 }
 
 // contract returns the variable's fields in the order of SPEC §4.
-func (v *varDecl) contract(desc string, docs *docResolver) (obj, error) {
+func (v *varDecl) contract(desc, details string, docs *docResolver) (obj, error) {
 	o := obj{}.add("type", v.typ).add("description", desc)
+	if details != "" {
+		o = o.add("details", details)
+	}
 	if v.required {
 		o = o.add("required", true)
 	}
@@ -314,12 +327,15 @@ func (v *varDecl) defaultValue() (any, error) {
 }
 
 // contract returns the file input's fields in the order of SPEC §4.6.
-func (f *fileDecl) contract(desc string, docs *docResolver) (obj, error) {
+func (f *fileDecl) contract(desc, details string, docs *docResolver) (obj, error) {
 	o := obj{}.add("type", f.typ)
 	if f.typ == fileConfig || f.typ == fileKeystore {
 		o = o.add("format", f.format)
 	}
 	o = o.add("description", desc)
+	if details != "" {
+		o = o.add("details", details)
+	}
 	if f.required {
 		o = o.add("required", true)
 	}

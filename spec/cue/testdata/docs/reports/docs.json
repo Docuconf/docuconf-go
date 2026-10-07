@@ -1,0 +1,103 @@
+{
+  "apiVersion": "docs.docuconf.dev/v1alpha1",
+  "kind": "ConfigDocs",
+  "service": {
+    "name": "reports-worker",
+    "generator": {
+      "language": "python",
+      "sdk": "docuconf-pydantic",
+      "version": "0.1.0"
+    }
+  },
+  "groups": [
+    {
+      "name": "",
+      "title": "General",
+      "inputs": [
+        {
+          "name": "POLL_INTERVAL",
+          "kind": "var",
+          "type": "duration",
+          "typeLabel": "duration",
+          "required": false,
+          "secret": false,
+          "description": "How often to poll the job queue",
+          "default": "30s",
+          "defaultEnv": [
+            {
+              "name": "POLL_INTERVAL",
+              "value": "PT30S"
+            }
+          ],
+          "wire": {
+            "encoding": "iso8601",
+            "text": "an ISO 8601 duration, such as `PT90S` for 90 seconds",
+            "platform": "a duration in Go syntax, such as `90s` or `1m30s`; docuconf writes it in the wire format"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type"
+          ]
+        },
+        {
+          "name": "REPORT_FORMATS",
+          "kind": "var",
+          "type": "list",
+          "typeLabel": "list of strings",
+          "required": false,
+          "secret": false,
+          "description": "Formats the worker renders",
+          "default": [
+            "pdf"
+          ],
+          "defaultEnv": [
+            {
+              "name": "REPORT_FORMATS",
+              "value": "[\"pdf\"]"
+            }
+          ],
+          "wire": {
+            "encoding": "json",
+            "text": "a compact JSON array, such as `[\"a\",\"b\"]`",
+            "platform": "a list of strings, such as `[a, b]`; docuconf writes it in the wire format"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type"
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": "invalid_type",
+      "meaning": "The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`).",
+      "fix": "Write the value in the input's wire format. For an injected secret, make sure the injector runs."
+    }
+  ]
+}

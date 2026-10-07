@@ -21,7 +21,7 @@ No version is tagged yet, so `@main` resolves to a pseudo-version. `go get githu
 go mod edit -replace github.com/docuconf/docuconf-go=../docuconf-go
 ```
 
-The platform side (`vet`, `render`, `helm`) is the `docuconf` CLI. It needs Go 1.25 because of CUE: `go install github.com/docuconf/docuconf-go/cmd/docuconf@main`.
+The platform side (`vet`, `render`, `helm`) and the docs generator (`docs`) are the `docuconf` CLI. It needs Go 1.25 because of CUE: `go install github.com/docuconf/docuconf-go/cmd/docuconf@main`.
 
 ## 2. Declare
 
@@ -37,7 +37,8 @@ import (
 )
 
 // Config is everything the orders service reads at boot.
-// Doc comments become the descriptions in the contract.
+// Doc comments become the descriptions in the contract: the first
+// paragraph is the description, and any later paragraphs are its details.
 type Config struct {
 	// HTTP listen port.
 	Port int `env:"PORT" envDefault:"8080" min:"1" max:"65535"`
@@ -55,9 +56,15 @@ type Config struct {
 	RequestTimeout time.Duration `env:"REQUEST_TIMEOUT" envDefault:"30s" min:"1s" max:"5m"`
 
 	// Number of background workers processing orders.
+	//
+	// Each worker holds one database connection, so keep it below the
+	// database's connection limit divided by the number of replicas.
+	// Raise it when the order queue grows faster than it drains.
 	WorkerCount int `env:"WORKER_COUNT" envDefault:"4" min:"1" max:"64"`
 }
 ```
+
+Every input needs a description: the first paragraph of the field's doc comment, or a `desc` tag. Later paragraphs become the input's optional `details`, Markdown that says why the input exists and when to change it. Headings (`# Heading`), lists and indented code blocks in the comment carry over as Markdown. Details only go into generated docs; nothing reads them at runtime.
 
 `docuconf.Secret` is a string that prints `***` everywhere: `%v`, `%+v`, `slog` and JSON. A field of that type is secret in the contract. On a plain `string`, `secret:"true"` does the same for the contract but not for printing. A misspelled tag (`secrte`, `mni`) is an error, not a silently dropped rule.
 
@@ -141,7 +148,27 @@ func (Config) DocuconfOptions() docuconf.Options {
 }
 ```
 
-## 7. Deploy
+## 7. Generate docs
+
+`docuconf docs` turns the contract into documentation, so the docs cannot drift from the code either. Commit the output next to `contract.cue`:
+
+```sh
+docuconf docs contract.cue -o CONFIG.md
+docuconf docs contract.cue --format agents -o CONFIG.agents.md
+```
+
+- [`CONFIG.md`](examples/orders/CONFIG.md) is the reference for developers: a table of contents by group, then each input's type, default, constraints, wire format, allowed sources, examples and details, the file inputs, and what each boot error means.
+- [`CONFIG.agents.md`](examples/orders/CONFIG.agents.md) is for AI agents, both coding agents in the app's repository and agents that set deployment values. It starts with hard rules (never write a secret's value anywhere, use each input's wire format, run `docuconf vet` before proposing a change, invent no inputs), then gives one block of `key: value` facts per input. Include it from your `AGENTS.md`, or serve it as an `llms.txt`.
+- `--format model` writes [`docs.json`](examples/orders/docs.json), the docs model both renderers read (spec section 14). A website, an MCP server or a Backstage plugin can render from it, and `docuconf docs docs.json` renders it like a contract.
+
+Like the contract, CI can check that the committed docs are current. `--check` exits 1 and prints a diff when a file is stale:
+
+```sh
+docuconf docs contract.cue --check CONFIG.md
+docuconf docs contract.cue --format agents --check CONFIG.agents.md
+```
+
+## 8. Deploy
 
 The platform validates its inputs against `contract.cue` before anything reaches the cluster. It writes a values file, with secrets as references:
 
@@ -219,7 +246,7 @@ Then run with `DOCUCONF_FILE_ROOT=./dev`. `.env` files are read only when listed
 
 ### Tags
 
-Doc comments are the descriptions (a `desc` tag is the fallback). docuconf's tags: `secret`, `min`/`max`, `minLength`/`maxLength` (in characters; `maxLength` also bounds a url or a `JSON[T]` value), `pattern` (RE2), `values` (enum), `schemes` (url), `minItems`/`maxItems`, `itemMin`/`itemMax` on integer lists, and `itemMinLength`/`itemMaxLength` on string lists (`` Shards []int `env:"SHARDS" itemMin:"0" itemMax:"1023"` ``). Integer bounds always include the range caarlos0/env parses the Go type with: an `int` exports `min: -2147483648, max: 2147483647` because caarlos0/env parses it as 32 bits, and a `[]uint16` exports `itemMin: 0, itemMax: 65535`. `JSON[T]` holds a structured variable. The full tag reference is in the [package docs](doc.go).
+A doc comment's first paragraph is the description (a `desc` tag is the fallback), and the rest is details. docuconf's tags: `secret`, `min`/`max`, `minLength`/`maxLength` (in characters; `maxLength` also bounds a url or a `JSON[T]` value), `pattern` (RE2), `values` (enum), `schemes` (url), `minItems`/`maxItems`, `itemMin`/`itemMax` on integer lists, and `itemMinLength`/`itemMaxLength` on string lists (`` Shards []int `env:"SHARDS" itemMin:"0" itemMax:"1023"` ``). Integer bounds always include the range caarlos0/env parses the Go type with: an `int` exports `min: -2147483648, max: 2147483647` because caarlos0/env parses it as 32 bits, and a `[]uint16` exports `itemMin: 0, itemMax: 65535`. `JSON[T]` holds a structured variable. The full tag reference is in the [package docs](doc.go).
 
 A comma-separated list keeps empty items, as caarlos0/env does: `ALLOWED_ORIGINS=","` is two empty strings and satisfies `minItems:"1"`. The contract accepts empty items too, so `vet` and boot agree. Check for empty items in your code if they matter.
 

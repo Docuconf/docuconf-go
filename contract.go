@@ -186,7 +186,7 @@ var contractFields = map[string][]string{
 	typeJSON:     {"schema", "maxLength"},
 }
 
-var commonFields = []string{"name", "type", "description", "required", "secret", "default", "group", "examples", "deprecated", "configKey"}
+var commonFields = []string{"name", "type", "description", "details", "required", "secret", "default", "group", "examples", "deprecated", "configKey"}
 
 // Go types that stand for each contract type, for messages and parsing.
 var contractGoTypes = map[string]reflect.Type{
@@ -290,7 +290,7 @@ var contractFileFields = map[string][]string{
 	fileBinary:   {},
 }
 
-var commonFileFields = []string{"name", "type", "description", "required", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated"}
+var commonFileFields = []string{"name", "type", "description", "details", "required", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated"}
 
 // contractFile builds one file input, reporting problems with it.
 func contractFile(name string, o map[string]any, problem func(string, ...any)) *fileDecl {
@@ -376,6 +376,9 @@ func contractFile(name string, o map[string]any, problem func(string, ...any)) *
 	f.desc, _ = str("description")
 	if utf8.RuneCountInString(f.desc) < 5 {
 		fail("description must be at least 5 characters")
+	}
+	if d, ok := str("details"); ok {
+		checkDetails(d, fail)
 	}
 	f.required, _ = boolean("required")
 	f.secret, _ = boolean("secret")
@@ -583,6 +586,9 @@ func contractVar(name string, o map[string]any, problem func(string, ...any)) *v
 	v.desc, _ = str("description")
 	if utf8.RuneCountInString(v.desc) < 5 {
 		fail("description must be at least 5 characters")
+	}
+	if d, ok := str("details"); ok {
+		checkDetails(d, fail)
 	}
 	v.required = boolean("required")
 	v.secret = boolean("secret")
@@ -826,11 +832,22 @@ func ContractCUE(contractJSON []byte, pkg string) ([]byte, error) {
 }
 
 // The order Export writes a variable's and a file input's fields in.
+// checkDetails applies SPEC §4.2's rule for details: docs only, so never
+// read at runtime, but not blank and at most maxDetails characters.
+func checkDetails(d string, fail func(string, ...any)) {
+	switch {
+	case strings.TrimSpace(d) == "":
+		fail("details must not be blank")
+	case utf8.RuneCountInString(d) > maxDetails:
+		fail("details must be at most %d characters", maxDetails)
+	}
+}
+
 var (
-	varFieldOrder = []string{"type", "description", "required", "secret", "default", "group", "examples", "deprecated", "configKey",
+	varFieldOrder = []string{"type", "description", "details", "required", "secret", "default", "group", "examples", "deprecated", "configKey",
 		"minLength", "maxLength", "pattern", "min", "max", "encoding", "schemes", "values", "items", "separator",
 		"minItems", "maxItems", "itemMin", "itemMax", "itemMinLength", "itemMaxLength", "schema"}
-	fileFieldOrder = []string{"type", "format", "description", "required", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated",
+	fileFieldOrder = []string{"type", "format", "description", "details", "required", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated",
 		"schema", "dnsNames", "keyAlgorithms", "minRemaining", "requireCA", "minCertificates", "passwordVar", "pattern", "minLength", "maxLength"}
 )
 

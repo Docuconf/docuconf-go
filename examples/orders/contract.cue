@@ -55,6 +55,7 @@ contract.#Contract & {
 		WORKER_COUNT: {
 			type:        "int"
 			description: "Number of background workers processing orders"
+			details:     "Each worker holds one database connection, so keep it below the database's connection limit divided by the number of replicas. Raise it when the order queue grows faster than it drains."
 			default:     4
 			min:         1
 			max:         64

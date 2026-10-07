@@ -10,7 +10,9 @@ shows the three things the Go SDK gives an app:
 - one check at boot that reports every problem at once, with stable codes
   ([`main.go`](main.go));
 - a CUE contract exported from the struct, for the platform to validate
-  before it deploys ([`contract.cue`](contract.cue)).
+  before it deploys ([`contract.cue`](contract.cue)), and docs generated
+  from it for developers and AI agents ([`CONFIG.md`](CONFIG.md),
+  [`CONFIG.agents.md`](CONFIG.agents.md)).
 
 | Variable | Type | Rules |
 |---|---|---|
@@ -87,6 +89,27 @@ $ go tool docuconf-export -pkg ./internal/config -name orders-api -package order
 
 The struct lives in its own package because the exporter imports it, and
 package `main` cannot be imported.
+
+## Generate docs
+
+[`CONFIG.md`](CONFIG.md), [`CONFIG.agents.md`](CONFIG.agents.md) and
+[`docs.json`](docs.json) are generated from `contract.cue` by the
+`docuconf` CLI; never edit them by hand either. The first is the
+reference for developers, the second the rules and facts AI agents need
+to change the code or set deployment values, and the third the docs
+model both are rendered from. Regenerate them after exporting the
+contract (CI fails if they are out of date):
+
+```console
+$ docuconf docs contract.cue -o CONFIG.md
+$ docuconf docs contract.cue --format agents -o CONFIG.agents.md
+$ docuconf docs contract.cue --format model -o docs.json
+$ docuconf docs contract.cue --check CONFIG.md
+```
+
+`WORKER_COUNT` shows where the text comes from: the first paragraph of
+its doc comment is the description, and the second paragraph its
+details.
 
 ## Deploy
 

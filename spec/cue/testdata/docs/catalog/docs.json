@@ -1,0 +1,398 @@
+{
+  "apiVersion": "docs.docuconf.dev/v1alpha1",
+  "kind": "ConfigDocs",
+  "service": {
+    "name": "catalog-api",
+    "generator": {
+      "language": "dotnet",
+      "sdk": "Docuconf.Options",
+      "version": "0.2.0"
+    }
+  },
+  "overlays": [
+    {
+      "name": "platform",
+      "format": "json",
+      "path": "/app/config/appsettings.Production.json",
+      "keySeparator": ":",
+      "reload": "watch"
+    }
+  ],
+  "groups": [
+    {
+      "name": "",
+      "title": "General",
+      "inputs": [
+        {
+          "name": "CATALOG__CACHETTL",
+          "kind": "var",
+          "type": "duration",
+          "typeLabel": "duration",
+          "required": false,
+          "secret": false,
+          "description": "How long catalog pages are cached",
+          "default": "5m",
+          "defaultEnv": [
+            {
+              "name": "CATALOG__CACHETTL",
+              "value": "00:05:00"
+            }
+          ],
+          "configKey": "Catalog:CacheTtl",
+          "wire": {
+            "encoding": "timespan",
+            "text": "a .NET TimeSpan, `[d.]hh:mm:ss[.fff]`, such as `00:01:30` for 90 seconds",
+            "platform": "a duration in Go syntax, such as `90s` or `1m30s`; docuconf writes it in the wire format"
+          },
+          "constraints": [
+            {
+              "rule": "range",
+              "params": {
+                "max": "1h"
+              },
+              "text": "at most 1h"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            },
+            {
+              "kind": "overlay",
+              "overlay": "platform",
+              "note": "the `platform` overlay, at key `Catalog:CacheTtl`",
+              "text": "a config-file overlay (`overlay`): the platform writes the value into a file the app loads, at the variable's config key, instead of the environment"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range"
+          ]
+        },
+        {
+          "name": "CATALOG__DBPASSWORD",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "required": true,
+          "secret": true,
+          "description": "Catalog database password",
+          "configKey": "Catalog:DbPassword",
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a `secretKeyRef` or `injected` reference, never the value"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "secretKeyRef",
+              "text": "a key of a Kubernetes Secret (`secretKeyRef`)"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "missing_required",
+            "invalid_type"
+          ]
+        },
+        {
+          "name": "CATALOG__FEATUREDCATEGORIES",
+          "kind": "var",
+          "type": "list",
+          "typeLabel": "list of strings",
+          "required": false,
+          "secret": false,
+          "description": "Categories shown on the home page",
+          "configKey": "Catalog:FeaturedCategories",
+          "wire": {
+            "encoding": "indexed",
+            "text": "one variable per item, `CATALOG__FEATUREDCATEGORIES__0`, `CATALOG__FEATUREDCATEGORIES__1` and so on, numbered from 0 with no gaps",
+            "platform": "a list of strings, such as `[a, b]`; docuconf writes it in the wire format"
+          },
+          "constraints": [
+            {
+              "rule": "itemCount",
+              "params": {
+                "maxItems": 10
+              },
+              "text": "at most 10 items"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "injected",
+              "note": "without a `ref`: one reference cannot carry an indexed list",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            },
+            {
+              "kind": "overlay",
+              "overlay": "platform",
+              "note": "the `platform` overlay, at key `Catalog:FeaturedCategories`",
+              "text": "a config-file overlay (`overlay`): the platform writes the value into a file the app loads, at the variable's config key, instead of the environment"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "too_many_items"
+          ]
+        },
+        {
+          "name": "CATALOG__PAGESIZE",
+          "kind": "var",
+          "type": "int",
+          "typeLabel": "integer",
+          "required": false,
+          "secret": false,
+          "description": "Items per page",
+          "default": 20,
+          "defaultEnv": [
+            {
+              "name": "CATALOG__PAGESIZE",
+              "value": "20"
+            }
+          ],
+          "configKey": "Catalog:PageSize",
+          "wire": {
+            "text": "a base-10 integer with no leading `+` or zeros, such as `8080`",
+            "platform": "an integer"
+          },
+          "constraints": [
+            {
+              "rule": "range",
+              "params": {
+                "max": 500,
+                "min": 1
+              },
+              "text": "between 1 and 500"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "resourceFieldRef",
+              "text": "a container resource limit or request (`resourceFieldRef`), such as `limits.memory`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            },
+            {
+              "kind": "overlay",
+              "overlay": "platform",
+              "note": "the `platform` overlay, at key `Catalog:PageSize`",
+              "text": "a config-file overlay (`overlay`): the platform writes the value into a file the app loads, at the variable's config key, instead of the environment"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range"
+          ]
+        },
+        {
+          "name": "CATALOG__SEARCH__URL",
+          "kind": "var",
+          "type": "url",
+          "typeLabel": "URL",
+          "required": true,
+          "secret": false,
+          "description": "Search service endpoint",
+          "configKey": "Catalog:Search:Url",
+          "wire": {
+            "text": "an absolute URL, `scheme://...`, as is",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "schemes",
+              "params": {
+                "schemes": [
+                  "https"
+                ]
+              },
+              "text": "`https` URL"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            },
+            {
+              "kind": "overlay",
+              "overlay": "platform",
+              "note": "the `platform` overlay, at key `Catalog:Search:Url`",
+              "text": "a config-file overlay (`overlay`): the platform writes the value into a file the app loads, at the variable's config key, instead of the environment"
+            }
+          ],
+          "errors": [
+            "missing_required",
+            "invalid_type",
+            "invalid_scheme"
+          ]
+        },
+        {
+          "name": "CATALOG__TRACEHEADER",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "required": false,
+          "secret": false,
+          "description": "Header carrying the trace id",
+          "default": "traceparent",
+          "defaultEnv": [
+            {
+              "name": "CATALOG__TRACEHEADER",
+              "value": "traceparent"
+            }
+          ],
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a string"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "fieldRef",
+              "text": "a pod field from the Downward API (`fieldRef`), such as `metadata.namespace`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "name": "LOGGING__LOGLEVEL__DEFAULT",
+          "kind": "var",
+          "type": "enum",
+          "typeLabel": "enum",
+          "required": false,
+          "secret": false,
+          "description": "Minimum log level",
+          "default": "Information",
+          "defaultEnv": [
+            {
+              "name": "LOGGING__LOGLEVEL__DEFAULT",
+              "value": "Information"
+            }
+          ],
+          "configKey": "Logging:LogLevel:Default",
+          "wire": {
+            "text": "one of the values, exactly as listed",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "values",
+              "params": {
+                "values": [
+                  "Trace",
+                  "Debug",
+                  "Information",
+                  "Warning",
+                  "Error"
+                ]
+              },
+              "text": "one of `Trace`, `Debug`, `Information`, `Warning` or `Error`"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            },
+            {
+              "kind": "overlay",
+              "overlay": "platform",
+              "note": "the `platform` overlay, at key `Logging:LogLevel:Default`",
+              "text": "a config-file overlay (`overlay`): the platform writes the value into a file the app loads, at the variable's config key, instead of the environment"
+            }
+          ],
+          "errors": [
+            "not_in_enum"
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": "missing_required",
+      "meaning": "A required input is not set, and has no default.",
+      "fix": "Set it through one of its allowed sources."
+    },
+    {
+      "code": "invalid_type",
+      "meaning": "The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`).",
+      "fix": "Write the value in the input's wire format. For an injected secret, make sure the injector runs."
+    },
+    {
+      "code": "out_of_range",
+      "meaning": "A number, duration, length or list item is outside the input's bounds.",
+      "fix": "Use a value within the input's constraints."
+    },
+    {
+      "code": "not_in_enum",
+      "meaning": "The value is not one of the allowed values.",
+      "fix": "Use one of the listed values, spelled exactly as listed."
+    },
+    {
+      "code": "invalid_scheme",
+      "meaning": "The URL's scheme is not one of the allowed schemes.",
+      "fix": "Use a URL with an allowed scheme."
+    },
+    {
+      "code": "too_many_items",
+      "meaning": "The list has more items than its maximum.",
+      "fix": "Remove items."
+    }
+  ]
+}

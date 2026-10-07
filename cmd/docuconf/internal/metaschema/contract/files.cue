@@ -41,6 +41,7 @@ import (
 #FileCommon: {
 	name:        #InputName
 	description: strings.MinRunes(5)
+	details?:    #Details
 	required:    *false | bool
 	secret:      *false | bool
 	// Where the app reads the input. A directory for "tls", a file otherwise.

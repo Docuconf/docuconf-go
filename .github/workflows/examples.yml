@@ -42,6 +42,21 @@ jobs:
           mkdir "$mod/orders"
           cp examples/orders/contract.cue "$mod/orders/"
           cd "$mod" && cue vet -c ./orders
+      # CONFIG.md, CONFIG.agents.md and docs.json are generated from the
+      # contract; they must match what docuconf docs writes today, and the
+      # committed docs model must render the same docs. These are the
+      # README's commands.
+      - name: Generated docs are up to date
+        working-directory: examples/orders
+        run: |
+          docuconf docs contract.cue -o CONFIG.md
+          docuconf docs contract.cue --format agents -o CONFIG.agents.md
+          docuconf docs contract.cue --format model -o docs.json
+          git diff --exit-code -- CONFIG.md CONFIG.agents.md docs.json
+          docuconf docs contract.cue --check CONFIG.md
+          docuconf docs contract.cue --format agents --check CONFIG.agents.md
+          docuconf docs docs.json --format markdown --check CONFIG.md
+          docuconf docs docs.json --format agents --check CONFIG.agents.md
       - name: The README's platform inputs pass vet and render
         working-directory: examples/orders
         run: |

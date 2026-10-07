@@ -235,7 +235,7 @@ Sizes are relative: S is about a week of one engineer's time, M two to three wee
 - Build the CLI:
   - `vet` and `render`, with readable errors (SPEC §7)
   - `diff` (SPEC §9)
-  - `docs`
+  - `docs`: done. It builds a versioned docs model from the contract and renders `CONFIG.md` for developers and `CONFIG.agents.md` for AI agents from it (SPEC §14). SDKs export `description` and `details`; none needs its own generator.
   - `push` and `pull` of contracts as OCI artifacts by image digest
   - a conformance runner that other SDKs call. It renders each load case in the SDK's encodings and checks the SDK's results.
 

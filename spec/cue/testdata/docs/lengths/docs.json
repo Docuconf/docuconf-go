@@ -1,0 +1,186 @@
+{
+  "apiVersion": "docs.docuconf.dev/v1alpha1",
+  "kind": "ConfigDocs",
+  "service": {
+    "name": "ledger-batch",
+    "generator": {
+      "language": "cobol",
+      "sdk": "docuconf-cobol",
+      "version": "0.1.0"
+    }
+  },
+  "groups": [
+    {
+      "name": "",
+      "title": "General",
+      "inputs": [
+        {
+          "name": "BRANCHES",
+          "kind": "var",
+          "type": "list",
+          "typeLabel": "list of strings",
+          "required": false,
+          "secret": false,
+          "description": "Branch codes, OCCURS 1 TO 8 of PIC X(4)",
+          "wire": {
+            "encoding": "csv",
+            "separator": ",",
+            "text": "the items joined by `,` with nothing around it, such as `a,b`",
+            "platform": "a list of strings, such as `[a, b]`; docuconf writes it in the wire format"
+          },
+          "constraints": [
+            {
+              "rule": "itemCount",
+              "params": {
+                "maxItems": 8,
+                "minItems": 1
+              },
+              "text": "between 1 and 8 items"
+            },
+            {
+              "rule": "itemLength",
+              "params": {
+                "itemMaxLength": 4,
+                "itemMinLength": 2
+              },
+              "text": "each item between 2 and 4 characters (Unicode code points)"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range",
+            "too_few_items",
+            "too_many_items"
+          ]
+        },
+        {
+          "name": "CALLBACK_URL",
+          "kind": "var",
+          "type": "url",
+          "typeLabel": "URL",
+          "required": false,
+          "secret": false,
+          "description": "Where to report the run, PIC X(40)",
+          "wire": {
+            "text": "an absolute URL, `scheme://...`, as is",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "length",
+              "params": {
+                "maxLength": 40
+              },
+              "text": "at most 40 characters (Unicode code points)"
+            },
+            {
+              "rule": "schemes",
+              "params": {
+                "schemes": [
+                  "https"
+                ]
+              },
+              "text": "`https` URL"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range",
+            "invalid_scheme"
+          ]
+        },
+        {
+          "name": "LIMITS",
+          "kind": "var",
+          "type": "json",
+          "typeLabel": "JSON value",
+          "required": false,
+          "secret": false,
+          "description": "Run limits as JSON, PIC X(35)",
+          "wire": {
+            "text": "compact JSON on one line",
+            "platform": "a JSON value (written as YAML or JSON in the values file)"
+          },
+          "constraints": [
+            {
+              "rule": "length",
+              "params": {
+                "maxLength": 35
+              },
+              "text": "at most 35 characters (Unicode code points)"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range"
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": "invalid_type",
+      "meaning": "The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`).",
+      "fix": "Write the value in the input's wire format. For an injected secret, make sure the injector runs."
+    },
+    {
+      "code": "out_of_range",
+      "meaning": "A number, duration, length or list item is outside the input's bounds.",
+      "fix": "Use a value within the input's constraints."
+    },
+    {
+      "code": "invalid_scheme",
+      "meaning": "The URL's scheme is not one of the allowed schemes.",
+      "fix": "Use a URL with an allowed scheme."
+    },
+    {
+      "code": "too_few_items",
+      "meaning": "The list has fewer items than its minimum.",
+      "fix": "Add items."
+    },
+    {
+      "code": "too_many_items",
+      "meaning": "The list has more items than its maximum.",
+      "fix": "Remove items."
+    }
+  ]
+}

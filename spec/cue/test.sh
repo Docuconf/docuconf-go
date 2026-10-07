@@ -7,6 +7,8 @@
 # 3. Rendered output must match testdata/render byte for byte.
 # 4. Every file in testdata/invalid must be rejected with an error
 #    containing the substring on its "// want:" line.
+# 5. Every generated docs model (testdata/docs/*/docs.json and the
+#    orders example's) must pass #DocsModel, and a broken one must not.
 set -u
 cd "$(dirname "$0")"
 CUE="${CUE:-cue}"
@@ -24,7 +26,7 @@ gen gateway.vars.RATE_LIMITS.schema '#RateLimitsSchema' rate_limits_schema.cue |
 pkg=(examples/*.cue testdata/gen/*.cue)
 contracts=(examples/*_contract.cue testdata/gen/*.cue)
 
-if "$CUE" vet -c ./contract && "$CUE" vet -c "${pkg[@]}"; then
+if "$CUE" vet -c ./contract && "$CUE" vet -c ./docs && "$CUE" vet -c "${pkg[@]}"; then
   echo "PASS examples"
 else
   echo "FAIL examples"; fail=1
@@ -53,4 +55,18 @@ for f in testdata/invalid/*.cue; do
     head -3 <<<"$out"; fail=1
   fi
 done
+for m in testdata/docs/*/docs.json ../../examples/orders/docs.json; do
+  if "$CUE" vet -c -d '#DocsModel' ./docs json: - <"$m"; then
+    echo "PASS docs model $m"
+  else
+    echo "FAIL docs model $m"; fail=1
+  fi
+done
+# A secret with a default must be rejected, so the check above can fail.
+if sed 's/"secret": false/"secret": true/' testdata/docs/orders/docs.json |
+  "$CUE" vet -c -d '#DocsModel' ./docs json: - >/dev/null 2>&1; then
+  echo "FAIL a docs model with a secret's default was accepted"; fail=1
+else
+  echo "PASS docs model rejects a secret's default"
+fi
 exit $fail

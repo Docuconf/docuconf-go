@@ -187,7 +187,7 @@ func runExport(args []string, stdout, stderr io.Writer) error {
 			return nil
 		}
 		fmt.Fprintf(stderr, "%s is out of date; regenerate it with docuconf export -o %s\n", *check, *check)
-		writeDiff(stderr, *check, string(have), contract.String())
+		writeDiff(stderr, *check, "exported now", string(have), contract.String())
 		return errStale
 	case *out == "":
 		_, err = stdout.Write(contract.Bytes())
@@ -274,8 +274,9 @@ func cleanRunOutput(s string) string {
 }
 
 // writeDiff prints a line diff of two texts in unified diff style: the
-// changed lines with two lines of context, without line numbers.
-func writeDiff(w io.Writer, name, a, b string) {
+// changed lines with two lines of context, without line numbers. label
+// says where b comes from, such as "exported now".
+func writeDiff(w io.Writer, name, label, a, b string) {
 	al, bl := strings.SplitAfter(a, "\n"), strings.SplitAfter(b, "\n")
 	// Longest common subsequence lengths, from the end.
 	lcs := make([][]int, len(al)+1)
@@ -316,7 +317,7 @@ func writeDiff(w io.Writer, name, a, b string) {
 			}
 		}
 	}
-	fmt.Fprintf(w, "--- %s\n+++ %s (exported now)\n", name, path.Base(name))
+	fmt.Fprintf(w, "--- %s\n+++ %s (%s)\n", name, path.Base(name), label)
 	gap := true
 	for k, o := range ops {
 		if !show[k] {

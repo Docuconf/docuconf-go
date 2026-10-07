@@ -1,0 +1,159 @@
+{
+  "apiVersion": "docs.docuconf.dev/v1alpha1",
+  "kind": "ConfigDocs",
+  "service": {
+    "name": "orders-api",
+    "generator": {
+      "language": "dotnet",
+      "sdk": "Docuconf.Options",
+      "version": "0.1.0"
+    }
+  },
+  "groups": [
+    {
+      "name": "",
+      "title": "General",
+      "inputs": [
+        {
+          "name": "ORDERS__BROKERS",
+          "kind": "var",
+          "type": "list",
+          "typeLabel": "list of strings",
+          "required": true,
+          "secret": false,
+          "description": "Kafka bootstrap servers",
+          "wire": {
+            "encoding": "indexed",
+            "text": "one variable per item, `ORDERS__BROKERS__0`, `ORDERS__BROKERS__1` and so on, numbered from 0 with no gaps",
+            "platform": "a list of strings, such as `[a, b]`; docuconf writes it in the wire format"
+          },
+          "constraints": [
+            {
+              "rule": "itemCount",
+              "params": {
+                "minItems": 1
+              },
+              "text": "at least 1 item"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "injected",
+              "note": "without a `ref`: one reference cannot carry an indexed list",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "missing_required",
+            "invalid_type",
+            "too_few_items"
+          ]
+        },
+        {
+          "name": "ORDERS__CHECKOUTTIMEOUT",
+          "kind": "var",
+          "type": "duration",
+          "typeLabel": "duration",
+          "required": false,
+          "secret": false,
+          "description": "Time allowed to complete checkout",
+          "default": "15m",
+          "defaultEnv": [
+            {
+              "name": "ORDERS__CHECKOUTTIMEOUT",
+              "value": "00:15:00"
+            }
+          ],
+          "wire": {
+            "encoding": "timespan",
+            "text": "a .NET TimeSpan, `[d.]hh:mm:ss[.fff]`, such as `00:01:30` for 90 seconds",
+            "platform": "a duration in Go syntax, such as `90s` or `1m30s`; docuconf writes it in the wire format"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type"
+          ]
+        },
+        {
+          "name": "ORDERS__PARTITIONS",
+          "kind": "var",
+          "type": "list",
+          "typeLabel": "list of integers",
+          "required": false,
+          "secret": false,
+          "description": "Partitions this instance consumes",
+          "wire": {
+            "encoding": "indexed",
+            "text": "one variable per item, `ORDERS__PARTITIONS__0`, `ORDERS__PARTITIONS__1` and so on, numbered from 0 with no gaps",
+            "platform": "a list of integers, such as `[1, 2]`; docuconf writes it in the wire format"
+          },
+          "constraints": [
+            {
+              "rule": "itemRange",
+              "params": {
+                "itemMax": 2147483647,
+                "itemMin": -2147483648
+              },
+              "text": "each item between -2147483648 and 2147483647"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "injected",
+              "note": "without a `ref`: one reference cannot carry an indexed list",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range"
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": "missing_required",
+      "meaning": "A required input is not set, and has no default.",
+      "fix": "Set it through one of its allowed sources."
+    },
+    {
+      "code": "invalid_type",
+      "meaning": "The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`).",
+      "fix": "Write the value in the input's wire format. For an injected secret, make sure the injector runs."
+    },
+    {
+      "code": "out_of_range",
+      "meaning": "A number, duration, length or list item is outside the input's bounds.",
+      "fix": "Use a value within the input's constraints."
+    },
+    {
+      "code": "too_few_items",
+      "meaning": "The list has fewer items than its minimum.",
+      "fix": "Add items."
+    }
+  ]
+}
