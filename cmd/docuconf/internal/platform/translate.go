@@ -387,7 +387,7 @@ func explainVar(name string, cv, x cue.Value) []string {
 	}
 	if secret {
 		if ref != "secretKeyRef" {
-			return []string{"is secret, so it must come from a secretKeyRef or an injector, never a literal or another reference"}
+			return []string{"is secret, so it must come from a secretKeyRef, written {secretKeyRef: {name: <secret>, key: <key>}}, or an injector, never a literal or another reference"}
 		}
 		return nil
 	}
