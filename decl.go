@@ -241,7 +241,7 @@ func (d *declaration) walk(t reflect.Type, index []int, prefix, goPath string, o
 		}
 		if base.Kind() == reflect.Struct && !isValueStruct(base, opts.funcMap) {
 			if key != "" {
-				d.problemf("%s: an env tag on struct type %v is not supported; nest it with envPrefix instead", fp, base)
+				d.problemf("%s: %v is a struct type, which caarlos0/env cannot parse from one variable; register a parser for it in FuncMap (and return that FuncMap from a DocuconfOptions method so export sees it too), or drop the env tag and nest it with envPrefix", fp, base)
 				continue
 			}
 			// caarlos0/env only descends into a nil pointer with ",init".
@@ -327,6 +327,9 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 	if !envNameRe.MatchString(name) {
 		problem("variable name must match %s", envNameRe)
 	}
+	for _, p := range tagTypos(tag, varTagKeys) {
+		problem("%s", p)
+	}
 	for _, o := range envOpts {
 		switch o {
 		case "required":
@@ -357,6 +360,12 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 		}
 		v.secret = b
 	}
+	if v.goType == secretType {
+		if !v.secret && tag.Get("secret") != "" {
+			problem("a docuconf.Secret field is always secret; remove secret:%q", tag.Get("secret"))
+		}
+		v.secret = true
+	}
 
 	v.typ = d.contractType(v, tag, opts, problem)
 	if v.typ == "" {
@@ -365,7 +374,7 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 
 	for t, types := range constraintTags {
 		if _, ok := tag.Lookup(t); ok && !slices.Contains(types, v.typ) {
-			problem("tag %s does not apply to a %s variable", t, v.typ)
+			problem("tag %s does not apply to %s %s variable", t, typeArticle(v.typ), v.typ)
 		}
 	}
 	v.parseConstraints(tag, problem)
@@ -697,4 +706,14 @@ func (d *declaration) varByName(name string) *varDecl {
 		}
 	}
 	return nil
+}
+
+// typeArticle returns "an" before a contract type that starts with a vowel
+// sound, and "a" otherwise.
+func typeArticle(typ string) string {
+	switch typ {
+	case typeInt, typeEnum:
+		return "an"
+	}
+	return "a"
 }

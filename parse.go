@@ -3,11 +3,13 @@ package docuconf
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -34,9 +36,15 @@ type Options struct {
 	Environment map[string]string
 	// DotEnv lists .env files to read, for local development. Variables
 	// already in the environment win over the files, and earlier files
-	// win over later ones. Missing files are skipped.
+	// win over later ones. Missing files are skipped, with a debug log,
+	// unless DotEnvRequired is set.
 	DotEnv []string
-	// Prefix and FuncMap are passed to caarlos0/env.
+	// DotEnvRequired makes a missing DotEnv file an error, so that a typo
+	// in its name does not silently load nothing.
+	DotEnvRequired bool
+	// Prefix and FuncMap are passed to caarlos0/env. Prefer returning them
+	// from a DocuconfOptions method on the configuration struct, so that
+	// docuconf export sees them too.
 	Prefix  string
 	FuncMap map[reflect.Type]env.ParserFunc
 	// FileRoot overrides DOCUCONF_FILE_ROOT.
@@ -53,24 +61,146 @@ type Options struct {
 	Logger *slog.Logger
 }
 
+// OptionsProvider is implemented by a configuration struct that owns the
+// options it is parsed with. Parse, Validate, Export, Redacted and the
+// docuconf export command all call it, so the app and its exported
+// contract cannot drift apart:
+//
+//	func (Config) DocuconfOptions() docuconf.Options {
+//		return docuconf.Options{Prefix: "APP_", FuncMap: parsers}
+//	}
+//
+// Options passed to ParseWithOptions take precedence field by field: a
+// test's Options{Environment: ...} keeps the struct's Prefix and FuncMap.
+type OptionsProvider interface {
+	DocuconfOptions() Options
+}
+
+// typeOptions returns the options configuration struct type t declares
+// with a DocuconfOptions method, on the value or the pointer.
+func typeOptions(t reflect.Type) Options {
+	if t == nil {
+		return Options{}
+	}
+	if p, ok := reflect.Zero(t).Interface().(OptionsProvider); ok {
+		return p.DocuconfOptions()
+	}
+	if p, ok := reflect.New(t).Interface().(OptionsProvider); ok {
+		return p.DocuconfOptions()
+	}
+	return Options{}
+}
+
+// withTypeOptions fills every zero field of opts from the type's own
+// DocuconfOptions.
+func withTypeOptions(t reflect.Type, opts Options) Options {
+	base := typeOptions(t)
+	if opts.Environment == nil {
+		opts.Environment = base.Environment
+	}
+	if opts.DotEnv == nil {
+		opts.DotEnv = base.DotEnv
+	}
+	opts.DotEnvRequired = opts.DotEnvRequired || base.DotEnvRequired
+	if opts.Prefix == "" {
+		opts.Prefix = base.Prefix
+	}
+	if opts.FuncMap == nil {
+		opts.FuncMap = base.FuncMap
+	}
+	if opts.FileRoot == "" {
+		opts.FileRoot = base.FileRoot
+	}
+	if opts.TerminationLog == "" {
+		opts.TerminationLog = base.TerminationLog
+	}
+	if opts.Now == nil {
+		opts.Now = base.Now
+	}
+	if opts.WatchInterval == 0 {
+		opts.WatchInterval = base.WatchInterval
+	}
+	if opts.Logger == nil {
+		opts.Logger = base.Logger
+	}
+	return opts
+}
+
 // Parse reads configuration struct T from the process environment and
 // its file inputs. It is caarlos0/env's ParseAs plus docuconf's checks:
 // every violation is reported together in a *ValidationError, which is
-// also written to the container's termination log.
+// also written to the container's termination log. On error it returns
+// the zero T, never a partly filled one.
 //
-//	cfg, err := docuconf.Parse[Config]()
-//	if err != nil {
-//		log.Fatal(err)
-//	}
+// Most programs want ParseOrExit, which prints the violations and exits.
 func Parse[T any]() (T, error) {
 	return ParseWithOptions[T](Options{})
 }
 
-// ParseWithOptions is Parse with options.
+// ParseWithOptions is Parse with options. Tests pass
+// Options{Environment: ...} to load from a map instead of the process
+// environment, which it never reads or changes then.
 func ParseWithOptions[T any](opts Options) (T, error) {
-	var cfg T
-	err := ParseInto(&cfg, opts)
-	return cfg, err
+	var cfg, zero T
+	if t := reflect.TypeFor[T](); t.Kind() != reflect.Struct {
+		return zero, errNotStruct("Parse", t)
+	}
+	if err := ParseInto(&cfg, opts); err != nil {
+		return zero, err
+	}
+	return cfg, nil
+}
+
+// ParseOrExit is Parse for a program's main function. When the
+// configuration is invalid, it prints every problem to stderr, one per
+// line, and exits with status 1:
+//
+//	docuconf: 2 configuration problems:
+//	  DATABASE_URL: is required but not set (missing_required)
+//	  PORT: 70000 is above max 65535 (out_of_range)
+//
+// The problems also go to the termination log, as with Parse.
+//
+//	func main() {
+//		cfg := docuconf.ParseOrExit[config.Config]()
+//		...
+//	}
+func ParseOrExit[T any]() T {
+	return ParseOrExitWithOptions[T](Options{})
+}
+
+// ParseOrExitWithOptions is ParseOrExit with options.
+func ParseOrExitWithOptions[T any](opts Options) T {
+	cfg, err := ParseWithOptions[T](opts)
+	if err != nil {
+		var verr *ValidationError
+		if !errors.As(err, &verr) {
+			// Parse writes violations to the termination log itself; a
+			// declaration or I/O error is the reason the container stopped too.
+			o := withTypeOptions(reflect.TypeFor[T](), opts)
+			environ := o.Environment
+			if environ == nil {
+				environ = map[string]string{EnvTerminationLog: os.Getenv(EnvTerminationLog)}
+			}
+			writeTerminationMessage(o.TerminationLog, environ, err.Error(), loggerOf(o))
+		}
+		fmt.Fprintln(exitStderr, err)
+		exitFunc(1)
+	}
+	return cfg
+}
+
+// exitFunc and exitStderr are replaced in tests.
+var (
+	exitFunc             = os.Exit
+	exitStderr io.Writer = os.Stderr
+)
+
+func loggerOf(opts Options) *slog.Logger {
+	if opts.Logger != nil {
+		return opts.Logger
+	}
+	return slog.Default()
 }
 
 // ParseInto is Parse for an existing struct pointer.
@@ -89,16 +219,14 @@ func Validate(ptr any, opts Options) error {
 func load(ptr any, opts Options, parse bool) error {
 	rv := reflect.ValueOf(ptr)
 	if rv.Kind() != reflect.Pointer || rv.IsNil() || rv.Elem().Kind() != reflect.Struct {
-		return errors.New("docuconf: expected a non-nil pointer to a struct")
+		return fmt.Errorf("docuconf: expected a non-nil pointer to a struct, got %T", ptr)
 	}
+	opts = withTypeOptions(rv.Elem().Type(), opts)
 	d, err := declare(rv.Elem().Type(), declOptions{prefix: opts.Prefix, funcMap: opts.FuncMap})
 	if err != nil {
 		return err
 	}
-	logger := opts.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
+	logger := loggerOf(opts)
 	now := opts.Now
 	if now == nil {
 		now = time.Now
@@ -108,10 +236,11 @@ func load(ptr any, opts Options, parse bool) error {
 		interval = 10 * time.Second
 	}
 
-	environ, err := environment(opts)
+	environ, err := loadEnvironment(opts, logger)
 	if err != nil {
 		return err
 	}
+	warnUndeclared(d, environ, opts.Prefix, logger)
 	res := checkVars(d.vars, environ, logger)
 	viols, flagged, values := res.viols, res.flagged, res.raw
 
@@ -168,13 +297,17 @@ func load(ptr any, opts Options, parse bool) error {
 		return nil
 	}
 	verr := &ValidationError{Violations: viols}
-	writeTerminationLog(opts.TerminationLog, environ, verr, logger)
+	writeTerminationMessage(opts.TerminationLog, environ, verr.Error(), logger)
 	return verr
 }
 
 // environment returns a copy of the environment to load from: the
 // process environment or Options.Environment, then the .env files.
 func environment(opts Options) (map[string]string, error) {
+	return loadEnvironment(opts, loggerOf(opts))
+}
+
+func loadEnvironment(opts Options, logger *slog.Logger) (map[string]string, error) {
 	environ := opts.Environment
 	if environ == nil {
 		environ = env.ToMap(os.Environ())
@@ -182,7 +315,8 @@ func environment(opts Options) (map[string]string, error) {
 	environ = copyMap(environ)
 	for _, p := range opts.DotEnv {
 		vals, err := readDotEnv(p)
-		if errors.Is(err, fs.ErrNotExist) {
+		if errors.Is(err, fs.ErrNotExist) && !opts.DotEnvRequired {
+			logger.Debug("docuconf: .env file not found, skipped", "path", p)
 			continue
 		}
 		if err != nil {
@@ -349,9 +483,13 @@ func explainHostError(d *declaration, err error, flagged map[string]bool) (Viola
 	return Violation{Input: "env", Code: CodeInvalidType, Message: err.Error()}, true
 }
 
-// writeTerminationLog writes the violations where Kubernetes reads a
-// container's termination message.
 func writeTerminationLog(override string, environ map[string]string, verr *ValidationError, logger *slog.Logger) {
+	writeTerminationMessage(override, environ, verr.Error(), logger)
+}
+
+// writeTerminationMessage writes the violations where Kubernetes reads a
+// container's termination message.
+func writeTerminationMessage(override string, environ map[string]string, msg string, logger *slog.Logger) {
 	p := override
 	if p == "" {
 		p = environ[EnvTerminationLog]
@@ -365,7 +503,6 @@ func writeTerminationLog(override string, environ map[string]string, verr *Valid
 		}
 		p = defaultTerminationLog
 	}
-	msg := verr.Error()
 	if len(msg) > 4096 { // Kubernetes keeps at most 4096 bytes
 		msg = msg[:4093] + "..."
 	}
@@ -395,4 +532,43 @@ func injectorScheme(raw string) string {
 		}
 	}
 	return ""
+}
+
+// warnUndeclared logs a warning for each set variable that is not
+// declared but is a likely typo of a declared one, such as DATABSE_URL
+// for DATABASE_URL. caarlos0/env ignores undeclared variables, so the
+// typo would otherwise go unnoticed until the default surprises someone.
+// It never logs a value. With a prefix, only variables with that prefix
+// are considered.
+func warnUndeclared(d *declaration, environ map[string]string, prefix string, logger *slog.Logger) {
+	declared := map[string]bool{}
+	var names []string
+	for _, v := range d.vars {
+		declared[v.name] = true
+		names = append(names, strings.TrimPrefix(v.name, prefix))
+	}
+	for _, f := range d.files {
+		if f.pathEnv != "" {
+			declared[f.pathEnv] = true
+		}
+	}
+	if len(names) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(environ))
+	for k := range environ {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		if declared[k] || strings.HasPrefix(k, "DOCUCONF_") || !strings.HasPrefix(k, prefix) {
+			continue
+		}
+		if i := strings.LastIndex(k, "__"); i > 0 && declared[k[:i]] {
+			continue // an item of an indexed list
+		}
+		if hint := closest(strings.TrimPrefix(k, prefix), names, 2); hint != "" {
+			logger.Warn(fmt.Sprintf("docuconf: %s is set but not declared; did you mean %s?", k, prefix+hint))
+		}
+	}
 }

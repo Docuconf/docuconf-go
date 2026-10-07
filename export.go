@@ -1,6 +1,7 @@
 package docuconf
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -33,6 +34,8 @@ type Meta struct {
 	// the package is located with go/build, then the working directory.
 	SourceDir string
 	// Prefix and FuncMap must match the env.Options the app parses with.
+	// When empty, they come from the struct's DocuconfOptions method, if
+	// it has one (see OptionsProvider).
 	Prefix  string
 	FuncMap map[reflect.Type]env.ParserFunc
 }
@@ -50,13 +53,31 @@ func Export[T any](meta Meta) ([]byte, error) {
 	return ExportType(reflect.TypeFor[T](), meta)
 }
 
-// ExportType is Export for a reflect.Type.
+// ExportType is Export for a reflect.Type. Every problem with the
+// declaration, the name and the descriptions is reported together, in one
+// *DeclarationError.
 func ExportType(t reflect.Type, meta Meta) ([]byte, error) {
+	if t == nil || t.Kind() != reflect.Struct {
+		return nil, errNotStruct("Export", t)
+	}
+	if meta.Prefix == "" || meta.FuncMap == nil {
+		own := typeOptions(t)
+		if meta.Prefix == "" {
+			meta.Prefix = own.Prefix
+		}
+		if meta.FuncMap == nil {
+			meta.FuncMap = own.FuncMap
+		}
+	}
 	d, err := declare(t, declOptions{prefix: meta.Prefix, funcMap: meta.FuncMap})
-	if err != nil {
+	var problems []string
+	var derr *DeclarationError
+	switch {
+	case errors.As(err, &derr):
+		problems = append(problems, derr.Problems...)
+	case err != nil:
 		return nil, err
 	}
-	var problems []string
 	if !dnsLabelRe.MatchString(meta.Name) {
 		problems = append(problems, fmt.Sprintf("service name %q must be a DNS label ([a-z0-9-], at most 63 characters)", meta.Name))
 	}
