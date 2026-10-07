@@ -7,6 +7,16 @@ go get github.com/docuconf/docuconf-go
 go install github.com/docuconf/docuconf-go/cmd/docuconf@latest   # the CLI
 ```
 
+The CLI is also released as binaries for Linux, macOS and Windows (with `SHA256SUMS`) on the
+[GitHub Releases](https://github.com/docuconf/docuconf-go/releases) page, and as a multi-arch image,
+`ghcr.io/docuconf/docuconf`, holding a single static binary at `/docuconf`. To add it to your own image:
+
+```dockerfile
+COPY --from=ghcr.io/docuconf/docuconf:<v> /docuconf /usr/local/bin/docuconf
+```
+
+See [RELEASING.md](RELEASING.md) for the tags and everything that is published.
+
 > **Status:** early, spec `v1alpha1`. Expect breaking changes until v1.
 
 - [Contract specification](spec/SPEC.md), with its CUE meta-schema in [`spec/cue`](spec/cue)
