@@ -273,8 +273,8 @@ Fields common to every file input:
 **Mount rules**, enforced by the meta-schema:
 
 - A file is mounted at its parent directory, and a TLS key pair at its own directory. Mounting hides whatever the image had there, so no two inputs may share a mount directory, and none may be mounted at a reserved directory such as `/`, `/etc`, `/etc/ssl/certs`, `/usr`, `/var` or `/app`. A CA bundle at `/etc/ssl/certs/private.pem` would otherwise hide the system trust store.
-- Files are projected with `items`, never `subPath`. A `subPath` mount does not receive updates, which would silently break certificate rotation.
-- Secret files are mounted read-only with mode `0400`; other files `0444`.
+- Files are projected with `items`, never `subPath`. A `subPath` mount does not receive updates, which would silently break certificate rotation. The one exception is a `pvc` source, whose `subPath` names a directory of the claim (section 4.6.3).
+- Secret files are mounted read-only with mode `0400`; other files `0444`. Files from a `pvc` source keep the modes they have on the volume (section 4.6.3).
 
 #### 4.6.1 File sources
 
@@ -288,11 +288,12 @@ The platform chooses where each file comes from:
 | `certificate` (cert-manager) | `tls` | From the Certificate's spec, which is not secret: it covers every name in `dnsNames` (wildcards count for one label), uses an allowed key algorithm, and its `renewBefore` is at least `minRemaining`, since cert-manager renews when that much validity is left. |
 | `csi` (Secrets Store CSI driver) | any | Nothing about the content; it is checked at boot. |
 | `image` (image volume) | non-secret files | Nothing about the content. For data too large for a ConfigMap's 1 MiB limit. Needs a cluster with image volumes enabled. |
+| `pvc` (PersistentVolumeClaim) | non-secret files | Nothing about the content; it is checked at boot. That `subPath` stays inside the claim. With resolved metadata: the claim is a filesystem volume, and allows writing when `readOnly` is false. For data another workload writes, such as a batch job's input (section 4.6.3). |
 | `injected` | any | Nothing about the content. An injector, such as the Vault Agent injector rendering a template to `/vault/secrets`, writes the file at `path` when the pod starts. `#Render` emits no volume or mount for it; the platform must make the injector write to the declared `path`. |
 
 Inline content is a string, written to the file as given. For a `json` or `yaml` config file it may instead be structured data, which is checked against the file's `schema` and serialized in the file's `format`. The exact bytes of serialized content, and so the ConfigMap's hash, belong to the renderer: the CUE renderer keeps the order fields are written in, while Helm sorts object keys and indents lists differently. Two renderers MUST produce content that parses to the same data, and each MUST name the ConfigMap from a hash of the bytes it wrote; they need not agree on the bytes. A platform that needs byte-identical output across tools gives the content as a string.
 
-Fields described as **resolved** (a Secret's `type` and `keys`, a Certificate's spec) are filled in by the platform tooling from the cluster. They are metadata, never secret contents. When they are absent, those checks move to boot.
+Fields described as **resolved** (a Secret's `type` and `keys`, a Certificate's spec, a claim's `accessModes` and `volumeMode`) are filled in by the platform tooling from the cluster. They are metadata, never secret contents. When they are absent, those checks move to boot.
 
 #### 4.6.2 Rotation
 
@@ -301,7 +302,127 @@ A source that changes after deploy (a renewed certificate, an updated ConfigMap)
 - `watch`: the app reloads the file. The platform does nothing more.
 - `restart`: `#Render` lists the source under `restartTriggers`, and the platform MUST roll the pods when it changes (for example with a reloader controller, or by hashing the source into a pod annotation).
 
-Inline content is content-hashed, so it always rolls the pods when it changes.
+Inline content is content-hashed, so it always rolls the pods when it changes. A `pvc` source has no restart trigger (section 4.6.3).
+
+#### 4.6.3 Persistent volume claims
+
+Batch jobs often read their input from shared storage that another workload writes: an extract job drops `ORDERS.DAT` on a volume, and a CronJob processes it. That data changes on every run, is often far larger than a ConfigMap's 1 MiB, and is not part of any image. A `pvc` source mounts it from a PersistentVolumeClaim:
+
+```yaml
+# files.yaml
+orders: {pvc: {claimName: batch-io, subPath: incoming/orders}}
+rates:  {pvc: {claimName: batch-io, subPath: reference, readOnly: true}}
+```
+
+| Field | Default | Rule |
+|---|---|---|
+| `claimName` | — | A PersistentVolumeClaim in the pod's namespace. An RFC 1123 subdomain (lowercase, digits, `-` and `.`, at most 253 characters). |
+| `subPath` | the claim's root | A **directory** inside the claim, relative and normalised: no leading `/`, no `.` or `..` segment, no `//`, no trailing slash. |
+| `readOnly` | `true` | Whether the input's mount is read-only. |
+| `accessModes` | — | **Resolved** from the claim's spec: `ReadWriteOnce`, `ReadOnlyMany`, `ReadWriteMany`, `ReadWriteOncePod`. |
+| `volumeMode` | — | **Resolved** from the claim's spec: `Filesystem` or `Block`. |
+
+**Where the file sits.** `subPath` names a directory, never the file itself. That directory is mounted at the input's mount directory (the parent of `path`, as for every other single-file source), and the app reads the file under the basename of `path`. So `path: /data/orders/ORDERS.DAT` with `subPath: incoming/orders` reads `incoming/orders/ORDERS.DAT` on the volume. The writer MUST put the file there under that exact name. The `image` source works the same way.
+
+This is why a `pvc` source MAY use `subPath`, when section 4.6 otherwise forbids it. A `subPath` mount of a ConfigMap or Secret never sees updates, because the kubelet updates those by swapping a symlink at the volume root. A claim has no such mechanism: a directory mounted with `subPath` is a view of the live filesystem, and a file written or renamed into it later is visible in the container. Mounting the file itself with `subPath` would pin one inode and miss a replaced file, so it is not allowed.
+
+**Allowed input types.** `config`, `text`, `binary` and `caBundle`, that is, every type that is not secret. A `pvc` source MUST NOT be used for an input with `secret: true`, nor therefore for `tls` or `keystore` (section 6). Kubernetes controls who may mount a claim, not who may read a file on it. Any pod in the namespace that mounts the claim can read every file on it, and volume snapshots and backups copy the files with no secret handling. A secret file that has to live on shared storage comes through a `csi` driver or an `injected` source instead.
+
+**Checked before deploy** (`#Validate` and `docuconf vet`), from the files document alone:
+
+- the input is not secret (`secretFromSecretStore`);
+- `claimName` is a valid object name, and `subPath` is a normalised relative path that cannot leave the claim;
+- with a resolved `volumeMode`: it is `Filesystem`, since a raw block device cannot be mounted as a directory (`filesystemClaim`);
+- with resolved `accessModes` and `readOnly: false`: at least one access mode allows writing (`writableClaim`). A claim that is only `ReadOnlyMany` can only be mounted read-only.
+
+Nothing about the content can be checked before deploy. `vet` cannot read the volume, so it does not know whether the file exists, its size, its format or whether it matches `schema`, `pattern` or `minLength`/`maxLength`. It also does not know whether the claim exists or is bound: without resolved fields it checks only the shape above.
+
+**Checked at boot.** The SDK checks a file from a claim exactly as it checks any mounted file (section 11.2, item 7): `file_missing` when a required file is absent, `file_unreadable` when the container's user cannot read it, `file_too_large` above `maxSize`, `file_malformed` or `schema_mismatch` for a `config` file, `out_of_range` or `pattern_mismatch` for `text`. Nothing in the SDK is specific to `pvc`. A missing file is the normal way a batch run fails when the upstream job has not written its output yet, and the error names the input and its `pathEnv` like any other.
+
+A claim that does not exist, is not bound, or cannot be attached keeps the pod in `Pending` or `ContainerCreating`. The app never starts, so this is reported by Kubernetes, not by the SDK.
+
+**Rendering.** `#Render` (and `docuconf render`) emits:
+
+- **One volume per claim**, however many inputs read from it: `{name: "dc-pvc-<h>", persistentVolumeClaim: {claimName}}`, where `<h>` is the first 10 hex digits of the SHA-256 of `claimName`. A claim name may be 253 characters long and contain dots, so it cannot be a volume name itself. The volume never sets `persistentVolumeClaim.readOnly`, so that inputs on one claim may differ in `readOnly`.
+- **One volumeMount per input**: `{name: "dc-pvc-<h>", mountPath: <mount directory>, readOnly, subPath?}`. `readOnly` defaults to `true`. Mounts are always per input, because the mount directories of two inputs are always different (section 4.6). Two inputs may still mount the same `subPath` at their own directories, which is how two files in one directory of the claim reach the app.
+- **No `restartTriggers`.** Kubernetes does not watch a claim's contents, so `reload: restart` cannot roll the pods when a file changes. For a CronJob this does not matter, since every run is a new pod. For a long-running workload, the platform rolls the pods itself, or the input declares `reload: watch`.
+- **No `defaultMode`.** File ownership and modes on a claim are whatever the writer set. Making the file readable by the app's user (`fsGroup`, `supplementalGroups`, or a writer that writes group-readable files) is the platform's job. `#Render` emits only env, volumes and mounts, not the pod's `securityContext`.
+
+**`pathEnv`** works as for every other source. The renderer sets it to `path`, the location inside the container, never the location on the volume. `docuconf exec` likewise sets an unset `pathEnv` to `path`. A COBOL program that `ASSIGN`s a file to `DD_ORDERS` therefore opens `/data/orders/ORDERS.DAT`, whichever claim and `subPath` the platform chose.
+
+**`reload: watch`** works only as far as the filesystem reports changes. Many network filesystems behind `ReadWriteMany` claims (NFS, SMB, some CSI drivers) do not deliver inotify events for writes made on another node. An SDK that honours `watch` for a file from a claim therefore SHOULD poll its modification time and size, rather than relying only on filesystem events.
+
+**Access modes and nodes.** The contract does not know whether the workload is a Deployment or a CronJob, or where the writer runs, so `vet` does not check this beyond `writableClaim`. Platform authors should know the following:
+
+| Access mode | Who can mount it at once | For a reader CronJob |
+|---|---|---|
+| `ReadWriteMany` (RWX) | pods on any number of nodes | Safe. The usual choice when another workload writes the input. |
+| `ReadOnlyMany` (ROX) | pods on any number of nodes, read-only | Safe for readers. Only `readOnly: true` is possible, and the writer needs some other way in (often a separate RWX claim on the same storage). |
+| `ReadWriteOnce` (RWO) | pods on **one node** at a time | Fragile. A job pod scheduled on another node than the writer's (or the previous run's, if it is still terminating) stays in `ContainerCreating` with a Multi-Attach error. It works only if every pod using the claim is pinned to one node, or if writer and reader never overlap and the storage detaches promptly. |
+| `ReadWriteOncePod` (RWOP) | **one pod** in the cluster | Only when nothing else ever has the claim mounted while the job runs. Set `concurrencyPolicy: Forbid` on the CronJob, or two overlapping runs block each other. |
+
+With resolved `accessModes`, tooling MAY also warn about RWO and RWOP claims used by CronJobs. `vet` has no warning level today, so this is not an error.
+
+**Helm.** The values schema (`#HelmValuesSchema`) offers a `pvc` source for every non-secret input, with `claimName` required and `subPath` and `readOnly` optional. The library chart's template has to collect the claims of all inputs first and emit one volume per distinct claim, named with `sha256sum` exactly as `#Render` names it, and then one mount per input. The resolved fields are not part of the Helm values, because Helm does not read the cluster while it validates. Those checks stay with `docuconf vet`.
+
+**Crossplane.** A composition function that evaluates `#Validate` and `#Render` gets `pvc` from the meta-schema with no other change. To fill in the resolved `accessModes` and `volumeMode`, it reads the PersistentVolumeClaim (`spec.accessModes`, `spec.volumeMode`), which needs `get` on `persistentvolumeclaims` in the target namespace. As for Secrets and Certificates, it reads only metadata and spec, never contents. It does not create the claim. Provisioning storage is outside the contract (section 1.2), although the same composition may well provision it.
+
+**Edge cases.**
+
+- *The `subPath` directory does not exist.* The kubelet creates it when the volume is writable, so the mount succeeds, the directory is empty, and a required input fails with `file_missing`. On a read-only volume it cannot create it, and the container fails to start (`CreateContainerConfigError`).
+- *`subPath` names a file.* The mount directory then is a file, the app's `path` does not resolve, and the SDK reports `file_missing` or `file_unreadable`. `vet` cannot tell a file from a directory on the volume.
+- *Symlinks.* The kubelet refuses a `subPath` that resolves, through symlinks, to a path outside the volume. A symlink inside the mounted directory that points outside it resolves inside the container's filesystem, not the volume's, and usually breaks.
+- *A half-written file.* The SDK may check a file the writer is still writing, and the app may then read a truncated file. Writers SHOULD write to a temporary name in the same directory and rename the file into place, which is atomic on POSIX filesystems. A `pattern`, `maxLength` or `schema` catches some truncations, but not all of them.
+- *An optional input with no file.* With `required: false`, an absent file means an absent input, as for every source. The claim itself must still exist, or the pod does not start.
+- *The platform's own pod spec mounts the same claim*, for example read-write for the job's output. Kubernetes accepts two volumes that reference one claim in the same pod. The platform may also reuse the rendered volume by its name.
+- *Two inputs on one claim with different `readOnly`.* They share the volume and get separate mounts, each with its own `readOnly`.
+- *Local development.* `DOCUCONF_FILE_ROOT` (section 11.1) prefixes `path` as for any file input. The claim plays no part outside the cluster.
+- *A `tls` input from a claim.* Rejected, since `tls` is always secret. A TLS key pair on shared storage would be readable by every pod that mounts the claim.
+
+**Example.** A COBOL batch job reads two fixed-width files that an extract job writes to the claim `batch-io`:
+
+```cue
+files: {
+	orders: {
+		type:        "text"
+		description: "Fixed-width order records written by the extract job"
+		required:    true
+		path:        "/data/orders/ORDERS.DAT"
+		pathEnv:     "DD_ORDERS"
+		maxSize:     1073741824
+	}
+	rates: {
+		type:        "text"
+		description: "Currency rates for the business date"
+		required:    true
+		path:        "/data/rates/RATES.DAT"
+		pathEnv:     "DD_RATES"
+	}
+}
+```
+
+```yaml
+# files.yaml
+orders: {pvc: {claimName: batch-io, subPath: incoming/orders}}
+rates:  {pvc: {claimName: batch-io, subPath: reference}}
+```
+
+`docuconf render` emits one volume and two read-only mounts:
+
+```yaml
+env:
+  - {name: DD_ORDERS, value: /data/orders/ORDERS.DAT}
+  - {name: DD_RATES, value: /data/rates/RATES.DAT}
+volumes:
+  - name: dc-pvc-684b6e9e13
+    persistentVolumeClaim: {claimName: batch-io}
+volumeMounts:
+  - {name: dc-pvc-684b6e9e13, mountPath: /data/orders, readOnly: true, subPath: incoming/orders}
+  - {name: dc-pvc-684b6e9e13, mountPath: /data/rates, readOnly: true, subPath: reference}
+restartTriggers: []
+```
+
+The platform places these in the CronJob's pod template, typically with `concurrencyPolicy: Forbid` and an RWX claim. On each run, the SDK (or `docuconf exec` in front of the COBOL program) fails with `orders: file_missing` if the extract job has not written `incoming/orders/ORDERS.DAT` yet, before the program opens it. This example is in [`cue/examples/batch_contract.cue`](cue/examples/batch_contract.cue).
 
 ### 4.7 Config-file overlays
 
@@ -582,5 +703,13 @@ The suite covers variables in v1. File inputs, profiles and overlays are tested 
 6. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?
 7. Should a file input be able to take a whole directory of arbitrary files (for example, every `*.crt` in a trust directory), rather than one file or a TLS key pair?
 8. Should file inputs support profiles, so a baked-in `routes.yaml` can be the default for some environments, as `appsettings.{Environment}.json` is for variables?
+
+9. PersistentVolumeClaim sources (section 4.6.3), for review:
+   - Should `readOnly: false` be allowed at all? The contract describes inputs, and a writable mount invites using an input's directory for output. Without it, `readOnly` could be dropped from the source.
+   - Should `subPathExpr` be supported (for example `incoming/$(BATCH_DATE)`), for per-run directories? It needs the variable in the pod's env, and `vet` could then not check the path.
+   - Batch inputs are often dated (`ORDERS.D20261007`), while `path` is fixed. Is a stable name written by the producer (or a rename step) enough, or does the contract need a filename pattern?
+   - Should several inputs be allowed to share one mount directory when they come from the same claim and `subPath`? The contract cannot know their sources, so this would need a contract-level marker.
+   - Should `vet` gain a warning level, to flag an RWO or RWOP claim on a CronJob without failing the deploy? That would also need the workload kind as an input.
+   - Should the source allow an `ephemeral` volume claim template, or a claim in another namespace through a cross-namespace data source? Both are left out for now.
 
 Resolved in this draft: per-item bounds for `int` lists (`itemMin`, `itemMax`, section 4.3); config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).

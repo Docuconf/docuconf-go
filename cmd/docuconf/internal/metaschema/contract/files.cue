@@ -27,6 +27,14 @@ import (
 // An absolute, normalised path: no "..", ".", "//" or trailing slash.
 #AbsPath: =~"^/[A-Za-z0-9._/-]+$" & !~"(^|/)\\.\\.?(/|$)" & !~"//" & !~"/$"
 
+// A relative, normalised path inside a volume: no leading "/", "..",
+// ".", "//" or trailing slash.
+#RelPath: =~"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$" & !~"(^|/)\\.\\.?(/|$)"
+
+// A Kubernetes object name that may contain dots (RFC 1123 subdomain),
+// such as a PersistentVolumeClaim's.
+#DNSSubdomain: =~"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" & strings.MaxRunes(253)
+
 // Mounting a volume hides everything already at the mount point, so a
 // file input must never be mounted over a directory the image or the OS
 // needs. A file is mounted at its parent directory; a TLS key pair at
@@ -121,7 +129,7 @@ import (
 // Where the platform gets a file input's content. Fields marked
 // "resolved" are filled in by the platform tooling from the cluster
 // (never from secret contents) so more can be checked before deploy.
-#FileSource: #InlineSource | #ConfigMapSource | #SecretSource | #CertificateSource | #CSISource | #ImageSource | #InjectedFileSource
+#FileSource: #InlineSource | #ConfigMapSource | #SecretSource | #CertificateSource | #CSISource | #ImageSource | #InjectedFileSource | #PVCSource
 
 // Content written into the platform repository. Only for non-secret
 // inputs; the renderer turns it into an immutable, content-hashed
@@ -187,9 +195,31 @@ import (
 // boot.
 #InjectedFileSource: close({injected: provider: #Provider})
 
+// A PersistentVolumeClaim in the pod's namespace, for non-secret files
+// another workload writes, such as a batch job's input. subPath names a
+// directory in the claim, mounted at the input's mount directory; the file
+// the app reads sits there under the basename of its path. Nothing about
+// the content is visible before the pod starts.
+#PVCSource: close({pvc: {
+	claimName: #DNSSubdomain
+	subPath?:  #RelPath
+	readOnly:  *true | bool
+	// resolved: from the claim's spec, never its contents.
+	accessModes?: [...("ReadWriteOnce" | "ReadOnlyMany" | "ReadWriteMany" | "ReadWriteOncePod")]
+	volumeMode?: "Filesystem" | "Block"
+}})
+
+// #ClaimVolume names the one pod volume for a claim, shared by every input
+// that reads from it. Claim names may be 253 characters and hold dots, so
+// the volume name is derived from a hash.
+#ClaimVolume: {
+	claimName: string
+	name:      "dc-pvc-\(strings.SliceRunes(hex.Encode(sha256.Sum256(claimName)), 0, 10))"
+}
+
 #SourceKind: {
 	source: #FileSource
-	kind:   "inline" | "configMap" | "secret" | "certificate" | "csi" | "image" | "injected"
+	kind:   "inline" | "configMap" | "secret" | "certificate" | "csi" | "image" | "injected" | "pvc"
 	if source.inline != _|_ {kind: "inline"}
 	if source.configMap != _|_ {kind: "configMap"}
 	if source.secret != _|_ {kind: "secret"}
@@ -197,6 +227,7 @@ import (
 	if source.csi != _|_ {kind: "csi"}
 	if source.image != _|_ {kind: "image"}
 	if source.injected != _|_ {kind: "injected"}
+	if source.pvc != _|_ {kind: "pvc"}
 }
 
 // #CheckFile binds a file input to its source and checks everything that
@@ -219,6 +250,18 @@ import (
 	}
 	if kind == "inline" {
 		binaryCannotBeInline: true & F.type != "binary"
+	}
+
+	// A claim is mounted as a filesystem directory; a raw block device
+	// cannot be. A read-write mount needs an access mode that allows it.
+	// Neither can be checked without the resolved claim spec.
+	if kind == "pvc" {
+		if source.pvc.volumeMode != _|_ {
+			filesystemClaim: true & source.pvc.volumeMode == "Filesystem"
+		}
+		if source.pvc.accessModes != _|_ && !source.pvc.readOnly {
+			writableClaim: true & (list.Contains(source.pvc.accessModes, "ReadWriteOnce") || list.Contains(source.pvc.accessModes, "ReadWriteMany") || list.Contains(source.pvc.accessModes, "ReadWriteOncePod"))
+		}
 	}
 
 	// A single file needs the key that holds it; a TLS directory takes the
@@ -323,10 +366,14 @@ import (
 	// writes into the container itself.
 	volumes: [...]
 	volumeMounts: [...]
-	if S.injected == _|_ {
+	if S.injected == _|_ && S.pvc == _|_ {
 		volumes: [_volume]
 		volumeMounts: [{name: vol, mountPath: mdir, readOnly: true}]
 	}
+
+	// Volumes for claims, which #Render merges so that inputs sharing a
+	// claim share one volume.
+	claimVolumes: [...]
 	_volume: name: vol
 	env: [if F.pathEnv != _|_ {{name: F.pathEnv, value: strings.Replace(F.path, "$", "$$", -1)}}]
 	configMaps: [...]
@@ -374,5 +421,18 @@ import (
 	if S.csi != _|_ {
 		_volume: csi: {driver: S.csi.driver, readOnly: true, volumeAttributes: secretProviderClass: S.csi.secretProviderClass}
 		if F.reload == "restart" {restartTriggers: [{kind: "SecretProviderClass", name: S.csi.secretProviderClass}]}
+	}
+	if S.pvc != _|_ {
+		// subPath names a directory, so the mount sees changes to the files
+		// in it. Kubernetes does not watch a claim's contents, so there is
+		// no restart trigger.
+		let cv = (#ClaimVolume & {claimName: S.pvc.claimName}).name
+		claimVolumes: [{name: cv, persistentVolumeClaim: claimName: S.pvc.claimName}]
+		volumeMounts: [{
+			name:      cv
+			mountPath: mdir
+			readOnly:  S.pvc.readOnly
+			if S.pvc.subPath != _|_ {subPath: S.pvc.subPath}
+		}]
 	}
 }

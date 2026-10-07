@@ -1,0 +1,21 @@
+env:
+  - name: BATCH_DATE
+    value: "20261007"
+  - name: DD_ORDERS
+    value: /data/orders/ORDERS.DAT
+  - name: DD_RATES
+    value: /data/rates/RATES.DAT
+volumes:
+  - name: dc-pvc-684b6e9e13
+    persistentVolumeClaim:
+      claimName: batch-io
+volumeMounts:
+  - name: dc-pvc-684b6e9e13
+    mountPath: /data/orders
+    readOnly: true
+    subPath: incoming/orders
+  - name: dc-pvc-684b6e9e13
+    mountPath: /data/rates
+    readOnly: true
+    subPath: reference
+restartTriggers: []

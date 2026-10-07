@@ -482,7 +482,9 @@ import (
 		},
 		for r in _files {r.env},
 	], 1)
-	volumes: list.Concat([list.FlattenN([for r in _files {r.volumes}], 1), [for r in _overlays {r.volume}]])
+	// One volume per claim, however many inputs read from it.
+	let _claims = {for r in _files for v in r.claimVolumes {(v.name): v}}
+	volumes: list.Concat([list.FlattenN([for r in _files {r.volumes}], 1), [for _, v in _claims {v}], [for r in _overlays {r.volume}]])
 	volumeMounts: list.Concat([list.FlattenN([for r in _files {r.volumeMounts}], 1), [for r in _overlays {r.volumeMount}]])
 	configMaps: list.Concat([list.FlattenN([for r in _files {r.configMaps}], 1), [for r in _overlays {r.configMap}]])
 	restartTriggers: list.FlattenN([for r in _files {r.restartTriggers}], 1)
