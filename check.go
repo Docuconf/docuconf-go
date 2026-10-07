@@ -260,17 +260,42 @@ func (v *varDecl) parseItems(items []string) (any, []Violation) {
 	return slices.Clone(items), nil
 }
 
-// indexedItems collects an indexed list from NAME__0, NAME__1, ... up to
-// the first missing index. The list is present when NAME__0 is set.
-func indexedItems(environ map[string]string, name string) ([]string, bool) {
-	var items []string
-	for i := 0; ; i++ {
-		s, ok := environ[fmt.Sprintf("%s__%d", name, i)]
+// indexedItems collects an indexed list from NAME__0, NAME__1, ... The
+// list is present when any NAME__<n> is set. Indices must run from 0 with
+// no gap; otherwise missing names the first absent index. Only canonical
+// decimal suffixes count, so nested keys such as NAME__HOST are ignored.
+func indexedItems(environ map[string]string, name string) (items []string, present bool, missing int) {
+	prefix := name + "__"
+	n := 0
+	for k := range environ {
+		if i, ok := listIndex(k, prefix); ok && i+1 > n {
+			n = i + 1
+		}
+	}
+	for i := 0; i < n; i++ {
+		s, ok := environ[prefix+strconv.Itoa(i)]
 		if !ok {
-			return items, i > 0
+			return nil, true, i
 		}
 		items = append(items, s)
 	}
+	return items, n > 0, -1
+}
+
+// listIndex parses the index of an indexed list item name: digits with no
+// leading zero, after prefix.
+func listIndex(key, prefix string) (int, bool) {
+	rest, ok := strings.CutPrefix(key, prefix)
+	if !ok || rest == "" || (len(rest) > 1 && rest[0] == '0') {
+		return 0, false
+	}
+	for _, c := range rest {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+	}
+	i, err := strconv.Atoi(rest)
+	return i, err == nil
 }
 
 // parseInt parses an integer the way caarlos0/env does for the field's

@@ -389,6 +389,8 @@ Lists and durations are different: the leading libraries disagree, and making an
 | `seconds` | `90` | anything that takes a number |
 | `timespan` | `00:01:30` (`d.hh:mm:ss.fff` when needed) | .NET `TimeSpan.Parse` |
 
+An `indexed` list is present when any `NAME__<n>` is set, where `<n>` is a decimal index with no leading zero; other suffixes (`NAME__HOST`) are not items. Its items MUST be numbered from `0` with no gap: `NAME__0`, `NAME__2` without `NAME__1` is `invalid_type`, because a host that stops at the gap and one that skips it would read different lists.
+
 Encodings other than `go` carry at most millisecond precision, and `#Validate` rejects finer values. Platform authors never see encodings: they write `"90s"` and `["a", "b"]` for every app.
 
 Renderers MUST double every `$` in a literal value (`$` becomes `$$`). Kubernetes expands `$(NAME)` references inside env values and reduces `$$` to `$`, so this is the only way a literal containing `$` arrives unchanged.
