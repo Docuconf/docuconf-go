@@ -13,7 +13,7 @@ var varTagKeys = []string{
 	"env", "envDefault", "envSeparator", "envPrefix",
 	"secret", "desc", "group", "examples", "deprecated", "configKey", "type",
 	"minLength", "maxLength", "pattern", "min", "max", "schemes", "values",
-	"minItems", "maxItems", "itemMin", "itemMax",
+	"minItems", "maxItems", "itemMin", "itemMax", "itemMinLength", "itemMaxLength",
 }
 
 // hostTagKeys are tag keys other common libraries own. They are never

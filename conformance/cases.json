@@ -3688,6 +3688,1712 @@
       ]
     },
     {
+      "id": "length/typed values [list=csv]",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "BRANCHES": "ZÜ01,BE,GE02",
+        "CALLBACK": "https://a.example/run",
+        "LIMITS": "{\"max\":10}"
+      },
+      "expect": {
+        "BRANCHES": [
+          "ZÜ01",
+          "BE",
+          "GE02"
+        ],
+        "BRANCHES_IDX": null,
+        "BRANCHES_JSON": null,
+        "CALLBACK": "https://a.example/run",
+        "DB_URL": null,
+        "LIMITS": {
+          "max": 10
+        }
+      }
+    },
+    {
+      "id": "length/typed values [list=json]",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "BRANCHES": "[\"ZÜ01\",\"BE\",\"GE02\"]",
+        "CALLBACK": "https://a.example/run",
+        "LIMITS": "{\"max\":10}"
+      },
+      "expect": {
+        "BRANCHES": [
+          "ZÜ01",
+          "BE",
+          "GE02"
+        ],
+        "BRANCHES_IDX": null,
+        "BRANCHES_JSON": null,
+        "CALLBACK": "https://a.example/run",
+        "DB_URL": null,
+        "LIMITS": {
+          "max": 10
+        }
+      }
+    },
+    {
+      "id": "length/typed values [list=indexed]",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "BRANCHES__0": "ZÜ01",
+        "BRANCHES__1": "BE",
+        "BRANCHES__2": "GE02",
+        "CALLBACK": "https://a.example/run",
+        "LIMITS": "{\"max\":10}"
+      },
+      "expect": {
+        "BRANCHES": [
+          "ZÜ01",
+          "BE",
+          "GE02"
+        ],
+        "BRANCHES_IDX": null,
+        "BRANCHES_JSON": null,
+        "CALLBACK": "https://a.example/run",
+        "DB_URL": null,
+        "LIMITS": {
+          "max": 10
+        }
+      }
+    },
+    {
+      "id": "length/defaults and absent optionals",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {},
+      "expect": {
+        "BRANCHES": null,
+        "BRANCHES_IDX": null,
+        "BRANCHES_JSON": null,
+        "CALLBACK": null,
+        "DB_URL": null,
+        "LIMITS": null
+      }
+    },
+    {
+      "id": "length/url at exactly maxLength",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "CALLBACK": "https://a.example/runs/4"
+      },
+      "expect": {
+        "BRANCHES": null,
+        "BRANCHES_IDX": null,
+        "BRANCHES_JSON": null,
+        "CALLBACK": "https://a.example/runs/4",
+        "DB_URL": null,
+        "LIMITS": null
+      }
+    },
+    {
+      "id": "length/url one character above maxLength",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "CALLBACK": "https://a.example/runs/42"
+      },
+      "errors": [
+        {
+          "var": "CALLBACK",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "length/url length counts characters, not bytes",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "CALLBACK": "https://例え.jp/日本語の道/一二三四"
+      },
+      "expect": {
+        "BRANCHES": null,
+        "BRANCHES_IDX": null,
+        "BRANCHES_JSON": null,
+        "CALLBACK": "https://例え.jp/日本語の道/一二三四",
+        "DB_URL": null,
+        "LIMITS": null
+      }
+    },
+    {
+      "id": "length/url above maxLength in characters",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "CALLBACK": "https://例え.jp/日本語の道/一二三四五"
+      },
+      "errors": [
+        {
+          "var": "CALLBACK",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "length/json at exactly maxLength",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "LIMITS": "{\"max\":12345678}"
+      },
+      "expect": {
+        "BRANCHES": null,
+        "BRANCHES_IDX": null,
+        "BRANCHES_JSON": null,
+        "CALLBACK": null,
+        "DB_URL": null,
+        "LIMITS": {
+          "max": 12345678
+        }
+      }
+    },
+    {
+      "id": "length/json one character above maxLength",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "LIMITS": "{\"max\":123456789}"
+      },
+      "errors": [
+        {
+          "var": "LIMITS",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "length/json length counts characters, not bytes",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "LIMITS": "{\"n\":\"日本語の道路xy\"}"
+      },
+      "expect": {
+        "BRANCHES": null,
+        "BRANCHES_IDX": null,
+        "BRANCHES_JSON": null,
+        "CALLBACK": null,
+        "DB_URL": null,
+        "LIMITS": {
+          "n": "日本語の道路xy"
+        }
+      }
+    },
+    {
+      "id": "length/json whitespace counts, as received",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "LIMITS": "{ \"max\": 123456 }"
+      },
+      "errors": [
+        {
+          "var": "LIMITS",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "length/items at exactly the limits",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "BRANCHES": "BE,ZÜ01,GE02"
+      },
+      "expect": {
+        "BRANCHES": [
+          "BE",
+          "ZÜ01",
+          "GE02"
+        ],
+        "BRANCHES_IDX": null,
+        "BRANCHES_JSON": null,
+        "CALLBACK": null,
+        "DB_URL": null,
+        "LIMITS": null
+      }
+    },
+    {
+      "id": "length/item length counts characters, not bytes",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "BRANCHES": "日本語x"
+      },
+      "expect": {
+        "BRANCHES": [
+          "日本語x"
+        ],
+        "BRANCHES_IDX": null,
+        "BRANCHES_JSON": null,
+        "CALLBACK": null,
+        "DB_URL": null,
+        "LIMITS": null
+      }
+    },
+    {
+      "id": "length/item above itemMaxLength",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "BRANCHES": "BE,ZÜRICH"
+      },
+      "errors": [
+        {
+          "var": "BRANCHES",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "length/item below itemMinLength",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "BRANCHES": "BE,B"
+      },
+      "errors": [
+        {
+          "var": "BRANCHES",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "length/item above itemMaxLength in a json list",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "BRANCHES_JSON": "[\"BE\",\"GENEVA\"]"
+      },
+      "errors": [
+        {
+          "var": "BRANCHES_JSON",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "length/item above itemMaxLength in an indexed list",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "BRANCHES_IDX__0": "BE",
+        "BRANCHES_IDX__1": "GENEVA"
+      },
+      "errors": [
+        {
+          "var": "BRANCHES_IDX",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "length/a secret url above maxLength",
+      "source": "load/length.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-length",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "BRANCHES": {
+            "name": "BRANCHES",
+            "description": "Branch codes, two to four characters each",
+            "required": false,
+            "secret": false,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "itemMinLength": 2,
+            "itemMaxLength": 4
+          },
+          "BRANCHES_IDX": {
+            "name": "BRANCHES_IDX",
+            "description": "Branch codes in NAME__0, NAME__1",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed",
+            "itemMaxLength": 4
+          },
+          "BRANCHES_JSON": {
+            "name": "BRANCHES_JSON",
+            "description": "Branch codes as a JSON array",
+            "required": false,
+            "secret": false,
+            "type": "list",
+            "items": "string",
+            "encoding": "json",
+            "itemMaxLength": 4
+          },
+          "CALLBACK": {
+            "name": "CALLBACK",
+            "description": "Where to report each run",
+            "required": false,
+            "secret": false,
+            "type": "url",
+            "schemes": [
+              "https"
+            ],
+            "maxLength": 24
+          },
+          "DB_URL": {
+            "name": "DB_URL",
+            "description": "Database connection string",
+            "required": false,
+            "secret": true,
+            "type": "url",
+            "maxLength": 30
+          },
+          "LIMITS": {
+            "name": "LIMITS",
+            "description": "Run limits as a JSON object",
+            "required": false,
+            "secret": false,
+            "type": "json",
+            "maxLength": 16
+          }
+        }
+      },
+      "env": {
+        "DB_URL": "postgres://app:s3cr3t@db:5432/app"
+      },
+      "errors": [
+        {
+          "var": "DB_URL",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
       "id": "list/typed values [list=csv]",
       "source": "load/list.yaml",
       "requires": [],

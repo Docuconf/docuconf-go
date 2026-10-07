@@ -225,6 +225,9 @@ func (v *varDecl) contract(desc string, docs *docResolver) (obj, error) {
 		if len(v.schemes) > 0 {
 			o = o.add("schemes", stringsToList(v.schemes))
 		}
+		if v.maxLength != nil {
+			o = o.add("maxLength", int64(*v.maxLength))
+		}
 	case typeEnum:
 		o = o.add("values", stringsToList(v.values))
 	case typeList:
@@ -243,7 +246,16 @@ func (v *varDecl) contract(desc string, docs *docResolver) (obj, error) {
 		if v.itemMax != nil {
 			o = o.add("itemMax", json.Number(v.itemMax.String()))
 		}
+		if v.itemMinLength != nil {
+			o = o.add("itemMinLength", int64(*v.itemMinLength))
+		}
+		if v.itemMaxLength != nil {
+			o = o.add("itemMaxLength", int64(*v.itemMaxLength))
+		}
 	case typeJSON:
+		if v.maxLength != nil {
+			o = o.add("maxLength", int64(*v.maxLength))
+		}
 		s, err := schemaFor(v.jsonType, docs)
 		if err != nil {
 			return o, err

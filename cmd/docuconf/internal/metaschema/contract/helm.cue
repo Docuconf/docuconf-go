@@ -138,6 +138,7 @@ import (
 			if var.schemes != _|_ {
 				pattern: "^(\(strings.Join([for x in var.schemes {regexp.QuoteMeta(x)}], "|")))://[^\\s]+$"
 			}
+			if var.maxLength != _|_ {maxLength: var.maxLength}
 		}
 		if var.type == "enum" {enum: var.values}
 		if var.type == "list" {
@@ -146,6 +147,10 @@ import (
 			if var.items == "int" {
 				if var.itemMin != _|_ {items: minimum: var.itemMin}
 				if var.itemMax != _|_ {items: maximum: var.itemMax}
+			}
+			if var.items == "string" {
+				if var.itemMinLength != _|_ {items: minLength: var.itemMinLength}
+				if var.itemMaxLength != _|_ {items: maxLength: var.itemMaxLength}
 			}
 			if var.minItems != _|_ {minItems: var.minItems}
 			if var.maxItems != _|_ {maxItems: var.maxItems}
