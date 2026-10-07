@@ -1,0 +1,39 @@
+name: examples
+
+on:
+  push:
+    paths-ignore: ["website/**", "docs/**"]
+  pull_request:
+    paths-ignore: ["website/**", "docs/**"]
+
+jobs:
+  orders:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - run: go install cuelang.org/go/cmd/cue@v0.17.1
+      - name: Build
+        working-directory: examples/orders
+        run: |
+          test -z "$(gofmt -l .)"
+          go build ./...
+          go vet ./...
+      # contract.cue is generated; it must match what the CLI exports today.
+      - name: Contract is up to date
+        working-directory: cmd/docuconf
+        run: |
+          go run . export -C ../../examples/orders -pkg ./config -type Config \
+            -name orders-api -package orders -o ../../examples/orders/contract.cue
+          git diff --exit-code -- ../../examples/orders/contract.cue
+      - name: Contract passes the meta-schema
+        run: |
+          mod="$(mktemp -d)"
+          cp -r spec/cue/cue.mod spec/cue/contract "$mod/"
+          mkdir "$mod/orders"
+          cp examples/orders/contract.cue "$mod/orders/"
+          cd "$mod" && cue vet -c ./orders
+      - name: Smoke test
+        run: examples/orders/smoke.sh
