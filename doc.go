@@ -32,13 +32,15 @@
 //
 //	secret:"true"           the value comes from a Secret; never printed, no default
 //	min:"1" max:"65535"     int, float and duration bounds (durations as "1s")
-//	minLength maxLength     string length in characters
+//	minLength maxLength     string length in characters; maxLength also
+//	                        bounds a url, and a JSON[T] value as received
 //	pattern:"^[a-z]+$"      string pattern, RE2, partial match like CUE =~
 //	values:"debug,info"     makes a string an enum
 //	schemes:"https"         makes a string a url; also on url.URL fields
 //	type:"url"              a url with any scheme
 //	minItems maxItems       list length
 //	itemMin:"0" itemMax:"9" bounds on each item of an integer list
+//	itemMinLength itemMaxLength  length of each item of a string list
 //	group, examples ("a|b"), deprecated, configKey
 //
 // A tag key that is not one of these but is close to one (secrte, mni) is

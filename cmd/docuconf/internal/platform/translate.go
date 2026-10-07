@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/errors"
@@ -477,6 +478,19 @@ func explainVar(name string, cv, x cue.Value) []string {
 				return []string{fmt.Sprintf("scheme %q is not one of %s", scheme, strings.Join(schemes, ", "))}
 			}
 		}
+		if m, ok := bigInt(cv, "maxLength"); ok {
+			if n := utf8.RuneCountInString(s); int64(n) > m.Int64() {
+				return []string{fmt.Sprintf("%s is %d characters, above maxLength %s", describe(x), n, m)}
+			}
+		}
+	case "json":
+		if m, ok := bigInt(cv, "maxLength"); ok {
+			if b, err := x.MarshalJSON(); err == nil {
+				if n := utf8.RuneCount(b); int64(n) > m.Int64() {
+					return []string{fmt.Sprintf("is %d characters as compact JSON, above maxLength %s", n, m)}
+				}
+			}
+		}
 	case "enum":
 		values := strs(cv, "values")
 		s, err := x.String()
@@ -494,6 +508,16 @@ func explainVar(name string, cv, x cue.Value) []string {
 			e := it.Value()
 			if (items == "int" && e.Kind() != cue.IntKind) || (items == "string" && e.Kind() != cue.StringKind) {
 				return []string{fmt.Sprintf("item %d: expected %s, got %s", n, article(items), describe(e))}
+			}
+			if items == "string" {
+				s, _ := e.String()
+				l := utf8.RuneCountInString(s)
+				if m, ok := bigInt(cv, "itemMinLength"); ok && int64(l) < m.Int64() {
+					return []string{fmt.Sprintf("item %d: %s is %d characters, below itemMinLength %s", n, describe(e), l, m)}
+				}
+				if m, ok := bigInt(cv, "itemMaxLength"); ok && int64(l) > m.Int64() {
+					return []string{fmt.Sprintf("item %d: %s is %d characters, above itemMaxLength %s", n, describe(e), l, m)}
+				}
 			}
 			if items == "int" {
 				iv, _ := e.Int(nil)

@@ -145,16 +145,20 @@ An optional variable with no default is legal. The SDK exposes it as absent (`ni
 | `float` | `min`, `max` | `number` | shortest round-trip decimal: `0.5` |
 | `bool` | — | `bool` | `true` / `false` |
 | `duration` | `min`, `max` (durations), `encoding` | Go-syntax duration, e.g. `1m30s` | depends on `encoding` |
-| `url` | `schemes` | string with a `scheme://` | as is |
+| `url` | `schemes`, `maxLength` | string with a `scheme://` | as is |
 | `enum` | `values` (non-empty) | one of `values` | as is |
-| `list` | `items` (`string`\|`int`), `encoding`, `separator` (csv only, default `,`), `minItems`, `maxItems`, `itemMin` and `itemMax` (`int` items only) | list | depends on `encoding` |
-| `json` | `schema` (JSON Schema) | any JSON value | compact JSON |
+| `list` | `items` (`string`\|`int`), `encoding`, `separator` (csv only, default `,`), `minItems`, `maxItems`, `itemMin` and `itemMax` (`int` items only), `itemMinLength` and `itemMaxLength` (`string` items only) | list | depends on `encoding` |
+| `json` | `schema` (JSON Schema), `maxLength` | any JSON value | compact JSON |
 
 Rules:
 
 - `pattern` is RE2, the only regex dialect every SDK can match exactly (Go native, `re2` bindings or a compatible subset elsewhere). SDKs MUST reject patterns that use features outside RE2, such as lookaround or backreferences, at declaration time.
 - RE2's `\d`, `\w`, `\s` and `\b` are ASCII-only. Where the host engine treats them as Unicode (Python, .NET, Rust's `regex` by default), SDKs SHOULD warn and suggest explicit classes such as `[0-9]`, since the platform and the app would otherwise disagree on non-ASCII input.
 - `pattern` matches **anywhere** in the value, as CUE's `=~` and JSON Schema's `pattern` do; anchor it with `^` and `$` to match the whole value. Some host libraries match the whole value instead (.NET `[RegularExpression]`, Java `@Pattern`); their SDKs MUST anchor such patterns on export, as `^(?:p)$`, so the platform and the app accept exactly the same values.
+- **Lengths count characters**, meaning Unicode code points, never bytes or UTF-16 code units. This applies to `minLength` and `maxLength` on a `string`, to `maxLength` on a `url` or `json` value, to `itemMinLength` and `itemMaxLength` on each item of a `string` list, and to text files (section 4.6). `日本` is 2 characters, and `ZÜ01` fits an `itemMaxLength` of 4. CUE's `strings.MinRunes`/`MaxRunes` and JSON Schema's `minLength`/`maxLength` count the same way. A host whose strings are UTF-16 (Java, .NET, JavaScript) counts code points, not `length`. An app that stores values in fixed-width byte fields, such as a COBOL `PIC X(n)`, should declare a limit that leaves room for multi-byte characters, or reject them with a `pattern` such as `^[ -~]*$`.
+- `maxLength` on a `url` bounds the URL string as it is.
+- `maxLength` on a `json` value bounds its **wire string**. Before deploy, that is the compact JSON `#Render` writes: no insignificant whitespace, object fields in the order the platform wrote them, and no escaping beyond what JSON requires (`<`, `>` and `&` stay as they are). At boot, it is the raw value the app receives, whitespace included, before the SDK parses it. A value the platform rendered measures the same in both places. A `json` value read from a config-file overlay (section 4.7) is not a string, so the SDK measures its compact JSON. The Helm values schema cannot express this limit, so it is checked by `docuconf vet` and at boot.
+- `itemMinLength` and `itemMaxLength` apply to each item after the list is split in its encoding, so a `csv` separator is never counted. They MUST NOT be set on an `int` list, just as `itemMin` and `itemMax` MUST NOT be set on a `string` list.
 - `default` MUST satisfy the variable's own constraints. SDKs MUST check this at declaration time.
 - A `json` variable carries a structured value, such as a rate-limit object. Its `schema` is a JSON Schema the SDK generates from the app's own type, so the platform checks the value against the same type the app deserializes into (section 4.6).
 - The type set is closed in v1alpha1. A new type needs a spec change, because every SDK must parse it identically.
@@ -536,7 +540,7 @@ A conforming SDK MUST:
 2. Validate the declaration itself at definition time: name format, description length, `details` not blank and at most 4000 characters, default against constraints, required without default, RE2-only patterns. Every input MUST have a `description`, and export MUST fail when one is missing or shorter than 5 characters. It comes from the language's natural doc location (section 14.7) or an explicit annotation, so that the documentation lives beside the code that reads the input.
 3. Export a contract that matches the conformance golden file for the fixture declaration, compared as data (`cue export` to JSON), so formatting does not matter. Fields equal to their meta-schema default (`required: false`, `reload: "restart"`, `minCertificates: 1`) MAY be omitted; the comparison is made after unifying with the meta-schema. Durations are written in canonical form: units in the order `h`, `m`, `s`, `ms`, `us`, `ns`, each at most once, zero units omitted, and `0s` for zero (`1h30m`, not `90m`, `1.5h` or Go's `1h30m0s`). `metadata.generator` and the `encoding` fields are set by the SDK, so they are excluded from the comparison. Output MUST be deterministic: variables and file inputs sorted by name.
 4. Load from the **process environment**, as it is when the process starts, by default. That is after any injection (section 4.5.1), so injected values are validated exactly like any other, and the SDK never resolves secret references itself. Configuration is never read at build time. Reading a `.env` file is an opt-in for development, and real environment variables override it.
-5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_unreadable`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed. Length limits on strings and text files, and `itemMin`/`itemMax` on list items, use `out_of_range`. An expired or not-yet-valid certificate, a disallowed key algorithm or a broken chain is `certificate_invalid`; a CA bundle with too few certificates is `file_malformed`.
+5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_unreadable`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed. Length limits (`minLength`, `maxLength`, `itemMinLength`, `itemMaxLength`, on variables and text files), and `itemMin`/`itemMax` on list items, use `out_of_range`. A too-long secret reports its length, never its value. An expired or not-yet-valid certificate, a disallowed key algorithm or a broken chain is `certificate_invalid`; a CA bundle with too few certificates is `file_malformed`.
 6. Expose typed values: a struct, a class, or an inferred TypeScript type. Not a string map.
 7. Check every file input at boot, covering what the platform could not see:
    - the path exists and is readable, within `maxSize`;
@@ -587,7 +591,7 @@ The suite covers variables in v1. File inputs, profiles and overlays are tested 
 9. Should `description` and `details` be translatable (a map by language tag), so generated docs can be published in more than one language?
 10. Should the docs model turn a `json` variable's or config file's JSON Schema into a field table (name, type, required, description), rather than carry the schema for each renderer to show?
 
-Resolved in this draft: generated docs come from one generator, `docuconf docs` in the CLI, through a versioned docs model that any renderer can read, and SDKs export an optional `details` beside the required `description` instead of generating docs themselves (section 14); per-item bounds for `int` lists (`itemMin`, `itemMax`, section 4.3); config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
+Resolved in this draft: generated docs come from one generator, `docuconf docs` in the CLI, through a versioned docs model that any renderer can read, and SDKs export an optional `details` beside the required `description` instead of generating docs themselves (section 14); per-item bounds for `int` lists (`itemMin`, `itemMax`, section 4.3); length limits for fixed-width hosts: `maxLength` on `url` and `json` values, and `itemMinLength`/`itemMaxLength` on `string` lists, counted in characters (section 4.3); config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
 
 ## 14. Generated docs
 
@@ -680,12 +684,13 @@ Each constraint is `{rule, params, text}`. `params` holds the contract fields it
 | `rule` | From | Applies to | `text`, for example |
 |---|---|---|---|
 | `range` | `min`, `max` | `int`, `float`, `duration` | `between 1 and 65535`, `at least 1`, `at most 5m`, `exactly 3` |
-| `length` | `minLength`, `maxLength` | `string`, `text` files | `at most 120 characters (Unicode code points)` |
+| `length` | `minLength`, `maxLength` | `string`, `text` files; `maxLength` also on `url` and `json` | `at most 120 characters (Unicode code points)` |
 | `pattern` | `pattern` | `string`, `text` files | ``matches the RE2 pattern `^[a-z]+$` `` when anchored with `^` and `$`, else ``contains a match for the RE2 pattern `[a-z]` `` (section 4.3) |
 | `schemes` | `schemes` | `url` | `` `https` or `http` URL `` |
 | `values` | `values` | `enum` | ``one of `debug`, `info` or `warn` `` |
 | `itemCount` | `minItems`, `maxItems` | `list` | `between 1 and 5 items`, `at least 1 item` |
 | `itemRange` | `itemMin`, `itemMax` | `list` | `each item between 0 and 1023` |
+| `itemLength` | `itemMinLength`, `itemMaxLength` | `list` | `each item between 1 and 64 characters (Unicode code points)` |
 | `schema` | `schema` | `json`, `config` files | `matches the JSON Schema in the contract` (the schema is in `params`) |
 | `maxSize` | `maxSize` | files | `at most 64 KiB (65536 bytes)` |
 | `dnsNames` | `dnsNames` | `tls` | ``the certificate covers `a.example.com` and `b.example.com` `` |
@@ -695,7 +700,7 @@ Each constraint is `{rule, params, text}`. `params` holds the contract fields it
 | `minCertificates` | `minCertificates` | `caBundle` | `at least 1 CA certificate` |
 | `passwordVar` | `passwordVar` | `keystore` | ``opens with the password in `KS_PASSWORD` `` |
 
-Constraints appear in this order. A pair of bounds is one constraint, phrased `between`, `at least`, `at most` or `exactly`. In the CLI the table is data: a new bound is one row. `itemLength` (from per-item string bounds `itemMinLength` and `itemMaxLength`, once the contract has them) is reserved, phrased `each item between 1 and 64 characters (Unicode code points)`.
+Constraints appear in this order. A pair of bounds is one constraint, phrased `between`, `at least`, `at most` or `exactly`. In the CLI the table is data: a new bound is one row.
 
 ### 14.4 Text and Markdown
 

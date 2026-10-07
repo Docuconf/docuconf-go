@@ -1,0 +1,88 @@
+description: >
+  Length limits beyond string's minLength and maxLength (SPEC §4.3):
+  maxLength on url and json values, itemMinLength and itemMaxLength on the
+  items of a string list. Lengths count characters (Unicode code points),
+  never bytes. A json value is measured as the app receives it.
+vars:
+  CALLBACK:
+    type: url
+    description: Where to report each run
+    schemes: [https]
+    maxLength: 24
+  LIMITS:
+    type: json
+    description: Run limits as a JSON object
+    maxLength: 16
+  BRANCHES:
+    type: list
+    description: Branch codes, two to four characters each
+    items: string
+    itemMinLength: 2
+    itemMaxLength: 4
+  BRANCHES_JSON:
+    type: list
+    description: Branch codes as a JSON array
+    items: string
+    encoding: json
+    itemMaxLength: 4
+  BRANCHES_IDX:
+    type: list
+    description: Branch codes in NAME__0, NAME__1
+    items: string
+    encoding: indexed
+    itemMaxLength: 4
+  DB_URL:
+    type: url
+    description: Database connection string
+    secret: true
+    maxLength: 30
+cases:
+  - name: typed values
+    values: {CALLBACK: "https://a.example/run", LIMITS: {max: 10}, BRANCHES: [ZÜ01, BE, GE02]}
+  - name: defaults and absent optionals
+    values: {}
+  - name: url at exactly maxLength
+    env: {CALLBACK: "https://a.example/runs/4"}
+    expect: {CALLBACK: "https://a.example/runs/4"}
+  - name: url one character above maxLength
+    env: {CALLBACK: "https://a.example/runs/42"}
+    errors: [{var: CALLBACK, code: out_of_range}]
+  - name: url length counts characters, not bytes
+    env: {CALLBACK: "https://例え.jp/日本語の道/一二三四"}
+    expect: {CALLBACK: "https://例え.jp/日本語の道/一二三四"}
+  - name: url above maxLength in characters
+    env: {CALLBACK: "https://例え.jp/日本語の道/一二三四五"}
+    errors: [{var: CALLBACK, code: out_of_range}]
+  - name: json at exactly maxLength
+    env: {LIMITS: '{"max":12345678}'}
+    expect: {LIMITS: {max: 12345678}}
+  - name: json one character above maxLength
+    env: {LIMITS: '{"max":123456789}'}
+    errors: [{var: LIMITS, code: out_of_range}]
+  - name: json length counts characters, not bytes
+    env: {LIMITS: '{"n":"日本語の道路xy"}'}
+    expect: {LIMITS: {n: 日本語の道路xy}}
+  - name: json whitespace counts, as received
+    env: {LIMITS: '{ "max": 123456 }'}
+    errors: [{var: LIMITS, code: out_of_range}]
+  - name: items at exactly the limits
+    env: {BRANCHES: "BE,ZÜ01,GE02"}
+    expect: {BRANCHES: [BE, ZÜ01, GE02]}
+  - name: item length counts characters, not bytes
+    env: {BRANCHES: "日本語x"}
+    expect: {BRANCHES: [日本語x]}
+  - name: item above itemMaxLength
+    env: {BRANCHES: "BE,ZÜRICH"}
+    errors: [{var: BRANCHES, code: out_of_range}]
+  - name: item below itemMinLength
+    env: {BRANCHES: "BE,B"}
+    errors: [{var: BRANCHES, code: out_of_range}]
+  - name: item above itemMaxLength in a json list
+    env: {BRANCHES_JSON: '["BE","GENEVA"]'}
+    errors: [{var: BRANCHES_JSON, code: out_of_range}]
+  - name: item above itemMaxLength in an indexed list
+    env: {BRANCHES_IDX__0: BE, BRANCHES_IDX__1: GENEVA}
+    errors: [{var: BRANCHES_IDX, code: out_of_range}]
+  - name: a secret url above maxLength
+    env: {DB_URL: "postgres://app:s3cr3t@db:5432/app"}
+    errors: [{var: DB_URL, code: out_of_range}]

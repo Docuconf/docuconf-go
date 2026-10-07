@@ -148,6 +148,9 @@ func (v *varDecl) parse(raw string) (any, []Violation) {
 			}
 			return nil, viol(CodeInvalidScheme, "scheme %q is not one of %s", u.Scheme, strings.Join(v.schemes, ", "))
 		}
+		if out := v.checkMaxLength(raw); out != nil {
+			return nil, out
+		}
 		return raw, nil
 
 	case typeList:
@@ -161,6 +164,11 @@ func (v *varDecl) parse(raw string) (any, []Violation) {
 		doc, err := decodeJSON([]byte(raw))
 		if err != nil {
 			return nil, viol(CodeInvalidType, "is not valid JSON%s", v.reason(err))
+		}
+		// The length of the value as received, not re-encoded: that is
+		// what a fixed-width field has to hold.
+		if out := v.checkMaxLength(raw); out != nil {
+			return nil, out
 		}
 		var out []Violation
 		if v.schema != nil {
@@ -184,6 +192,21 @@ func (v *varDecl) parse(raw string) (any, []Violation) {
 		return doc, nil
 	}
 	return raw, nil
+}
+
+// checkMaxLength checks a url or json value against maxLength, counted
+// in characters (Unicode code points) as for a string.
+func (v *varDecl) checkMaxLength(raw string) []Violation {
+	if v.maxLength == nil {
+		return nil
+	}
+	if n := utf8.RuneCountInString(raw); n > *v.maxLength {
+		if v.typ == typeJSON {
+			return v.violation(CodeOutOfRange, "is %d characters of JSON, above maxLength %d", n, *v.maxLength)
+		}
+		return v.violation(CodeOutOfRange, "%s is %d characters, above maxLength %d", v.show(raw), n, *v.maxLength)
+	}
+	return nil
 }
 
 // splitItems splits a list value in its encoding. An indexed list spans
@@ -239,9 +262,18 @@ func (v *varDecl) parseItems(items []string) (any, []Violation) {
 				return nil, viol(CodeOutOfRange, "item %d: %s is above itemMax %s", i, v.showNum(item), v.itemMax)
 			}
 			ints = append(ints, n.Int64())
-		} else if v.custom != nil {
-			if err := v.custom(item); err != nil {
-				return nil, viol(CodeInvalidType, "item %d: %s is not a valid %v%s", i, v.show(item), v.goType.Elem(), v.reason(err))
+		} else {
+			if v.custom != nil {
+				if err := v.custom(item); err != nil {
+					return nil, viol(CodeInvalidType, "item %d: %s is not a valid %v%s", i, v.show(item), v.goType.Elem(), v.reason(err))
+				}
+			}
+			n := utf8.RuneCountInString(item)
+			if v.itemMinLength != nil && n < *v.itemMinLength {
+				return nil, viol(CodeOutOfRange, "item %d: %s is %d characters, below itemMinLength %d", i, v.show(item), n, *v.itemMinLength)
+			}
+			if v.itemMaxLength != nil && n > *v.itemMaxLength {
+				return nil, viol(CodeOutOfRange, "item %d: %s is %d characters, above itemMaxLength %d", i, v.show(item), n, *v.itemMaxLength)
 			}
 		}
 	}

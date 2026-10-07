@@ -52,6 +52,11 @@ var (
 	strText = func(kind, typ string) bool {
 		return kind == KindVar && typ == "string" || kind == KindFile && typ == "text"
 	}
+	// minLength applies to strings and text files; maxLength also bounds a
+	// url and a json value's wire string.
+	lengthed = func(kind, typ string) bool {
+		return strText(kind, typ) || kind == KindVar && (typ == "url" || typ == "json")
+	}
 	urls     = only(KindVar, "url")
 	enums    = only(KindVar, "enum")
 	lists    = only(KindVar, "list")
@@ -64,15 +69,13 @@ var (
 
 var rules = []rule{
 	bounds("range", "min", "max", numeric, "", nil),
-	bounds("length", "minLength", "maxLength", strText, "", characters),
+	bounds("length", "minLength", "maxLength", lengthed, "", characters),
 	{"pattern", []string{"pattern"}, strText, phrasePattern},
 	{"schemes", []string{"schemes"}, urls, func(f fields) string { return oneOf(f.strs("schemes")) + " URL" }},
 	{"values", []string{"values"}, enums, func(f fields) string { return "one of " + oneOf(f.strs("values")) }},
 	bounds("itemCount", "minItems", "maxItems", lists, "", items),
 	bounds("itemRange", "itemMin", "itemMax", lists, "each item ", nil),
-	// Per-item string lengths (itemMinLength, itemMaxLength) are one row
-	// once the contract has them:
-	// bounds("itemLength", "itemMinLength", "itemMaxLength", lists, "each item ", characters),
+	bounds("itemLength", "itemMinLength", "itemMaxLength", lists, "each item ", characters),
 	{"schema", []string{"schema"}, schemaed, func(fields) string { return "matches the JSON Schema in the contract" }},
 	{"maxSize", []string{"maxSize"}, anyFile, func(f fields) string { return "at most " + byteSize(f["maxSize"]) }},
 	{"dnsNames", []string{"dnsNames"}, tlsFiles, func(f fields) string { return "the certificate covers " + allOf(f.strs("dnsNames")) }},
@@ -439,14 +442,16 @@ func varErrors(typ string, f fields) []string {
 	case "float", "duration":
 		c.add("out_of_range", f.has("min") || f.has("max"))
 	case "url":
+		c.add("out_of_range", f.has("maxLength"))
 		c.add("invalid_scheme", f.has("schemes"))
 	case "enum":
 		c.add("not_in_enum", true)
 	case "list":
-		c.add("out_of_range", f.str("items") == "int")
+		c.add("out_of_range", f.str("items") == "int" || f.has("itemMinLength") || f.has("itemMaxLength"))
 		c.add("too_few_items", f.has("minItems"))
 		c.add("too_many_items", f.has("maxItems"))
 	case "json":
+		c.add("out_of_range", f.has("maxLength"))
 		c.add("schema_mismatch", f.has("schema"))
 	}
 	return c.sorted()
