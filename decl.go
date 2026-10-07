@@ -97,6 +97,9 @@ type varDecl struct {
 	separator          string
 	minItems, maxItems *int
 	itemMin, itemMax   *big.Int
+	// itemMinLength and itemMaxLength bound each item of a string list, in
+	// characters.
+	itemMinLength, itemMaxLength *int
 
 	// Wire encodings (SPEC §5). A declaration always uses the encodings
 	// caarlos0/env parses, "go" and "csv"; a contract may name any.
@@ -294,17 +297,19 @@ func splitList(s string) []string {
 // constraintTags lists the docuconf constraint tags and the contract types
 // each applies to.
 var constraintTags = map[string][]string{
-	"minLength": {typeString},
-	"maxLength": {typeString},
-	"pattern":   {typeString},
-	"min":       {typeInt, typeFloat, typeDuration},
-	"max":       {typeInt, typeFloat, typeDuration},
-	"schemes":   {typeURL},
-	"values":    {typeEnum},
-	"minItems":  {typeList},
-	"maxItems":  {typeList},
-	"itemMin":   {typeList},
-	"itemMax":   {typeList},
+	"minLength":     {typeString},
+	"maxLength":     {typeString, typeURL, typeJSON},
+	"pattern":       {typeString},
+	"min":           {typeInt, typeFloat, typeDuration},
+	"max":           {typeInt, typeFloat, typeDuration},
+	"schemes":       {typeURL},
+	"values":        {typeEnum},
+	"minItems":      {typeList},
+	"maxItems":      {typeList},
+	"itemMin":       {typeList},
+	"itemMax":       {typeList},
+	"itemMinLength": {typeList},
+	"itemMaxLength": {typeList},
 }
 
 func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int, fp, name string, envOpts []string, opts declOptions) {
@@ -559,6 +564,10 @@ func (v *varDecl) parseConstraints(tag reflect.StructTag, problem func(string, .
 	}
 	v.minLength, v.maxLength = nonNeg("minLength"), nonNeg("maxLength")
 	v.minItems, v.maxItems = nonNeg("minItems"), nonNeg("maxItems")
+	v.itemMinLength, v.itemMaxLength = nonNeg("itemMinLength"), nonNeg("itemMaxLength")
+	if (v.itemMinLength != nil || v.itemMaxLength != nil) && v.typ == typeList && v.items != "string" {
+		problem("itemMinLength and itemMaxLength apply only to lists of strings")
+	}
 	if p, ok := tag.Lookup("pattern"); ok {
 		re, err := regexp.Compile(p)
 		if err != nil {
