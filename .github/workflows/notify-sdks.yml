@@ -1,0 +1,67 @@
+name: notify-sdks
+
+# When main changes the spec, the conformance suite, the CLI or the Go library, tell every SDK repository
+# (repository_dispatch, event type docuconf-go-updated, client_payload.sha). Each SDK's docuconf-go-bump
+# workflow then opens or updates its "bump docuconf-go" PR, whose CI is the compatibility check.
+#
+# Dispatching to another repository needs the release GitHub App (secrets RELEASE_APP_ID and
+# RELEASE_APP_PRIVATE_KEY, with Contents read and write on the SDK repositories). Without it this only
+# leaves a notice: each SDK's bump workflow also runs daily and picks the change up then.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "spec/**"
+      - "conformance/**"
+      - "cmd/docuconf/**"
+      - "*.go"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/notify-sdks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SDK_REPOS: >-
+    docuconf-js docuconf-dotnet docuconf-python docuconf-ruby docuconf-java docuconf-kotlin docuconf-rust
+    docuconf-swift docuconf-elixir docuconf-gleam docuconf-cpp docuconf-php docuconf-cobol
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    env:
+      HAVE_APP: ${{ secrets.RELEASE_APP_ID != '' && secrets.RELEASE_APP_PRIVATE_KEY != '' }}
+    steps:
+      - name: Without the App
+        if: env.HAVE_APP != 'true'
+        run: echo "::notice::No release GitHub App (RELEASE_APP_ID, RELEASE_APP_PRIVATE_KEY), so no dispatch to the SDKs. Their nightly docuconf-go-bump workflow will pick up $GITHUB_SHA."
+
+      - name: Release App token
+        id: app
+        if: env.HAVE_APP == 'true'
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: Docuconf
+
+      - name: Dispatch docuconf-go-updated to every SDK
+        if: env.HAVE_APP == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          failed=""
+          for repo in $SDK_REPOS; do
+            if gh api --method POST "repos/Docuconf/$repo/dispatches" \
+                -f event_type=docuconf-go-updated -f "client_payload[sha]=$GITHUB_SHA" >/dev/null; then
+              echo "Docuconf/$repo: dispatched $GITHUB_SHA"
+            else
+              echo "::error::Docuconf/$repo: dispatch failed (is the App installed there, with Contents read and write?)"
+              failed="$failed $repo"
+            fi
+          done
+          [ -z "$failed" ]

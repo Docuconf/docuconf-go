@@ -1,0 +1,233 @@
+name: downstream
+
+# Pre-merge gate: a change to the spec, the conformance suite, the CLI or the Go library runs every SDK's
+# conformance suite (scripts/conformance.sh in each SDK repository, at its main branch) against this checkout.
+#
+# Each SDK's scripts/conformance.sh installs the SDK's own dependencies and runs only the shared conformance
+# suite and the tests that cue vet exported contracts. It reads DOCUCONF_GO_DIR, the path of this checkout.
+#
+# An SDK whose main branch has no scripts/conformance.sh yet is skipped with a warning. Once every SDK has
+# the script, set REQUIRE_SCRIPT to "1" so that a missing script fails the job.
+#
+# Private SDK repositories need the release GitHub App (secrets RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY):
+# GITHUB_TOKEN can only check out this repository and public ones.
+
+on:
+  pull_request:
+    paths:
+      - "spec/**"
+      - "conformance/**"
+      - "cmd/docuconf/**"
+      - "*.go"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/downstream.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: downstream-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # "0": an SDK without scripts/conformance.sh on main is skipped with a warning. "1": it fails.
+  REQUIRE_SCRIPT: "0"
+  CUE_VERSION: v0.17.1
+
+jobs:
+  sdk:
+    name: ${{ matrix.repo }}
+    runs-on: ubuntu-latest
+    # Only Swift runs in its toolchain image; an empty container runs the job on the runner.
+    container: ${{ matrix.container }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      # The toolchain of each SDK, as its own .github/workflows/ci.yml sets it up (one version of each).
+      matrix:
+        include:
+          - repo: docuconf-js
+            node: "22"
+          - repo: docuconf-dotnet
+            dotnet: |
+              8.0.x
+              10.0.x
+          - repo: docuconf-python
+            python: "3.12"
+          - repo: docuconf-ruby
+            ruby: "3.3"
+          - repo: docuconf-java
+            java: "21"
+          - repo: docuconf-kotlin
+            java: "17"
+          - repo: docuconf-rust
+            rust: "1.89"
+          - repo: docuconf-swift
+            container: swift:6.2-noble
+          - repo: docuconf-elixir
+            otp: "27"
+            elixir: "1.18"
+          - repo: docuconf-gleam
+            otp: "27"
+            gleam: "1.18.1"
+            node: "22"
+          - repo: docuconf-cpp
+            apt: >-
+              ninja-build clang libcli11-dev nlohmann-json3-dev libre2-dev libssl-dev libyaml-cpp-dev
+              libtomlplusplus-dev libgtest-dev
+          - repo: docuconf-php
+            php: "8.3"
+          - repo: docuconf-cobol
+            go: "1.25"
+            apt: gnucobol3
+    env:
+      HAVE_APP: ${{ secrets.RELEASE_APP_ID != '' && secrets.RELEASE_APP_PRIVATE_KEY != '' }}
+      REPO: ${{ matrix.repo }}
+    steps:
+      - name: Release App token
+        id: app
+        if: env.HAVE_APP == 'true'
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: Docuconf
+          repositories: ${{ matrix.repo }}
+
+      - name: Without the App, the SDK repository must be public
+        if: env.HAVE_APP != 'true'
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          if ! git -c credential.helper= ls-remote --exit-code "https://github.com/Docuconf/$REPO" HEAD >/dev/null; then
+            echo "::error::Cannot read Docuconf/$REPO without credentials: it is private (or missing). GITHUB_TOKEN can only read public repositories; set the RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY secrets to the release GitHub App, installed on Docuconf/$REPO."
+            exit 1
+          fi
+
+      # Named after the repository: SwiftPM takes a package's identity from its directory.
+      - name: Check out Docuconf/${{ matrix.repo }} at main
+        uses: actions/checkout@v4
+        with:
+          repository: Docuconf/${{ matrix.repo }}
+          ref: main
+          path: ${{ matrix.repo }}
+          token: ${{ steps.app.outputs.token || github.token }}
+          persist-credentials: false
+
+      - name: Check out this change
+        uses: actions/checkout@v4
+        with:
+          path: docuconf-go
+          persist-credentials: false
+
+      - name: Does the SDK have scripts/conformance.sh?
+        id: script
+        run: |
+          if [ -f "$REPO/scripts/conformance.sh" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ "$REQUIRE_SCRIPT" = 1 ]; then
+            echo "::error::Docuconf/$REPO has no scripts/conformance.sh on main."
+            exit 1
+          else
+            echo "::warning::Docuconf/$REPO has no scripts/conformance.sh on main yet; skipped. Set REQUIRE_SCRIPT to \"1\" in .github/workflows/downstream.yml once every SDK has it."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Toolchains. Each step runs only for the SDKs whose matrix entry names its version.
+      - if: steps.script.outputs.run == 'true' && matrix.apt
+        name: System packages
+        env:
+          APT: ${{ matrix.apt }}
+        run: |
+          sudo apt-get update -qq
+          # shellcheck disable=SC2086 # a list of packages
+          sudo apt-get install -y -qq $APT
+
+      - if: steps.script.outputs.run == 'true' && matrix.node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - if: steps.script.outputs.run == 'true' && matrix.dotnet
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
+
+      - if: steps.script.outputs.run == 'true' && matrix.python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - if: steps.script.outputs.run == 'true' && matrix.ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+
+      - if: steps.script.outputs.run == 'true' && matrix.java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - if: steps.script.outputs.run == 'true' && matrix.rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - if: steps.script.outputs.run == 'true' && matrix.otp
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+          gleam-version: ${{ matrix.gleam }}
+          rebar3-version: ${{ matrix.gleam && '3' || '' }}
+
+      - if: steps.script.outputs.run == 'true' && matrix.php
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, openssl, json
+          coverage: none
+          tools: composer:v2
+
+      # Go for cue (and, for COBOL, to build against this checkout).
+      - if: steps.script.outputs.run == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go || 'stable' }}
+          cache: false
+
+      - if: steps.script.outputs.run == 'true'
+        name: Install cue
+        run: |
+          go install "cuelang.org/go/cmd/cue@$CUE_VERSION"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # In a container the workspace belongs to another user, which git refuses without this.
+      - if: steps.script.outputs.run == 'true' && matrix.container
+        name: Trust the workspace (container)
+        run: git config --global --add safe.directory '*'
+
+      - if: steps.script.outputs.run == 'true'
+        name: scripts/conformance.sh
+        run: |
+          cd "$GITHUB_WORKSPACE/$REPO"
+          export DOCUCONF_GO_DIR="$GITHUB_WORKSPACE/docuconf-go"
+          git -C "$DOCUCONF_GO_DIR" log -1 --format='docuconf-go: %H %s'
+          git log -1 --format="$REPO: %H %s"
+          ./scripts/conformance.sh
+
+  # One status to require in branch protection.
+  downstream:
+    if: always()
+    needs: sdk
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULT: ${{ needs.sdk.result }}
+        run: |
+          echo "SDK jobs: $RESULT"
+          [ "$RESULT" = success ]
