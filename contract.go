@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"math/big"
 	"path/filepath"
@@ -770,4 +771,100 @@ func (v *varDecl) typedDefault(def any) (any, string) {
 		return nil, strings.Join(msgs, "; ")
 	}
 	return val, ""
+}
+
+// ContractCUE writes a contract document, given as JSON, as a contract.cue
+// in the form Export writes: the generated-code header, a package clause
+// (pkg, or the service name with dashes replaced by underscores), the
+// meta-schema import and contract.#Contract & {...}, with variables and
+// file inputs sorted by name and their fields in the order of SPEC §4.
+// It is for SDKs and generators that build the contract themselves, in a
+// language Export cannot reflect on.
+//
+// The contract is first checked as LoadContract checks it, and a
+// *DeclarationError lists every problem; so, as there, overlays and
+// profiles are not supported.
+func ContractCUE(contractJSON []byte, pkg string) ([]byte, error) {
+	if _, _, err := declareContract(contractJSON); err != nil {
+		return nil, err
+	}
+	doc, _ := decodeJSON(contractJSON) // declareContract decoded it already
+	root := doc.(map[string]any)
+	name, _ := nested(root, "metadata")["name"].(string)
+	if !dnsLabelRe.MatchString(name) {
+		return nil, &DeclarationError{Problems: []string{fmt.Sprintf("metadata.name %q must be a DNS label ([a-z0-9-], at most 63 characters)", name)}}
+	}
+	out := ordered(root, []string{"apiVersion", "kind", "metadata", "vars", "files"}, func(k string, v any) any {
+		switch k {
+		case "metadata":
+			return ordered(v, []string{"name", "appVersion", "generator"}, func(k string, v any) any {
+				if k == "generator" {
+					return ordered(v, []string{"language", "sdk", "version"}, nil)
+				}
+				return fromJSON(v)
+			})
+		case "vars":
+			return ordered(v, nil, input(varFieldOrder))
+		case "files":
+			return ordered(v, nil, input(fileFieldOrder))
+		}
+		return fromJSON(v)
+	})
+	return contractSource(out.(obj), name, pkg), nil
+}
+
+// The order Export writes a variable's and a file input's fields in.
+var (
+	varFieldOrder = []string{"type", "description", "required", "secret", "default", "group", "examples", "deprecated", "configKey",
+		"minLength", "maxLength", "pattern", "min", "max", "encoding", "schemes", "values", "items", "separator",
+		"minItems", "maxItems", "itemMin", "itemMax", "schema"}
+	fileFieldOrder = []string{"type", "format", "description", "required", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated",
+		"schema", "dnsNames", "keyAlgorithms", "minRemaining", "requireCA", "minCertificates", "passwordVar", "pattern", "minLength", "maxLength"}
+)
+
+func nested(m map[string]any, k string) map[string]any {
+	x, _ := m[k].(map[string]any)
+	return x
+}
+
+// ordered converts a decoded JSON object to obj, with the keys in order
+// first and any others after them, sorted. sub converts each value; by
+// default it is fromJSON.
+func ordered(v any, order []string, sub func(k string, v any) any) any {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return fromJSON(v)
+	}
+	if sub == nil {
+		sub = func(_ string, v any) any { return fromJSON(v) }
+	}
+	var keys, rest []string
+	for _, k := range order {
+		if _, ok := m[k]; ok {
+			keys = append(keys, k)
+		}
+	}
+	for k := range m {
+		if !slices.Contains(order, k) {
+			rest = append(rest, k)
+		}
+	}
+	slices.Sort(rest)
+	o := obj{}
+	for _, k := range append(keys, rest...) {
+		o = o.add(k, sub(k, m[k]))
+	}
+	return o
+}
+
+// input orders a variable's or file input's fields. Its name is left
+// out: the meta-schema derives it from the key.
+func input(order []string) func(string, any) any {
+	return func(_ string, v any) any {
+		if m, ok := v.(map[string]any); ok {
+			v = maps.Clone(m)
+			delete(v.(map[string]any), "name")
+		}
+		return ordered(v, order, nil)
+	}
 }

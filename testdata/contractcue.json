@@ -1,0 +1,17 @@
+{
+  "kind": "ConfigContract",
+  "apiVersion": "docuconf.dev/v1alpha1",
+  "metadata": {"generator": {"version": "0.1.0", "sdk": "docuconf-cobol", "language": "cobol"}, "name": "orders-batch"},
+  "vars": {
+    "PORT": {"max": 65535, "default": 8080, "min": 1, "description": "Metrics port", "type": "int", "name": "PORT"},
+    "DATABASE_URL": {"secret": true, "schemes": ["postgres"], "required": true, "type": "url", "description": "Orders database"},
+    "ALLOWED_ORIGINS": {"type": "list", "items": "string", "encoding": "indexed", "minItems": 1, "maxItems": 4, "default": ["http://localhost:3000"], "description": "Allowed origins"},
+    "REQUEST_TIMEOUT": {"type": "duration", "encoding": "seconds", "min": "1s", "max": "5m", "default": "30s", "description": "Request timeout"},
+    "LOG_LEVEL": {"type": "enum", "values": ["debug", "info"], "default": "info", "description": "Log verbosity"},
+    "LIMITS": {"type": "json", "description": "Rate limits", "schema": {"type": "object", "properties": {"perMinute": {"type": "integer", "minimum": 1}}}}
+  },
+  "files": {
+    "orders": {"pathEnv": "ORDERS_FILE", "path": "/data/orders.txt", "type": "text", "description": "Orders to process", "required": true, "maxSize": 1048576},
+    "name": {"type": "binary", "description": "An input called name", "path": "/srv/blobs/name.bin"}
+  }
+}

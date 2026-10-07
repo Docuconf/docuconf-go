@@ -68,6 +68,8 @@ timeout := vals["REQUEST_TIMEOUT"].(time.Duration) // int is int64, list is []st
 
 File inputs are loaded too, with the same checks as the Go file types, and returned by input name as those types (`TLSKeyPair`, `CABundle`, `Keystore`, `TextFile`, `BinaryFile`, or `ConfigFile[any]` checked against the contract's schema). A contract with `overlays` or `profiles` is rejected, and so is a `toml` config file or a `jks` keystore, which the Go SDK cannot read.
 
+A generator for another language that builds the contract itself can format it with `docuconf.ContractCUE(contractJSON, pkg)`, which checks it as `LoadContract` does and writes the same `contract.cue` layout as `Export`: header, package, import, variables and files sorted by name. The COBOL SDK's `docuconf-cobol generate` uses it.
+
 ## Export and validate
 
 ```
