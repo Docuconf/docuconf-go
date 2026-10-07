@@ -373,6 +373,33 @@ type Config struct {
 	if code != 2 || !strings.Contains(errOut, "package main") {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
+
+	// Config under internal/, the usual Go layout, exports too: the
+	// generated program runs inside the module.
+	internal := filepath.Join(dir, "internal", "config")
+	if err := os.MkdirAll(internal, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(internal, "config.go"), []byte(files["config/config.go"]), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	internalOut := filepath.Join(dir, "internal.cue")
+	_, errOut, code = docuconf(t, "export", "-C", dir, "-pkg", "./internal/config", "-name", "app", "-app-version", "1.0.0", "-o", internalOut)
+	if code != 0 {
+		t.Fatalf("export of internal/config: exit %d: %s", code, errOut)
+	}
+	if read(t, internalOut) != got {
+		t.Errorf("internal/config exported differently:\n%s", read(t, internalOut))
+	}
+
+	// -check: 0 when up to date, 1 with a diff when stale.
+	if _, errOut, code := docuconf(t, "export", "-C", dir, "-pkg", "./config", "-name", "app", "-app-version", "1.0.0", "-check", out); code != 0 {
+		t.Fatalf("check: exit %d: %s", code, errOut)
+	}
+	_, errOut, code = docuconf(t, "export", "-C", dir, "-pkg", "./config", "-name", "app", "-app-version", "2.0.0", "-check", out)
+	if code != 1 || !strings.Contains(errOut, `+		appVersion: "2.0.0"`) {
+		t.Fatalf("check of a stale contract: exit %d: %s", code, errOut)
+	}
 }
 
 func TestListItemBounds(t *testing.T) {
