@@ -75,6 +75,13 @@
           },
           "constraints": [
             {
+              "rule": "length",
+              "params": {
+                "maxLength": 2048
+              },
+              "text": "at most 2048 characters (Unicode code points)"
+            },
+            {
               "rule": "schemes",
               "params": {
                 "schemes": [
@@ -97,6 +104,7 @@
           "errors": [
             "missing_required",
             "invalid_type",
+            "out_of_range",
             "invalid_scheme"
           ]
         },

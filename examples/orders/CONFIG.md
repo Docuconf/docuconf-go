@@ -51,11 +51,11 @@ Postgres connection string for the orders database
 | Type | `url` (URL) |
 | Required | yes |
 | Secret | yes: never write its value in code, docs or a values file |
-| Constraints | `postgres` URL |
+| Constraints | at most 2048 characters (Unicode code points); `postgres` URL |
 | Wire format | an absolute URL, `scheme://...`, as is |
 | In a values file | a `secretKeyRef` or `injected` reference, never the value |
 | Sources | `secretKeyRef`, `injected` |
-| Boot errors | `missing_required`, `invalid_type`, `invalid_scheme` |
+| Boot errors | `missing_required`, `invalid_type`, `out_of_range`, `invalid_scheme` |
 
 ### `LOG_LEVEL`
 
