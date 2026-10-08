@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/docuconf/docuconf-go"
 	"github.com/docuconf/docuconf-go/examples/orders/internal/config"
+	"github.com/docuconf/docuconf-go/examples/orders/internal/webhook"
 )
 
 func main() {
@@ -31,6 +33,20 @@ func main() {
 	mux.HandleFunc("GET /discounts", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(cfg.Discounts.Value().Codes)
+	})
+	// Payment webhooks, signed with any key in WEBHOOK_KEYS (see config.go
+	// for how to rotate it).
+	mux.HandleFunc("POST /webhooks/payments", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+		if err != nil {
+			http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		if !webhook.Verify(cfg.WebhookKeys, body, r.Header.Get("X-Signature")) {
+			http.Error(w, "bad signature", http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	srv := &http.Server{

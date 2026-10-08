@@ -1,0 +1,40 @@
+description: >
+  A dual-key secret (SPEC §6.1): a secret list of one or two keys, so a key
+  can be rotated with an overlap in which both are valid. The item length
+  limits catch an empty or truncated key at boot. Every value is a secret,
+  so no error output may contain it.
+vars:
+  WEBHOOK_KEYS:
+    type: list
+    description: Keys that verify webhook signatures
+    secret: true
+    items: string
+    minItems: 1
+    maxItems: 2
+    itemMinLength: 32
+    itemMaxLength: 256
+cases:
+  - name: one key
+    env: {WEBHOOK_KEYS: "old-webhook-key-0123456789abcdef0123"}
+    expect: {WEBHOOK_KEYS: ["old-webhook-key-0123456789abcdef0123"]}
+  - name: two keys during a rotation
+    env: {WEBHOOK_KEYS: "old-webhook-key-0123456789abcdef0123,new-webhook-key-0123456789abcdef0123"}
+    expect: {WEBHOOK_KEYS: ["old-webhook-key-0123456789abcdef0123", "new-webhook-key-0123456789abcdef0123"]}
+  - name: a key at exactly itemMaxLength
+    env: {WEBHOOK_KEYS: "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"}
+    expect: {WEBHOOK_KEYS: ["kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"]}
+  - name: an empty value is unset
+    env: {WEBHOOK_KEYS: ""}
+    expect: {WEBHOOK_KEYS: null}
+  - name: a trailing comma leaves an empty second key
+    env: {WEBHOOK_KEYS: "old-webhook-key-0123456789abcdef0123,"}
+    errors: [{var: WEBHOOK_KEYS, code: out_of_range}]
+  - name: a truncated key
+    env: {WEBHOOK_KEYS: "old-webhook-key-0123456789abcdef0123,new-webhook-key"}
+    errors: [{var: WEBHOOK_KEYS, code: out_of_range}]
+  - name: a key one character above itemMaxLength
+    env: {WEBHOOK_KEYS: "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"}
+    errors: [{var: WEBHOOK_KEYS, code: out_of_range}]
+  - name: a third key
+    env: {WEBHOOK_KEYS: "old-webhook-key-0123456789abcdef0123,new-webhook-key-0123456789abcdef0123,third-webhook-key-0123456789abcdef"}
+    errors: [{var: WEBHOOK_KEYS, code: too_many_items}]

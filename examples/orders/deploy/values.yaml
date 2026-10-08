@@ -4,3 +4,5 @@ ALLOWED_ORIGINS: [https://shop.example.com]
 WORKER_COUNT: 8
 DATABASE_URL: # a secret: always a reference, never a literal
   secretKeyRef: {name: orders-db, key: url}
+WEBHOOK_KEYS: # a key set: one Secret key holding "old,new" while rotating
+  secretKeyRef: {name: orders-webhooks, key: keys}

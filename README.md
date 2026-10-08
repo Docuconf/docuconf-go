@@ -73,12 +73,25 @@ type Config struct {
 	// database's connection limit divided by the number of replicas.
 	// Raise it when the order queue grows faster than it drains.
 	WorkerCount int `env:"WORKER_COUNT" envDefault:"4" min:"1" max:"64"`
+
+	// Keys that verify the signature on incoming payment webhooks.
+	//
+	// A webhook is accepted when it is signed with any key in the list, so
+	// the key can be rotated without turning webhooks away. To rotate:
+	//
+	//  1. add the new key as the second item, and roll out;
+	//  2. switch the sender to the new key;
+	//  3. remove the old key, and roll out.
+	//
+	// Each key is 32 to 256 characters, so an empty or truncated key fails
+	// at boot. Without this variable, the service rejects every webhook.
+	WebhookKeys []docuconf.Secret `env:"WEBHOOK_KEYS" secret:"true" minItems:"1" maxItems:"2" itemMinLength:"32" itemMaxLength:"256"`
 }
 ```
 
 Every input needs a description: the first paragraph of the field's doc comment, or a `desc` tag. Later paragraphs become the input's optional `details`, Markdown that says why the input exists and when to change it. Headings (`# Heading`), lists and indented code blocks in the comment carry over as Markdown. Details only go into generated docs; nothing reads them at runtime.
 
-`docuconf.Secret` is a string that prints `***` everywhere: `%v`, `%+v`, `slog` and JSON. A field of that type is secret in the contract. On a plain `string`, `secret:"true"` does the same for the contract but not for printing. A misspelled tag (`secrte`, `mni`) is an error, not a silently dropped rule.
+`docuconf.Secret` is a string that prints `***` everywhere: `%v`, `%+v`, `slog` and JSON. A field of that type is secret in the contract. On a plain `string`, `secret:"true"` does the same for the contract but not for printing. A list of secrets, such as the webhook key set above, is a `[]docuconf.Secret` with `secret:"true"`: the tag makes the list secret in the contract, and the item type keeps each key from printing. Accepting either of two keys is how a key is rotated without downtime ([spec section 6.1](spec/SPEC.md#61-rotation)). A misspelled tag (`secrte`, `mni`) is an error, not a silently dropped rule.
 
 ## 3. Run
 
@@ -191,6 +204,8 @@ ALLOWED_ORIGINS: [https://shop.example.com]
 WORKER_COUNT: 8
 DATABASE_URL: # a secret: always a reference, never a literal
   secretKeyRef: {name: orders-db, key: url}
+WEBHOOK_KEYS: # a key set: one Secret key holding "old,new" while rotating
+  secretKeyRef: {name: orders-webhooks, key: keys}
 ```
 
 and, when the app has [file inputs](#file-inputs), a files file:

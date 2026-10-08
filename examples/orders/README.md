@@ -22,6 +22,7 @@ shows the three things the Go SDK gives an app:
 | `ALLOWED_ORIGINS` | list of strings, comma-separated | at least 1 item; default `http://localhost:3000` |
 | `REQUEST_TIMEOUT` | duration | `1s`–`5m`, default `30s` |
 | `WORKER_COUNT` | int | 1–64, default `4` |
+| `WEBHOOK_KEYS` | list of strings, comma-separated | secret, optional; 1–2 keys of 32–256 characters each |
 
 | File input | Type | Rules |
 |---|---|---|
@@ -39,10 +40,10 @@ $ DATABASE_URL=postgres://orders:pw@localhost:5432/orders go run .
 $ curl localhost:8080/healthz
 ok
 $ curl localhost:8080/config
-{"ALLOWED_ORIGINS":["http://localhost:3000"],"DATABASE_URL":"***","LOG_LEVEL":"info","PORT":8080,"REQUEST_TIMEOUT":"30s","WORKER_COUNT":4}
+{"ALLOWED_ORIGINS":["http://localhost:3000"],"DATABASE_URL":"***","LOG_LEVEL":"info","PORT":8080,"REQUEST_TIMEOUT":"30s","WEBHOOK_KEYS":"***","WORKER_COUNT":4}
 ```
 
-`/config` shows the typed values from `docuconf.Redacted`; the secret is always `***`.
+`/config` shows the typed values from `docuconf.Redacted`; secrets are always `***`, set or not.
 
 ## When the configuration is wrong
 
@@ -74,7 +75,36 @@ $ curl -k https://localhost:8080/discounts
 {"WELCOME10":10}
 ```
 
-[`smoke.sh`](smoke.sh) checks all three runs; CI runs it on every push.
+[`smoke.sh`](smoke.sh) checks all three runs, and the webhook key set below; CI runs it on every push.
+
+## Rotate a key
+
+`WEBHOOK_KEYS` is a key set: `POST /webhooks/payments` accepts a body
+whose `X-Signature` header is the hex HMAC-SHA256 of the body under any
+key in the list ([`internal/webhook`](internal/webhook/webhook.go)). A
+variable is read once, at start, so a new key reaches the service only
+when the pods restart; with two keys valid at once, no webhook is turned
+away while that happens:
+
+1. Add the new key as the second item (`old,new` in the Secret), and roll out.
+2. Switch the sender to the new key.
+3. Remove the old key (`new`), and roll out.
+
+The contract allows 1 or 2 keys of 32 to 256 characters each, so a
+trailing comma or a truncated key stops the service at boot instead of
+locking out the sender:
+
+```console
+$ DATABASE_URL=postgres://orders:pw@localhost:5432/orders \
+    WEBHOOK_KEYS=old-webhook-key-0123456789abcdef0123, go run .
+docuconf: 1 configuration problem:
+  WEBHOOK_KEYS: item 1: value is 0 characters, below itemMinLength 32 (out_of_range)
+exit status 1
+```
+
+[`webhook_test.go`](internal/webhook/webhook_test.go) walks through a
+rotation, and [`smoke.sh`](smoke.sh) posts webhooks signed with both
+keys. [SPEC section 6.1](../../spec/SPEC.md#61-rotation) covers rotation in general.
 
 ## Export the contract
 
@@ -109,7 +139,7 @@ $ docuconf docs contract.cue --check CONFIG.md
 
 `WORKER_COUNT` shows where the text comes from: the first paragraph of
 its doc comment is the description, and the second paragraph its
-details.
+details. `WEBHOOK_KEYS`'s details carry its rotation steps as a list.
 
 ## Deploy
 

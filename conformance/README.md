@@ -121,6 +121,7 @@ Report each failing case by `id`, so a failure points at its YAML source.
 ## Scope
 
 v1 covers variables: every type, encoding and constraint, required and
-optional values, empty values, secrets and unresolved injector references,
+optional values, empty values, secrets (including a dual-key secret list,
+`key_set.yaml`) and unresolved injector references,
 and aggregate error reporting. File inputs, profiles and config-file
 overlays are tested inside each SDK for now.
