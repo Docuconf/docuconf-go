@@ -18,7 +18,7 @@ shows the three things the Go SDK gives an app:
 |---|---|---|
 | `PORT` | int | 1–65535, default `8080` |
 | `LOG_LEVEL` | enum | `debug`, `info`, `warn`, `error`; default `info` |
-| `DATABASE_URL` | url | secret, required, scheme `postgres` |
+| `DATABASE_URL` | url | secret, required, scheme `postgres`, at most 2048 characters |
 | `ALLOWED_ORIGINS` | list of strings, comma-separated | at least 1 item; default `http://localhost:3000` |
 | `REQUEST_TIMEOUT` | duration | `1s`–`5m`, default `30s` |
 | `WORKER_COUNT` | int | 1–64, default `4` |

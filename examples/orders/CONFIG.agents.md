@@ -46,11 +46,12 @@ Origins allowed to call the API from a browser
 - type: `url` (URL)
 - required: yes
 - secret: yes
+- constraint: at most 2048 characters (Unicode code points)
 - constraint: `postgres` URL
 - wire format: an absolute URL, `scheme://...`, as is
 - in a values file: a `secretKeyRef` or `injected` reference, never the value
 - allowed sources: `secretKeyRef`, `injected`
-- boot errors: `missing_required`, `invalid_type`, `invalid_scheme`
+- boot errors: `missing_required`, `invalid_type`, `out_of_range`, `invalid_scheme`
 
 Postgres connection string for the orders database
 

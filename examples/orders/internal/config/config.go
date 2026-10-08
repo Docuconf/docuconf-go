@@ -20,7 +20,7 @@ type Config struct {
 	LogLevel string `env:"LOG_LEVEL" envDefault:"info" values:"debug,info,warn,error"`
 
 	// Postgres connection string for the orders database.
-	DatabaseURL docuconf.Secret `env:"DATABASE_URL,required" schemes:"postgres"`
+	DatabaseURL docuconf.Secret `env:"DATABASE_URL,required" schemes:"postgres" maxLength:"2048"`
 
 	// Origins allowed to call the API from a browser.
 	AllowedOrigins []string `env:"ALLOWED_ORIGINS" envDefault:"http://localhost:3000" minItems:"1"`
