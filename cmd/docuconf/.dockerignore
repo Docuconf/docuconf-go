@@ -1,0 +1,5 @@
+# The image only needs the CLI's sources.
+testdata
+**/*_test.go
+Dockerfile
+.dockerignore

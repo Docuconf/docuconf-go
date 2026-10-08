@@ -22,7 +22,7 @@ Helm-based platform the same guarantees as the CUE/Crossplane path:
    dependencies:
      - name: docuconf
        version: 0.1.0
-       repository: file://path/to/helm/docuconf   # not yet published to a chart registry
+       repository: oci://ghcr.io/docuconf/charts   # or file://path/to/helm/docuconf
    ```
 
 2. Generate the chart's contract and values schema from the app's
