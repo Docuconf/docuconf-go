@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -108,6 +109,17 @@ func TestExportInternalPackage(t *testing.T) {
 	if _, errOut, code := export(t, "-C", dir, "-pkg", "./internal/config", "-check", out); code != 0 {
 		t.Fatalf("check of a fresh contract: exit %d: %s", code, errOut)
 	}
+	// ...ignores metadata.generator.version, which releases bump...
+	bumped := strings.Replace(got, `version:  "`+docuconfVersion(t, got)+`"`, `version:  "99.0.0"`, 1)
+	if bumped == got {
+		t.Fatalf("test setup: no generator version in\n%s", got)
+	}
+	if err := os.WriteFile(out, []byte(bumped), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, errOut, code := export(t, "-C", dir, "-pkg", "./internal/config", "-check", out); code != 0 {
+		t.Fatalf("check of a contract from another SDK version: exit %d: %s", code, errOut)
+	}
 	// ...and fails with a diff on a stale one.
 	stale := strings.Replace(got, `max:         65535`, `max:         80`, 1)
 	if stale == got {
@@ -176,4 +188,14 @@ func TestNameFromModule(t *testing.T) {
 			t.Errorf("nameFromModule(%q) = %q, want %q", mod, got, want)
 		}
 	}
+}
+
+// docuconfVersion returns metadata.generator.version of an exported contract.
+func docuconfVersion(t *testing.T, contract string) string {
+	t.Helper()
+	m := regexp.MustCompile(`generator: \{[^{}]*?version:\s*"([^"]*)"`).FindStringSubmatch(contract)
+	if m == nil {
+		t.Fatalf("no generator version in\n%s", contract)
+	}
+	return m[1]
 }

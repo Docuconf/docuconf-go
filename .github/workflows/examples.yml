@@ -28,12 +28,15 @@ jobs:
           go vet ./...
           go test ./...
       # contract.cue is generated; it must match what the exporter writes
-      # today. These are the README's commands.
+      # today, except metadata.generator.version, which release PRs bump.
+      # These are the README's commands.
       - name: Contract is up to date
         working-directory: examples/orders
         run: |
           go tool docuconf-export -pkg ./internal/config -name orders-api -package orders -o contract.cue
-          git diff --exit-code -- contract.cue
+          ../../scripts/check-generated.sh contract.cue
+          # Keep the committed contract (and its version) for the docs below.
+          git checkout -- contract.cue
           go tool docuconf-export -pkg ./internal/config -name orders-api -package orders -check contract.cue
       - name: Contract passes the meta-schema
         run: |

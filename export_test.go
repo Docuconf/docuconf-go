@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -17,6 +18,15 @@ var update = flag.Bool("update", false, "rewrite golden files")
 
 const golden = "testdata/gateway.golden.cue"
 
+// generatorVersion matches the value of metadata.generator.version. It is
+// docuconf.Version, which every release PR bumps, so golden comparisons
+// ignore it.
+var generatorVersion = regexp.MustCompile(`(generator:\s*\{[^{}]*?\bversion:\s*)"[^"]*"`)
+
+func withoutGeneratorVersion(cue []byte) string {
+	return generatorVersion.ReplaceAllString(string(cue), `${1}"<generator-version>"`)
+}
+
 func TestExportGolden(t *testing.T) {
 	out, err := docuconf.Export[Gateway](docuconf.Meta{Name: "gateway"})
 	require.NoError(t, err)
@@ -25,11 +35,22 @@ func TestExportGolden(t *testing.T) {
 	}
 	want, err := os.ReadFile(golden)
 	require.NoError(t, err)
-	require.Equal(t, string(want), string(out), "run go test -run TestExportGolden -update to accept")
+	require.Equal(t, withoutGeneratorVersion(want), withoutGeneratorVersion(out), "run go test -run TestExportGolden -update to accept")
 
 	again, err := docuconf.Export[Gateway](docuconf.Meta{Name: "gateway"})
 	require.NoError(t, err)
 	require.Equal(t, string(out), string(again), "export must be deterministic")
+}
+
+func TestGoldenComparisonIgnoresOnlyTheGeneratorVersion(t *testing.T) {
+	out, err := docuconf.Export[Gateway](docuconf.Meta{Name: "gateway"})
+	require.NoError(t, err)
+	bumped := strings.Replace(string(out), `"`+docuconf.Version+`"`, `"99.0.0"`, 1)
+	require.NotEqual(t, string(out), bumped)
+	require.Equal(t, withoutGeneratorVersion(out), withoutGeneratorVersion([]byte(bumped)))
+	renamed := strings.Replace(string(out), `sdk:      "docuconf-go"`, `sdk:      "other"`, 1)
+	require.NotEqual(t, string(out), renamed)
+	require.NotEqual(t, withoutGeneratorVersion(out), withoutGeneratorVersion([]byte(renamed)))
 }
 
 // TestExportCueVet checks the exported contract against the meta-schema
