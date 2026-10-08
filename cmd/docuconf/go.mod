@@ -8,7 +8,7 @@ go 1.25.0
 // "go get github.com/docuconf/docuconf-go@<commit>".
 require (
 	cuelang.org/go v0.17.1
-	github.com/docuconf/docuconf-go v0.0.0-20261007224927-ce11ce72ddb3
+	github.com/docuconf/docuconf-go v0.0.0-20261008000332-8ac56075a32f
 )
 
 require (
