@@ -2,6 +2,8 @@
 
 The Go SDK for [docuconf](https://docuconf.dev): typed configuration contracts between an app and the Kubernetes platform that runs it. Your config struct stays a normal [caarlos0/env](https://github.com/caarlos0/env) struct. docuconf adds descriptions, secrets, constraints and file inputs, checks everything at boot, and exports a CUE contract the platform validates before it deploys.
 
+Documentation: [docuconf.dev](https://docuconf.dev) · [Go guide](https://docuconf.dev/languages/go/)
+
 The CLI is also released as binaries for Linux, macOS and Windows (with `SHA256SUMS`) on the
 [GitHub Releases](https://github.com/docuconf/docuconf-go/releases) page, and as a multi-arch image,
 `ghcr.io/docuconf/docuconf`, holding a single static binary at `/docuconf`. To add it to your own image:
