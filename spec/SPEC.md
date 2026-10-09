@@ -627,8 +627,35 @@ Raw CUE errors for a failed disjunction are noisy, for example "8 errors in empt
 A contract describes a specific build of an application. It MUST travel with the image it was exported from, so the platform can never validate image B against contract A.
 
 - **Preferred:** push the contract as an OCI artifact that references the image's digest, using the OCI 1.1 referrers API. Artifact type: `application/vnd.docuconf.contract.v1alpha1+cue`. It can be signed with cosign like the image.
-- **Fallback:** an image label `dev.docuconf.contract` holding the contract, base64-encoded, for registries without referrers support. This only works for small contracts, because of label size limits.
+- **Fallback:** an image label `dev.docuconf.contract` holding the contract, base64-encoded. This only works for small contracts, because of label size limits, and is only needed where a registry cannot store the artifact at all: registries without the referrers API still hold it under the referrers tag schema (below).
 - **Local and GitOps:** commit `contract.cue` beside the claim. This is fine for getting started but invites version skew.
+
+### 8.1 The artifact
+
+| Field | Value |
+|---|---|
+| Manifest | An OCI image manifest (`application/vnd.oci.image.manifest.v1+json`), as OCI 1.1 packs artifacts. |
+| `artifactType` | `application/vnd.docuconf.contract.v1alpha1+cue`. The version follows the contract's `apiVersion`, so the format freeze changes it to `v1beta1`. |
+| `config` | The empty descriptor (`application/vnd.oci.empty.v1+json`). |
+| `layers` | One layer with the same media type as `artifactType`, holding `contract.cue` exactly as the SDK exported it, with the annotation `org.opencontainers.image.title: contract.cue`. |
+| `subject` | The image's manifest or index, by digest. |
+| Annotations | `org.opencontainers.image.created` (RFC 3339) and `dev.docuconf.contract.name` (`metadata.name`). |
+
+On a registry with the referrers API, the registry indexes the artifact by its `subject`. On one without it, the client keeps the index itself under the **referrers tag schema** of the OCI distribution spec: an image index tagged `sha256-<hex of the image digest>` that lists every artifact referring to the image. Clients that read referrers (oras, cosign, `docuconf pull`) try the API and fall back to the tag.
+
+### 8.2 `docuconf push` and `docuconf pull`
+
+```
+docuconf push --image registry/repo@sha256:<digest> [--plain-http] contract.cue
+docuconf pull --image registry/repo@sha256:<digest> | registry/repo:<tag> [-o contract.cue] [--plain-http]
+```
+
+- `push` validates the contract, then pushes the artifact above with the image as its subject, using the referrers API or the referrers tag schema. The image MUST be given by digest, so the contract is tied to one build; a tag is refused. Pushing a contract that is already there (the same `contract.cue` bytes for the same image) pushes nothing and reports the existing artifact.
+- `push` prints the artifact's reference, `registry/repo@sha256:<artifact digest>`, on standard output, and nothing else, so CI can sign it: `cosign sign $(docuconf push --image ... contract.cue)`. The CLI does not sign; verify with `cosign verify` on the same reference, or with cosign's policy for referrers of the image.
+- `pull` resolves a tag to a digest first, then lists the image's referrers of the contract artifact type. When several contracts refer to one image, the newest by `org.opencontainers.image.created` wins, and `pull` says so on standard error. When none does, it reads the `dev.docuconf.contract` label of the image's config (an image manifest only, since each platform of an index has its own config). The contract is checked against the meta-schema before it is written to `-o` or standard output.
+- `pull` exits 1 when the image has no contract, and 2 on any other error (an unknown image, a registry or credentials error, an invalid contract).
+- Both read credentials as `docker login` and oras do: from `$DOCKER_CONFIG/config.json`, or `~/.docker/config.json`, and the credential helpers it names. `--plain-http` talks to a registry over HTTP, for a local test registry.
+- A platform that validates by image digest runs `docuconf pull --image <image@digest> -o contract.cue`, then `docuconf vet -contract contract.cue ...`, so it can never validate image B against contract A.
 
 ## 9. Compatibility
 
