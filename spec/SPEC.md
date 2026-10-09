@@ -27,7 +27,7 @@ One contract format, one validation model, one SDK per language.
 ### 1.2 Non-goals
 
 - **Feature flags.** See [section 10](#10-feature-flags-are-not-environment-configuration).
-- Secret storage or rotation. docuconf validates that a secret is *referenced*; External Secrets, Vault or the CSI driver supply it.
+- Secret storage and issuance. docuconf validates that a secret is *referenced*; External Secrets, Vault or the CSI driver store it, and generate, lease or revoke it. How a rotated value reaches the app, and how the contract declares the keys of a rotation that must overlap, is covered (section 6.1); performing the rotation is not.
 - Provisioning the things an app depends on (databases, queues, DNS, buckets). That is the job of Crossplane composite resources or a workload spec such as [Score](https://score.dev). docuconf types how their outputs reach the app: a connection string Secret, a CA bundle, a credentials file.
 - Command-line arguments. Twelve-factor apps take configuration from the environment and files; arguments may be added later.
 - Replacing a language's config ecosystem. Each SDK extends that language's leading environment library rather than competing with it (section 11.1).
@@ -405,6 +405,8 @@ A source that changes after deploy (a renewed certificate, an updated ConfigMap)
 
 Inline content is content-hashed, so it always rolls the pods when it changes.
 
+Section 6.1 covers rotation for every kind of input, including variables, injected values and dynamic secrets.
+
 ### 4.7 Config-file overlays
 
 Hosts that layer configuration files under environment variables (.NET, Spring Boot, Rails, figment, Hoplite) commonly take one more file from the platform, mounted between the files baked into the image and the environment:
@@ -518,6 +520,68 @@ DATABASE_URL: secretKeyRef: {name: "billing-db", key: "url"}
 A secret variable MAY instead be `injected` (section 4.5.1), with or without a reference.
 
 A secret file input (`secret: true`, and always `tls` and `keystore`) MUST come from a `secret`, `certificate`, `csi` or `injected` source, never `inline` or a ConfigMap. Neither a contract nor a values document ever contains private keys or passwords.
+
+### 6.1 Rotation
+
+A source's value can change while the app runs: a rotated API key or database password, a renewed certificate, an edited ConfigMap. Whether and when the app sees the new value depends on how the input reaches it.
+
+**Environment variables are read once.** A process's environment is fixed when it starts. A variable from a `secretKeyRef` or `configMapKeyRef` keeps its old value in a running pod after the Secret or ConfigMap changes, and so does an `injected` one: the injector (Bank-Vaults' `vault-env`, `op run`) resolved it when the container started. A new value reaches the app on the next restart or redeploy, and starting one is the platform's job: a reloader controller, a checksum of the source on the pod template, the injector's own rollout, or a plain `kubectl rollout restart`. `#Render` lists no variable source in `restartTriggers`, and the contract has nothing to declare: every variable is restart-only.
+
+**Files** say how they take a change with `reload` (section 4.6.2): `watch` when the app rereads the file itself, `restart` when it reads it once and the source is a restart trigger.
+
+**Dynamic secrets** have a lease: Vault database credentials, cloud tokens with an expiry. A lease can end long before the pod next restarts, so they should not be environment variables. Deliver them one of two ways:
+
+- as a **file** that an agent keeps current (the Vault Agent injector, or the Secrets Store CSI driver with rotation enabled), declared `reload: watch`, so the app rereads it when the agent writes new credentials; or
+- **fetched by the app itself**, from Vault or the cloud provider's API. The contract then declares what the app needs to fetch them, such as the Vault address and role (`VAULT_ADDR`, `VAULT_ROLE`), not the credential.
+
+**Dual-lifecycle keys.** Some keys must be rotated without a moment when the old one is already gone and the new one not yet in use: webhook signing keys, service-to-service API keys, token signing keys. During the overlap two keys are valid. The two sides of such a key differ:
+
+- A **verifier** (the side that checks a signature or an incoming key) accepts any key in a set. It declares the set as a secret `list` of strings in `csv` encoding, with `minItems: 1` and `maxItems: 2`, and item length limits, so an empty key (a trailing comma) or a truncated one fails at boot (`out_of_range`) instead of locking callers out:
+
+  ```cue
+  WEBHOOK_KEYS: {
+  	type:          "list"
+  	description:   "Keys that verify the signature on incoming webhooks"
+  	secret:        true
+  	items:         "string"
+  	encoding:      "csv"
+  	minItems:      1
+  	maxItems:      2
+  	itemMinLength: 32
+  	itemMaxLength: 256
+  }
+  ```
+
+  The platform supplies it like any secret, as one Secret key holding `old,new` during the overlap. A rotation takes three steps:
+
+  1. add the new key as the second item, and roll out;
+  2. switch the callers (or the signer) to the new key;
+  3. remove the old key, and roll out.
+
+  A host whose secret type cannot be a list may declare two variables instead, a required key and an optional previous one, with the same length limits, and accept either:
+
+  ```cue
+  API_KEY: {
+  	type:        "string"
+  	description: "Key that callers present"
+  	secret:      true
+  	required:    true
+  	minLength:   32
+  	maxLength:   256
+  }
+  API_KEY_PREVIOUS: {
+  	type:        "string"
+  	description: "The key API_KEY replaced, accepted until every caller has switched"
+  	secret:      true
+  	minLength:   32
+  	maxLength:   256
+  }
+  ```
+
+  Rotation is the same three steps: set `API_KEY_PREVIOUS` to the old key and `API_KEY` to the new one, roll out; switch the callers; unset `API_KEY_PREVIOUS`, roll out.
+- A **caller** (the side that presents or signs with a key) uses one key at a time. It declares a single secret, and rotates in step 2 above by updating its Secret, which reaches it on its next restart or redeploy like any other variable.
+
+The SDK enforces the list's constraints at boot like any other list's (section 11.2, item 5); the conformance suite covers a key set in `conformance/load/key_set.yaml`. Accepting any key in the set is the app's own code: docuconf delivers the keys and checks their shape, never the keys themselves.
 
 ## 7. Platform validation
 
@@ -688,6 +752,7 @@ The suite covers variables in v1. File inputs, profiles and overlays are tested 
 9. Pod annotations for injectors live only in the platform's documents (section 4.5.2), because the injector is a fact about the cluster. Should SDKs additionally let an app author declare a *default* injector hint in the contract (for example "this file is usually written by the Vault Agent injector from `database/creds/<app>`"), which a platform could adopt or ignore? It would save each platform team from rediscovering the annotations, but it would put a cluster detail into the image's contract and invite drift between clusters.
 10. Should `description` and `details` be translatable (a map by language tag), so generated docs can be published in more than one language?
 11. Should the docs model turn a `json` variable's or config file's JSON Schema into a field table (name, type, required, description), rather than carry the schema for each renderer to show?
+12. Should a key set (section 6.1) be a first-class type, such as `type: "keySet"` with `maxKeys`, rather than a secret `list` with conventional constraints? A dedicated type could let SDKs return a verifier helper and docs explain the rotation steps, and could let a platform check that a rollout keeps one key in common with the last; it would also be one more type every SDK must implement, for a pattern that a list already expresses.
 
 Resolved in this draft: generated docs come from one generator, `docuconf docs` in the CLI, through a versioned docs model that any renderer can read, and SDKs export an optional `details` beside the required `description` instead of generating docs themselves (section 14); per-item bounds for `int` lists (`itemMin`, `itemMax`, section 4.3); length limits for fixed-width hosts: `maxLength` on `url` and `json` values, and `itemMinLength`/`itemMaxLength` on `string` lists, counted in characters (section 4.3); config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1), with the pod annotations and labels that enable them (section 4.5.2); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
 

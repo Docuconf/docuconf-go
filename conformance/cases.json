@@ -3688,6 +3688,337 @@
       ]
     },
     {
+      "id": "key_set/one key",
+      "source": "load/key_set.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "secret": true,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 2,
+            "itemMinLength": 32,
+            "itemMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "old-webhook-key-0123456789abcdef0123"
+      },
+      "expect": {
+        "WEBHOOK_KEYS": [
+          "old-webhook-key-0123456789abcdef0123"
+        ]
+      }
+    },
+    {
+      "id": "key_set/two keys during a rotation",
+      "source": "load/key_set.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "secret": true,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 2,
+            "itemMinLength": 32,
+            "itemMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "old-webhook-key-0123456789abcdef0123,new-webhook-key-0123456789abcdef0123"
+      },
+      "expect": {
+        "WEBHOOK_KEYS": [
+          "old-webhook-key-0123456789abcdef0123",
+          "new-webhook-key-0123456789abcdef0123"
+        ]
+      }
+    },
+    {
+      "id": "key_set/a key at exactly itemMaxLength",
+      "source": "load/key_set.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "secret": true,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 2,
+            "itemMinLength": 32,
+            "itemMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+      },
+      "expect": {
+        "WEBHOOK_KEYS": [
+          "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+        ]
+      }
+    },
+    {
+      "id": "key_set/an empty value is unset",
+      "source": "load/key_set.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "secret": true,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 2,
+            "itemMinLength": 32,
+            "itemMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": ""
+      },
+      "expect": {
+        "WEBHOOK_KEYS": null
+      }
+    },
+    {
+      "id": "key_set/a trailing comma leaves an empty second key",
+      "source": "load/key_set.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "secret": true,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 2,
+            "itemMinLength": 32,
+            "itemMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "old-webhook-key-0123456789abcdef0123,"
+      },
+      "errors": [
+        {
+          "var": "WEBHOOK_KEYS",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "key_set/a truncated key",
+      "source": "load/key_set.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "secret": true,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 2,
+            "itemMinLength": 32,
+            "itemMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "old-webhook-key-0123456789abcdef0123,new-webhook-key"
+      },
+      "errors": [
+        {
+          "var": "WEBHOOK_KEYS",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "key_set/a key one character above itemMaxLength",
+      "source": "load/key_set.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "secret": true,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 2,
+            "itemMinLength": 32,
+            "itemMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+      },
+      "errors": [
+        {
+          "var": "WEBHOOK_KEYS",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "key_set/a third key",
+      "source": "load/key_set.yaml",
+      "requires": [],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "secret": true,
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv",
+            "minItems": 1,
+            "maxItems": 2,
+            "itemMinLength": 32,
+            "itemMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "old-webhook-key-0123456789abcdef0123,new-webhook-key-0123456789abcdef0123,third-webhook-key-0123456789abcdef"
+      },
+      "errors": [
+        {
+          "var": "WEBHOOK_KEYS",
+          "code": "too_many_items"
+        }
+      ]
+    },
+    {
       "id": "length/typed values [list=csv]",
       "source": "load/length.yaml",
       "requires": [],

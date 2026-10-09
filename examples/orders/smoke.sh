@@ -2,7 +2,8 @@
 # Smoke test: starts the orders service with valid env and checks its
 # endpoints, starts it with bad env and checks it refuses to boot, then
 # runs the local-files recipe from the README (HTTPS with a dev
-# certificate). Needs go and curl; the last step also needs openssl.
+# certificate) and posts webhooks signed with each key of a key set that
+# is mid-rotation. Needs go and curl; the last step also needs openssl.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 tmp="$(mktemp -d)"
@@ -12,6 +13,9 @@ cd "$here"
 go build -o "$tmp/orders" .
 
 secret='postgres://orders:s3cr3t-pw@localhost:5432/orders'
+# Two webhook keys: the old one and, mid-rotation, the new one.
+old_key='old-webhook-key-0123456789abcdef0123'
+new_key='new-webhook-key-0123456789abcdef0123'
 port=$((20000 + RANDOM % 20000))
 
 wait_for() { # url
@@ -23,15 +27,18 @@ wait_for() { # url
 }
 
 # 1. Valid env: the service serves /healthz and /config, without the secret.
-PORT=$port DATABASE_URL="$secret" "$tmp/orders" >"$tmp/out.txt" 2>&1 &
+PORT=$port DATABASE_URL="$secret" WEBHOOK_KEYS="$old_key,$new_key" "$tmp/orders" >"$tmp/out.txt" 2>&1 &
 pid=$!
 wait_for "http://127.0.0.1:$port/healthz"
 [ "$(cat "$tmp/body")" = ok ] || { echo "GET /healthz did not return ok" >&2; exit 1; }
 curl -fsS "http://127.0.0.1:$port/config" >"$tmp/config.json"
-if grep -q 's3cr3t-pw' "$tmp/config.json" "$tmp/out.txt"; then
-  echo "the secret leaked into /config or the log" >&2; exit 1
+if grep -q -e 's3cr3t-pw' -e 'webhook-key' "$tmp/config.json" "$tmp/out.txt"; then
+  echo "a secret leaked into /config or the log" >&2; exit 1
 fi
 grep -q '"DATABASE_URL":"\*\*\*"' "$tmp/config.json" || { echo "GET /config did not redact DATABASE_URL" >&2; exit 1; }
+grep -q '"WEBHOOK_KEYS":"\*\*\*"' "$tmp/config.json" || { echo "GET /config did not redact WEBHOOK_KEYS" >&2; exit 1; }
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Signature: 00' -d '{}' "http://127.0.0.1:$port/webhooks/payments")
+[ "$code" = 401 ] || { echo "an unsigned webhook got $code, want 401" >&2; exit 1; }
 echo "valid env: /healthz ok, /config $(cat "$tmp/config.json")"
 kill "$pid"; wait "$pid" 2>/dev/null || true; pid=""
 
@@ -53,6 +60,21 @@ diff -u "$tmp/want.txt" "$tmp/problems.txt" || { echo "unexpected boot output" >
 echo "bad env: exited 1 with:"
 sed 's/^/  /' "$tmp/bad.txt"
 
+# 2b. A key set with an empty second key (a trailing comma): the item
+# length constraint fails it at boot, without printing the key.
+set +e
+PORT=$port DATABASE_URL="$secret" WEBHOOK_KEYS="$old_key," "$tmp/orders" >"$tmp/bad.txt" 2>&1
+code=$?
+set -e
+cat >"$tmp/want.txt" <<'WANT'
+docuconf: 1 configuration problem:
+  WEBHOOK_KEYS: item 1: value is 0 characters, below itemMinLength 32 (out_of_range)
+WANT
+if [ "$code" != 1 ] || ! diff -u "$tmp/want.txt" "$tmp/bad.txt" || grep -q webhook-key "$tmp/bad.txt"; then
+  echo "want exit 1 for an empty webhook key, got $code:" >&2; cat "$tmp/bad.txt" >&2; exit 1
+fi
+echo "empty webhook key: exited 1"
+
 # 3. The README's local-files recipe: a dev certificate under ./dev.
 if ! command -v openssl >/dev/null; then
   echo "smoke: ok (openssl not found, skipped the HTTPS recipe)"
@@ -70,4 +92,19 @@ pid=$!
 wait_for "https://127.0.0.1:$port/discounts"
 [ "$(cat "$tmp/body")" = '{"WELCOME10":10}' ] || { echo "GET /discounts: $(cat "$tmp/body")" >&2; exit 1; }
 echo "dev files: HTTPS up, /discounts $(cat "$tmp/body")"
+kill "$pid"; wait "$pid" 2>/dev/null || true; pid=""
+
+# 4. Mid-rotation, a webhook signed with either key is accepted, and one
+# signed with any other key is not.
+PORT=$port DATABASE_URL="$secret" WEBHOOK_KEYS="$old_key,$new_key" "$tmp/orders" >"$tmp/out.txt" 2>&1 &
+pid=$!
+wait_for "http://127.0.0.1:$port/healthz"
+body='{"order":"42","status":"paid"}'
+for key in "$old_key" "$new_key" "other-webhook-key-0123456789abcdef"; do
+  sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$key" | sed 's/.*= //')
+  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Signature: $sig" -d "$body" "http://127.0.0.1:$port/webhooks/payments")
+  want=204; [ "${key#other}" != "$key" ] && want=401
+  [ "$code" = "$want" ] || { echo "webhook signed with ${key%%-*} key: got $code, want $want" >&2; exit 1; }
+done
+echo "webhooks: old and new key accepted, any other rejected"
 echo "smoke: ok"
