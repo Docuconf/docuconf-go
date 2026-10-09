@@ -52,7 +52,7 @@ runner's platform, the action falls back to `go install github.com/docuconf/docu
 | `repository` | `docuconf/docuconf-go` | install | Where CLI releases are downloaded from. |
 | `token` | `github.token` | install | Token for the GitHub API, used to find the latest release. |
 
-Outputs: `version` (the CLI installed, or `source` / `go install`) and `exit-code` (the command's exit status).
+Outputs: `version` (the CLI installed, or `source` / `go install`) and `exit-code` (the command's exit status). GitHub drops a composite action's outputs when the action fails, so `exit-code` is only readable when the action passes (for example `0` with `allow-breaking: true`); on failure, check the step's `outcome`.
 
 The step fails with the CLI's exit status: 1 for problems found by vet, a breaking change found by diff, or stale
 docs; 2 for a usage or parse error. diff's lines also appear as annotations (breaking as errors, notable as

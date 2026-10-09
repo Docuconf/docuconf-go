@@ -64,8 +64,9 @@ jobs:
           old: examples/orders/contract.cue
           contract: ${{ runner.temp }}/breaking/contract.cue
           ack: ${{ runner.temp }}/breaking/ack.txt
-      - name: Check the breaking diff failed with exit status 1
+      # GitHub drops a composite action's outputs when it fails, so only the
+      # outcome can be checked here; exit-code is set when the action passes.
+      - name: Check the breaking diff failed
         env:
           OUTCOME: ${{ steps.breaking.outcome }}
-          CODE: ${{ steps.breaking.outputs.exit-code }}
-        run: test "$OUTCOME" = failure && test "$CODE" = 1
+        run: test "$OUTCOME" = failure
