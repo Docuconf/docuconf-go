@@ -23,6 +23,7 @@ import (
 // /referrers, so clients fall back to the referrers tag schema.
 type testRegistry struct {
 	referrers bool
+	noDelete  bool // refuse DELETE, as distribution does by default
 
 	mu        sync.Mutex
 	blobs     map[string][]byte // repo@digest
@@ -107,6 +108,11 @@ func (r *testRegistry) manifest(w http.ResponseWriter, req *http.Request, repo, 
 		w.Header().Set("Docker-Content-Digest", d)
 		w.WriteHeader(http.StatusCreated)
 	case http.MethodDelete:
+		if r.noDelete {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			fmt.Fprint(w, `{"errors":[{"code":"UNSUPPORTED","message":"The operation is unsupported."}]}`)
+			return
+		}
 		delete(r.manifests, repo+"@"+dgst)
 		w.WriteHeader(http.StatusAccepted)
 	}
@@ -259,6 +265,27 @@ func TestPushPull(t *testing.T) {
 				t.Fatalf("pull newest: exit %d\n%s", code, errOut)
 			}
 		})
+	}
+}
+
+// A registry without the referrers API that also refuses deletes cannot
+// drop the old referrers index when a second contract is pushed. The push
+// still succeeds, and pull finds both contracts.
+func TestPushRegistryWithoutDelete(t *testing.T) {
+	reg, host := newTestRegistry(t, false)
+	reg.noDelete = true
+	image := host + "/team/orders@" + reg.addImage(t, "team/orders", "1.4.0", nil)
+	if _, errOut, code := docuconf(t, "push", "--plain-http", "--image", image, ordersContract); code != 0 {
+		t.Fatalf("push: exit %d\n%s", code, errOut)
+	}
+	newer := ordersModified(t)
+	out, errOut, code := docuconf(t, "push", "--plain-http", "--image", image, newer)
+	if code != 0 || !strings.HasPrefix(out, host+"/team/orders@sha256:") || !strings.Contains(errOut, "warning: the registry kept the previous referrers index") {
+		t.Fatalf("push newer: exit %d\n%s%s", code, out, errOut)
+	}
+	out, errOut, code = docuconf(t, "pull", "--plain-http", "--image", image)
+	if code != 0 || out != read(t, newer) || !strings.Contains(errOut, "2 contracts refer to this image") {
+		t.Fatalf("pull: exit %d\n%s", code, errOut)
 	}
 }
 

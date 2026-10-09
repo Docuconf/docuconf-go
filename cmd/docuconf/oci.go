@@ -21,6 +21,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/content/memory"
 	"oras.land/oras-go/v2/registry"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
@@ -210,12 +211,11 @@ func runPush(args []string, stdout, stderr io.Writer) error {
 		}
 	}
 
-	if ok, err := repo.Blobs().Exists(ctx, layer); err != nil {
+	// The artifact is packed in memory and then copied, so its digest is
+	// known even when the copy reports an error after the manifest is in.
+	staged := memory.New()
+	if err := staged.Push(ctx, layer, bytes.NewReader(src)); err != nil {
 		return err
-	} else if !ok {
-		if err := repo.Blobs().Push(ctx, layer, bytes.NewReader(src)); err != nil {
-			return fmt.Errorf("pushing the contract: %w", err)
-		}
 	}
 	annotations := map[string]string{
 		annotationContractName: c.Name,
@@ -223,13 +223,26 @@ func runPush(args []string, stdout, stderr io.Writer) error {
 		// several contracts by this, so keep the sub-second part.
 		ocispec.AnnotationCreated: time.Now().UTC().Format(time.RFC3339Nano),
 	}
-	manifest, err := oras.PackManifest(ctx, repo, oras.PackManifestVersion1_1, contractArtifactType, oras.PackManifestOptions{
+	manifest, err := oras.PackManifest(ctx, staged, oras.PackManifestVersion1_1, contractArtifactType, oras.PackManifestOptions{
 		Subject:             &subject,
 		Layers:              []ocispec.Descriptor{layer},
 		ManifestAnnotations: annotations,
 	})
 	if err != nil {
-		return fmt.Errorf("pushing the artifact manifest: %w", err)
+		return fmt.Errorf("packing the artifact manifest: %w", err)
+	}
+	// The subject is already in the registry, so CopyGraph skips it and
+	// pushes the layer, the empty config and the manifest.
+	if err := oras.CopyGraph(ctx, staged, repo, manifest, oras.DefaultCopyGraphOptions); err != nil {
+		// Without the referrers API, oras-go replaces the index under the
+		// referrers tag and then deletes the old one. Registries that refuse
+		// manifest deletes (distribution's default) fail only that last
+		// step: the artifact and the new index are in place, as with oras.
+		var re *remote.ReferrersError
+		if !errors.As(err, &re) || !re.IsReferrersIndexDelete() {
+			return fmt.Errorf("pushing the artifact: %w", err)
+		}
+		fmt.Fprintf(stderr, "warning: the registry kept the previous referrers index, as it does not allow deletes: %v\n", err)
 	}
 	fmt.Fprintf(stderr, "%s: pushed the contract for %s\n", c.Name, of.image)
 	printPushed(stdout, stderr, ref, manifest.Digest)
