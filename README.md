@@ -341,6 +341,8 @@ The Go SDK supports every capability tag (`int64`, `json-schema`), so no case is
 
 - [Contract specification](spec/SPEC.md), with its CUE meta-schema in [`spec/cue`](spec/cue)
 - [Implementation plan](docs/PLAN.md) and [edge cases](docs/EDGE_CASES.md)
+- [Versioning and deprecation policy](docs/VERSIONING.md): spec stages, SDK versions and the move to `v1beta1`
+- [Security policy](SECURITY.md): how to report a vulnerability
 
 ## Licence
 
