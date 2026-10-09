@@ -1,0 +1,71 @@
+name: action
+
+# Runs the docuconf GitHub Action (actions/docuconf) from this commit, with
+# the CLI built from the same commit (version: source), as a workflow that
+# pins the action to a SHA would.
+on:
+  push:
+    paths: ["actions/**", "cmd/docuconf/**", "examples/orders/**", ".github/workflows/action.yml"]
+  pull_request:
+    paths: ["actions/**", "cmd/docuconf/**", "examples/orders/**", ".github/workflows/action.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: cmd/docuconf/go.sum
+      - name: vet
+        uses: ./actions/docuconf
+        with:
+          version: source
+          command: vet
+          working-directory: examples/orders
+          values: deploy/values.yaml
+          files: deploy/files.yaml
+      - name: docs-check
+        uses: ./actions/docuconf
+        with:
+          version: source
+          command: docs-check
+          working-directory: examples/orders
+      - name: diff, no changes
+        uses: ./actions/docuconf
+        with:
+          version: source
+          command: diff
+          working-directory: examples/orders
+          old: contract.cue
+      - name: A breaking change to the orders contract
+        run: |
+          mkdir -p "$RUNNER_TEMP/breaking"
+          sed 's/max:         64/max:         32/' examples/orders/contract.cue > "$RUNNER_TEMP/breaking/contract.cue"
+          echo "WORKER_COUNT max-tightened" > "$RUNNER_TEMP/breaking/ack.txt"
+      - name: diff, a breaking change fails
+        id: breaking
+        continue-on-error: true
+        uses: ./actions/docuconf
+        with:
+          version: source
+          command: diff
+          old: examples/orders/contract.cue
+          contract: ${{ runner.temp }}/breaking/contract.cue
+      - name: diff, acknowledged
+        uses: ./actions/docuconf
+        with:
+          version: source
+          command: diff
+          old: examples/orders/contract.cue
+          contract: ${{ runner.temp }}/breaking/contract.cue
+          ack: ${{ runner.temp }}/breaking/ack.txt
+      - name: Check the breaking diff failed with exit status 1
+        env:
+          OUTCOME: ${{ steps.breaking.outcome }}
+          CODE: ${{ steps.breaking.outputs.exit-code }}
+        run: test "$OUTCOME" = failure && test "$CODE" = 1
