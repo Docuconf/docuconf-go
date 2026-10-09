@@ -18,9 +18,10 @@ import (
 )
 
 // supportedTags are the conformance capability tags the Go SDK has
-// (conformance/README.md): it holds every 64-bit integer and validates
-// json values against their schema.
-var supportedTags = map[string]bool{"int64": true, "json-schema": true}
+// (conformance/README.md): it holds every 64-bit integer, validates json
+// values against their schema, and knows the keySet type and deprecated
+// inputs. It runs every case: TestConformance fails on a skip.
+var supportedTags = map[string]bool{"int64": true, "json-schema": true, "key-set": true, "deprecated": true}
 
 type conformanceCase struct {
 	ID       string            `json:"id"`
@@ -82,6 +83,9 @@ func TestConformance(t *testing.T) {
 		n += k
 	}
 	t.Logf("conformance: %d cases, %d skipped %v", len(suite.Cases), n, skipped)
+	if n > 0 {
+		t.Errorf("the Go SDK must run every case, but skipped %d: %v", n, skipped)
+	}
 }
 
 func runCase(t *testing.T, c conformanceCase) []string {
@@ -196,6 +200,12 @@ func toJSONValue(v any) (any, error) {
 		return json.Number(strconv.FormatFloat(x, 'g', -1, 64)), nil
 	case time.Duration:
 		return canonicalDuration(x), nil
+	case docuconf.KeySet:
+		keys := make([]any, len(x))
+		for i, k := range x.Keys() {
+			keys[i] = k.Reveal()
+		}
+		return keys, nil
 	case []string, []int64, []any:
 		rv := reflect.ValueOf(x)
 		out := make([]any, rv.Len())

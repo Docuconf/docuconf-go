@@ -153,7 +153,7 @@ func (v *varDecl) parse(raw string) (any, []Violation) {
 		}
 		return raw, nil
 
-	case typeList:
+	case typeList, typeKeySet:
 		items, out := v.splitItems(raw)
 		if len(out) > 0 {
 			return nil, out
@@ -244,9 +244,13 @@ func (v *varDecl) splitItems(raw string) ([]string, []Violation) {
 }
 
 // parseItems checks a list's items and returns them as []string or
-// []int64. (A []uint64 declaration may hold larger items; its typed
-// value is never used, since caarlos0/env parses declared lists.)
+// []int64, or a key set's keys as a KeySet. (A []uint64 declaration may
+// hold larger items; its typed value is never used, since caarlos0/env
+// parses declared lists.)
 func (v *varDecl) parseItems(items []string) (any, []Violation) {
+	if v.typ == typeKeySet {
+		return v.parseKeys(items)
+	}
 	viol := v.violation
 	var ints []int64
 	for i, item := range items {
@@ -290,6 +294,34 @@ func (v *varDecl) parseItems(items []string) (any, []Violation) {
 		return ints, nil
 	}
 	return slices.Clone(items), nil
+}
+
+// parseKeys checks a key set's keys (SPEC §4.3): their number, and the
+// length of each, which is never zero. Keys are secret, so no message
+// holds one.
+func (v *varDecl) parseKeys(keys []string) (any, []Violation) {
+	for i, key := range keys {
+		n := utf8.RuneCountInString(key)
+		switch {
+		case n == 0:
+			return nil, v.violation(CodeOutOfRange, "key %d is empty", i)
+		case v.itemMinLength != nil && n < *v.itemMinLength:
+			return nil, v.violation(CodeOutOfRange, "key %d is %d characters, below keyMinLength %d", i, n, *v.itemMinLength)
+		case v.itemMaxLength != nil && n > *v.itemMaxLength:
+			return nil, v.violation(CodeOutOfRange, "key %d is %d characters, above keyMaxLength %d", i, n, *v.itemMaxLength)
+		}
+	}
+	if v.minItems != nil && len(keys) < *v.minItems {
+		return nil, v.violation(CodeTooFewItems, "has %s, below minKeys %d", plural(len(keys), "key"), *v.minItems)
+	}
+	if v.maxItems != nil && len(keys) > *v.maxItems {
+		return nil, v.violation(CodeTooManyItems, "has %s, above maxKeys %d", plural(len(keys), "key"), *v.maxItems)
+	}
+	out := make(KeySet, len(keys))
+	for i, key := range keys {
+		out[i] = Secret(key)
+	}
+	return out, nil
 }
 
 // indexedItems collects an indexed list from NAME__0, NAME__1, ... The
@@ -350,7 +382,7 @@ func (v *varDecl) parseInt(raw string) (*big.Int, Code, string) {
 }
 
 func (v *varDecl) goTypeOrElem() any {
-	if v.typ == typeList {
+	if v.typ == typeList || v.typ == typeKeySet {
 		return v.goType.Elem()
 	}
 	return v.goType

@@ -13,17 +13,16 @@ import (
 // Verify reports whether signature, the hex-encoded HMAC-SHA256 of body,
 // was made with any of keys. Accepting every key in the set is what lets
 // a key be rotated: during the overlap the old and the new key both work.
-func Verify(keys []docuconf.Secret, body []byte, signature string) bool {
+// KeySet.Verify tries every key, so the time taken does not say which one
+// matched.
+func Verify(keys docuconf.KeySet, body []byte, signature string) bool {
 	got, err := hex.DecodeString(signature)
 	if err != nil {
 		return false
 	}
-	ok := false
-	for _, k := range keys {
-		mac := hmac.New(sha256.New, []byte(k.Reveal()))
+	return keys.Verify(func(key []byte) bool {
+		mac := hmac.New(sha256.New, key)
 		mac.Write(body)
-		// Check every key, so the time taken does not say which one matched.
-		ok = hmac.Equal(mac.Sum(nil), got) || ok
-	}
-	return ok
+		return hmac.Equal(mac.Sum(nil), got)
+	})
 }

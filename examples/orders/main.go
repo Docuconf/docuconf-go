@@ -34,8 +34,8 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(cfg.Discounts.Value().Codes)
 	})
-	// Payment webhooks, signed with any key in WEBHOOK_KEYS (see config.go
-	// for how to rotate it).
+	// Payment webhooks, signed with any key in WEBHOOK_KEYS (CONFIG.md says
+	// how to rotate it).
 	mux.HandleFunc("POST /webhooks/payments", func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 		if err != nil {

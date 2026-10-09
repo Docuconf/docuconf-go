@@ -265,6 +265,16 @@ func (v *varDecl) contract(desc, details string, docs *docResolver) (obj, error)
 		if v.itemMaxLength != nil {
 			o = o.add("itemMaxLength", int64(*v.itemMaxLength))
 		}
+	case typeKeySet:
+		// caarlos0/env splits a KeySet on envSeparator, like a list.
+		o = o.add("encoding", "csv").add("separator", v.separator).
+			add("minKeys", int64(*v.minItems)).add("maxKeys", int64(*v.maxItems))
+		if v.itemMinLength != nil {
+			o = o.add("keyMinLength", int64(*v.itemMinLength))
+		}
+		if v.itemMaxLength != nil {
+			o = o.add("keyMaxLength", int64(*v.itemMaxLength))
+		}
 	case typeJSON:
 		if v.maxLength != nil {
 			o = o.add("maxLength", int64(*v.maxLength))

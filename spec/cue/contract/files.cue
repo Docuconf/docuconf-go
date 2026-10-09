@@ -55,8 +55,11 @@ import (
 	maxSize?: int & >0 // bytes
 	group?:   string
 	deprecated?: {
-		message:     string
+		message:     #DeprecationMessage
 		replacedBy?: #InputName
+	}
+	if deprecated != _|_ {
+		_aRequiredInputCannotBeDeprecated: true & !required
 	}
 }
 

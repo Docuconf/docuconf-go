@@ -60,6 +60,9 @@ type Gateway struct {
 	// Serve the debug endpoints.
 	Debug bool `env:"DEBUG" envDefault:"false"`
 
+	// Keys that partners present to call the API.
+	PartnerAPIKeys docuconf.KeySet `env:"PARTNER_API_KEYS" envSeparator:" " keyMinLength:"32" keyMaxLength:"128"`
+
 	// Cloud region, such as eu-west-1.
 	Region string `env:"REGION" pattern:"^[a-z]{2}-[a-z]+-[0-9]$" minLength:"4" maxLength:"32" deprecated:"Read from the node's topology labels instead"`
 

@@ -147,13 +147,13 @@
     },
     {
       "code": "out_of_range",
-      "meaning": "A number, duration, length or list item is outside the input's bounds.",
+      "meaning": "A number, duration, length, list item or key is outside the input's bounds; an empty key always is.",
       "fix": "Use a value within the input's constraints."
     },
     {
       "code": "too_few_items",
-      "meaning": "The list has fewer items than its minimum.",
-      "fix": "Add items."
+      "meaning": "The list has fewer items than its minimum, or the key set fewer keys.",
+      "fix": "Add items, or keys."
     }
   ]
 }

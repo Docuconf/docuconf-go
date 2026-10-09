@@ -26,7 +26,7 @@ func sign(key string) string {
 }
 
 // keys loads WEBHOOK_KEYS as the service does at boot.
-func keys(t *testing.T, value string) []docuconf.Secret {
+func keys(t *testing.T, value string) docuconf.KeySet {
 	t.Helper()
 	cfg, err := docuconf.ParseWithOptions[config.Config](docuconf.Options{
 		Environment:    map[string]string{"DATABASE_URL": "postgres://u:p@db/orders", "WEBHOOK_KEYS": value},

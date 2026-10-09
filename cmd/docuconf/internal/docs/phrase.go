@@ -60,6 +60,7 @@ var (
 	urls     = only(KindVar, "url")
 	enums    = only(KindVar, "enum")
 	lists    = only(KindVar, "list")
+	keySets  = only(KindVar, "keySet")
 	schemaed = func(kind, typ string) bool {
 		return kind == KindVar && typ == "json" || kind == KindFile && typ == "config"
 	}
@@ -76,6 +77,8 @@ var rules = []rule{
 	bounds("itemCount", "minItems", "maxItems", lists, "", items),
 	bounds("itemRange", "itemMin", "itemMax", lists, "each item ", nil),
 	bounds("itemLength", "itemMinLength", "itemMaxLength", lists, "each item ", characters),
+	bounds("keyCount", "minKeys", "maxKeys", keySets, "", keys),
+	bounds("keyLength", "keyMinLength", "keyMaxLength", keySets, "each key ", characters),
 	{"schema", []string{"schema"}, schemaed, func(fields) string { return "matches the JSON Schema in the contract" }},
 	{"maxSize", []string{"maxSize"}, anyFile, func(f fields) string { return "at most " + byteSize(f["maxSize"]) }},
 	{"dnsNames", []string{"dnsNames"}, tlsFiles, func(f fields) string { return "the certificate covers " + allOf(f.strs("dnsNames")) }},
@@ -124,6 +127,8 @@ func characters(n any) string {
 }
 
 func items(n any) string { return plural(n, "item", "items") }
+
+func keys(n any) string { return plural(n, "key", "keys") }
 
 // bounds phrases a pair of inclusive bounds:
 //
@@ -204,6 +209,8 @@ func varTypeLabel(typ string, f fields) string {
 			return "list of integers"
 		}
 		return "list of strings"
+	case "keySet":
+		return "key set"
 	case "json":
 		return "JSON value"
 	}
@@ -267,6 +274,17 @@ func wireFormat(name, typ string, f fields) *Wire {
 			w.Text = "a .NET TimeSpan, `[d.]hh:mm:ss[.fff]`, such as `00:01:30` for 90 seconds"
 		default:
 			w.Text = "a Go duration, such as `1m30s` (units `h`, `m`, `s`, `ms`, `us`, `ns`)"
+		}
+	case "keySet":
+		w.Encoding = f.str("encoding")
+		switch w.Encoding {
+		case "json":
+			w.Text = "the keys as a compact JSON array of strings, such as " + code(`["old","new"]`) + "; keys are never trimmed"
+		case "indexed":
+			w.Text = "one variable per key, " + code(name+"__0") + ", " + code(name+"__1") + " and so on, numbered from 0 with no gaps; keys are never trimmed"
+		default:
+			w.Separator = f.str("separator")
+			w.Text = "the keys joined by " + code(w.Separator) + ", such as " + code("old"+w.Separator+"new") + " during a rotation; keys are never trimmed, and an empty key is never valid"
 		}
 	case "list":
 		w.Encoding = f.str("encoding")
@@ -346,8 +364,12 @@ func src(kind string) Source { return Source{Kind: kind, Text: sourceText[kind]}
 // varSources lists where the platform may get a variable's value
 // (SPEC §4.5, §4.7, §6).
 func varSources(typ string, f fields, overlays []Overlay, selector bool) []Source {
+	inj := src("injected")
+	if (typ == "list" || typ == "keySet") && f.str("encoding") == "indexed" {
+		inj.Note = "without a `ref`: one reference cannot carry an indexed list"
+	}
 	if f["secret"] == true {
-		return []Source{src("secretKeyRef"), src("injected")}
+		return []Source{src("secretKeyRef"), inj}
 	}
 	out := []Source{src("literal")}
 	if typ != "list" {
@@ -358,10 +380,6 @@ func varSources(typ string, f fields, overlays []Overlay, selector bool) []Sourc
 	}
 	if typ == "int" {
 		out = append(out, src("resourceFieldRef"))
-	}
-	inj := src("injected")
-	if typ == "list" && f.str("encoding") == "indexed" {
-		inj.Note = "without a `ref`: one reference cannot carry an indexed list"
 	}
 	out = append(out, inj)
 	if key := f.str("configKey"); key != "" && !selector {
@@ -410,12 +428,12 @@ func fileSources(typ string, secret bool) []Source {
 var errorCatalog = []ErrorInfo{
 	{"missing_required", "A required input is not set, and has no default.", "Set it through one of its allowed sources."},
 	{"invalid_type", "The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`).", "Write the value in the input's wire format. For an injected secret, make sure the injector runs."},
-	{"out_of_range", "A number, duration, length or list item is outside the input's bounds.", "Use a value within the input's constraints."},
+	{"out_of_range", "A number, duration, length, list item or key is outside the input's bounds; an empty key always is.", "Use a value within the input's constraints."},
 	{"pattern_mismatch", "The value does not match the input's pattern.", "Use a value that matches the pattern."},
 	{"not_in_enum", "The value is not one of the allowed values.", "Use one of the listed values, spelled exactly as listed."},
 	{"invalid_scheme", "The URL's scheme is not one of the allowed schemes.", "Use a URL with an allowed scheme."},
-	{"too_few_items", "The list has fewer items than its minimum.", "Add items."},
-	{"too_many_items", "The list has more items than its maximum.", "Remove items."},
+	{"too_few_items", "The list has fewer items than its minimum, or the key set fewer keys.", "Add items, or keys."},
+	{"too_many_items", "The list has more items than its maximum, or the key set more keys.", "Remove items, or keys: a key set holds the old key only until the rotation is done."},
 	{"file_missing", "The file is not at its path.", "Give the input a source, and check that it is mounted at the declared path (or that its path variable points at it)."},
 	{"file_unreadable", "The file exists but cannot be read.", "Check the mount, the file mode and the user the app runs as."},
 	{"file_too_large", "The file is larger than its maximum size.", "Shrink the content, or raise `maxSize` in the app's declaration."},
@@ -450,11 +468,26 @@ func varErrors(typ string, f fields) []string {
 		c.add("out_of_range", f.str("items") == "int" || f.has("itemMinLength") || f.has("itemMaxLength"))
 		c.add("too_few_items", f.has("minItems"))
 		c.add("too_many_items", f.has("maxItems"))
+	case "keySet":
+		c.add("out_of_range", true) // an empty key, at least
+		c.add("too_few_items", true)
+		c.add("too_many_items", true)
 	case "json":
 		c.add("out_of_range", f.has("maxLength"))
 		c.add("schema_mismatch", f.has("schema"))
 	}
 	return c.sorted()
+}
+
+// keySetRotation is how every key set is rotated (SPEC §6.1), so that
+// apps do not have to repeat it in their details.
+var keySetRotation = &Rotation{
+	Text: "The app accepts every key in the set, so a key is rotated without an outage, in three steps. The platform cannot check that a rollout keeps a key in common with the previous one, so follow them in order:",
+	Steps: []string{
+		"add the new key to the set, and roll out;",
+		"switch the sender (the side that signs or presents the key) to the new key;",
+		"remove the old key from the set, and roll out.",
+	},
 }
 
 // fileErrors returns the codes the SDK may report for a file input.

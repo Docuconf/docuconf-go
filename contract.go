@@ -30,6 +30,7 @@ import (
 //	bool               bool
 //	duration           time.Duration
 //	list               []string or []int64
+//	keySet             KeySet, the keys in order
 //	json               the decoded value: map[string]any, []any, string,
 //	                   json.Number, bool or nil
 //
@@ -183,6 +184,7 @@ var contractFields = map[string][]string{
 	typeURL:      {"schemes", "maxLength"},
 	typeEnum:     {"values"},
 	typeList:     {"items", "encoding", "separator", "minItems", "maxItems", "itemMin", "itemMax", "itemMinLength", "itemMaxLength"},
+	typeKeySet:   {"encoding", "separator", "minKeys", "maxKeys", "keyMinLength", "keyMaxLength"},
 	typeJSON:     {"schema", "maxLength"},
 }
 
@@ -197,6 +199,7 @@ var contractGoTypes = map[string]reflect.Type{
 	typeDuration: durationType,
 	typeURL:      reflect.TypeFor[string](),
 	typeEnum:     reflect.TypeFor[string](),
+	typeKeySet:   keySetType,
 	typeJSON:     reflect.TypeFor[any](),
 }
 
@@ -413,8 +416,9 @@ func contractFile(name string, o map[string]any, problem func(string, ...any)) *
 			fail("deprecated must be an object with a message")
 		}
 		f.deprecated = msg
-		if f.deprecated == "" {
-			f.deprecated = "deprecated"
+		checkDeprecated(msg, fail)
+		if f.required {
+			fail("a required file input cannot be deprecated")
 		}
 	}
 
@@ -592,6 +596,13 @@ func contractVar(name string, o map[string]any, problem func(string, ...any)) *v
 	}
 	v.required = boolean("required")
 	v.secret = boolean("secret")
+	if v.typ == typeKeySet {
+		// A key set is always secret (SPEC §4.3).
+		if _, ok := o["secret"]; ok && !v.secret {
+			fail("a keySet is always secret")
+		}
+		v.secret = true
+	}
 	v.group, _ = str("group")
 	v.configKey, _ = str("configKey")
 	v.examples = strs("examples")
@@ -602,8 +613,9 @@ func contractVar(name string, o map[string]any, problem func(string, ...any)) *v
 			fail("deprecated must be an object with a message")
 		}
 		v.deprecated = msg
-		if v.deprecated == "" {
-			v.deprecated = "deprecated"
+		checkDeprecated(msg, fail)
+		if v.required {
+			fail("a required variable cannot be deprecated")
 		}
 	}
 	v.goType = contractGoTypes[v.typ]
@@ -689,6 +701,28 @@ func contractVar(name string, o map[string]any, problem func(string, ...any)) *v
 		if (v.itemMinLength != nil || v.itemMaxLength != nil) && v.items != "string" {
 			fail("itemMinLength and itemMaxLength apply only to lists of strings")
 		}
+	case typeKeySet:
+		v.items = "string"
+		v.listEncoding = encCSV
+		if e, ok := str("encoding"); ok {
+			v.listEncoding = e
+		}
+		if !slices.Contains([]string{encCSV, encJSON, encIndexed}, v.listEncoding) {
+			fail("encoding %q is not a list encoding", v.listEncoding)
+		}
+		v.separator = ","
+		if s, ok := str("separator"); ok {
+			if v.listEncoding != encCSV {
+				fail("separator applies only to the csv encoding")
+			}
+			v.separator = s
+		}
+		if v.separator == "" {
+			fail("separator must not be empty")
+		}
+		v.minItems, v.maxItems = nonNeg("minKeys"), nonNeg("maxKeys")
+		v.itemMinLength, v.itemMaxLength = nonNeg("keyMinLength"), nonNeg("keyMaxLength")
+		v.checkKeySetBounds(fail)
 	case typeJSON:
 		v.maxLength = nonNeg("maxLength")
 		if s, ok := o["schema"]; ok {
@@ -846,7 +880,8 @@ func checkDetails(d string, fail func(string, ...any)) {
 var (
 	varFieldOrder = []string{"type", "description", "details", "required", "secret", "default", "group", "examples", "deprecated", "configKey",
 		"minLength", "maxLength", "pattern", "min", "max", "encoding", "schemes", "values", "items", "separator",
-		"minItems", "maxItems", "itemMin", "itemMax", "itemMinLength", "itemMaxLength", "schema"}
+		"minItems", "maxItems", "itemMin", "itemMax", "itemMinLength", "itemMaxLength",
+		"minKeys", "maxKeys", "keyMinLength", "keyMaxLength", "schema"}
 	fileFieldOrder = []string{"type", "format", "description", "details", "required", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated",
 		"schema", "dnsNames", "keyAlgorithms", "minRemaining", "requireCA", "minCertificates", "passwordVar", "pattern", "minLength", "maxLength"}
 )

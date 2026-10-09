@@ -63,6 +63,18 @@
         }
       }
     },
+    "PARTNER_API_KEYS": {
+      "name": "PARTNER_API_KEYS",
+      "description": "Keys that partners present to call the API",
+      "required": false,
+      "separator": ",",
+      "type": "keySet",
+      "secret": true,
+      "encoding": "csv",
+      "minKeys": 1,
+      "maxKeys": 2,
+      "keyMinLength": 32
+    },
     "PARTNER_KEYSTORE_PASSWORD": {
       "name": "PARTNER_KEYSTORE_PASSWORD",
       "description": "Password for the partner mTLS keystore",

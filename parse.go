@@ -369,7 +369,7 @@ func checkVars(vars []*varDecl, environ map[string]string, logger *slog.Logger) 
 		var raw string
 		var items []string
 		var ok bool
-		indexed := v.typ == typeList && v.listEncoding == encIndexed
+		indexed := (v.typ == typeList || v.typ == typeKeySet) && v.listEncoding == encIndexed
 		if indexed {
 			var missing int
 			items, ok, missing = indexedItems(environ, v.name)

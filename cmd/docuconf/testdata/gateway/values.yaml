@@ -14,3 +14,7 @@ PARTNER_KEYSTORE_PASSWORD:
   secretKeyRef:
     name: partner-keystore
     key: password
+PARTNER_API_KEYS:
+  secretKeyRef:
+    name: partner-api-keys
+    key: keys

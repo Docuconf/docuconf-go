@@ -196,6 +196,20 @@
               "text": "matches the JSON Schema in the contract"
             }
           ],
+          "fields": [
+            {
+              "path": "password",
+              "type": "string",
+              "required": true,
+              "constraints": []
+            },
+            {
+              "path": "username",
+              "type": "string",
+              "required": true,
+              "constraints": []
+            }
+          ],
           "sources": [
             {
               "kind": "secret",

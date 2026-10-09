@@ -48,7 +48,8 @@ cases:
   never send. Give `expect` (the variables you care about; the rest are
   derived from defaults) or `errors`.
 - **`requires`**: capability tags (below). Use them only where a host
-  genuinely cannot do what the case tests.
+  genuinely cannot do what the case tests, or for a transitional tag. A
+  file may list `requires` at its top level too, for every case in it.
 
 Keep each case to one problem per variable: SDKs may stop checking a
 variable after its first violation.
@@ -88,7 +89,10 @@ For every case:
 
 1. **Skip** it only if `requires` holds a tag the SDK does not support,
    and report the number skipped. The SDK's README lists its unsupported
-   tags.
+   tags. Treat a tag the runner does not know as unsupported: skip the
+   case, never run it, so that a new tag does not break an SDK written
+   before it. Keep a list of the tags the SDK supports, not of the ones
+   it lacks.
 2. **Load** `contract` with the contract-first mode, using `env` as the
    whole environment: no process environment, no `.env` file, no config
    files. `contract` has every default filled in (`required: false`,
@@ -102,8 +106,8 @@ For every case:
    - `int` compares exactly (cases hold 64-bit values; parse `expect` with
      a big-number-safe JSON reader where the language needs one);
    - `float` compares numerically (`3` equals `3.0`);
-   - `list` is an array, `json` any JSON value, everything else a string
-     or bool.
+   - `list` and `keySet` are arrays (a key set's keys in order), `json`
+     any JSON value, everything else a string or bool.
 4. If the case has **`errors`**, loading fails, and the set of
    (variable, code) pairs reported equals `errors`, in any order. No error
    message, and nothing written to the termination log, may contain the
@@ -117,11 +121,18 @@ Report each failing case by `id`, so a failure points at its YAML source.
 | --- | --- | --- |
 | `int64` | The host holds every 64-bit integer as an integer. | JavaScript-runtime SDKs (T3 Env, Gleam on JavaScript) |
 | `json-schema` | Contract-first mode validates `json` values against the variable's JSON Schema. | Any SDK without a JSON Schema validator, documented in its README |
+| `key-set` | The `keySet` type (SPEC §4.3), in `load/key_set_type.yaml`. | Transitional: an SDK that does not have the type yet. Every SDK MUST support it by `v1beta1`. |
+| `deprecated` | Deprecated inputs (SPEC §4.2): a deprecated variable that is set still loads, in `load/deprecated.yaml`. | Transitional: an SDK that does not read `deprecated` yet. Every SDK MUST support it by `v1beta1`. |
+
+The transitional tags let the suite gain cases for a new feature while
+SDKs written before it stay green. When every SDK supports a feature, or
+at `v1beta1` at the latest, its tag is removed from the cases.
 
 ## Scope
 
 v1 covers variables: every type, encoding and constraint, required and
-optional values, empty values, secrets (including a dual-key secret list,
-`key_set.yaml`) and unresolved injector references,
+optional values, empty values, secrets (including key sets: the `keySet`
+type in `key_set_type.yaml`, and the older secret list convention in
+`key_set.yaml`), deprecated variables, unresolved injector references,
 and aggregate error reporting. File inputs, profiles and config-file
 overlays are tested inside each SDK for now.

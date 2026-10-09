@@ -59,9 +59,12 @@ func runConformance(args []string, stdout, stderr io.Writer) error {
 }
 
 type sourceFile struct {
-	Description string                    `json:"description"`
-	Vars        map[string]map[string]any `json:"vars"`
-	Cases       []sourceCase              `json:"cases"`
+	Description string `json:"description"`
+	// Requires lists capability tags every case in the file needs, on top
+	// of each case's own.
+	Requires []string                  `json:"requires"`
+	Vars     map[string]map[string]any `json:"vars"`
+	Cases    []sourceCase              `json:"cases"`
 }
 
 type sourceCase struct {
@@ -163,6 +166,12 @@ func expandFile(p *platform.Platform, file string) ([]expandedCase, error) {
 			return nil, fmt.Errorf("case names must be present and unique: %q", sc.Name)
 		}
 		seen[sc.Name] = true
+		for _, tag := range sf.Requires {
+			if !slices.Contains(sc.Requires, tag) {
+				sc.Requires = append(sc.Requires, tag)
+			}
+		}
+		slices.Sort(sc.Requires)
 		cs, err := expandCase(p, stem, sf, sc)
 		if err != nil {
 			return nil, fmt.Errorf("case %q: %w", sc.Name, err)

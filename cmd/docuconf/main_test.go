@@ -514,3 +514,50 @@ func TestConformanceCasesUpToDate(t *testing.T) {
 		t.Fatalf("exit %d\n%s%s", code, out, errOut)
 	}
 }
+
+// TestVetDeprecated checks that a deprecated input the platform still sets
+// is a warning, one line each with its message, and that warnings alone
+// do not fail vet (SPEC §4.2).
+func TestVetDeprecated(t *testing.T) {
+	contract := write(t, "contract.cue", `package svc
+
+import "docuconf.dev/contract"
+
+contract.#Contract & {
+	apiVersion: "docuconf.dev/v1alpha1"
+	kind:       "ConfigContract"
+	metadata: {name: "svc", generator: {language: "go", sdk: "docuconf-go", version: "0.1.0"}}
+	vars: {
+		PORT: {type: "int", description: "Port to listen on", default: 8080}
+		OLD_PORT: {type: "int", description: "Old name of the listen port", deprecated: {message: "Use PORT", replacedBy: "PORT"}}
+		WEBHOOK_KEYS: {type: "keySet", description: "Keys that verify webhooks", secret: true, keyMinLength: 32}
+	}
+	files: licence: {type: "text", description: "Licence key file", path: "/etc/svc/licence/licence.txt", deprecated: message: "Licences are checked online now"}
+}
+`)
+	values := write(t, "values.yaml", "OLD_PORT: 9090\nWEBHOOK_KEYS: {secretKeyRef: {name: webhooks, key: keys}}\n")
+	files := write(t, "files.yaml", "licence: {inline: ABC}\n")
+	out, errOut, code := docuconf(t, "vet", "-contract", contract, "-values", values, "-files", files)
+	want := "warning: OLD_PORT is deprecated, and the platform still sets it: Use PORT (replaced by PORT)\n" +
+		"warning: file input licence is deprecated, and the platform still sets it: Licences are checked online now\n" +
+		"svc: ok\n"
+	if code != 0 || out != want {
+		t.Fatalf("exit %d, stdout:\n%s\nwant:\n%s\nstderr: %s", code, out, want, errOut)
+	}
+
+	// With a problem as well, vet fails and prints both.
+	bad := write(t, "bad.yaml", "OLD_PORT: x\nWEBHOOK_KEYS: not-a-reference-0123456789abcdef0123\n")
+	out, _, code = docuconf(t, "vet", "-contract", contract, "-values", bad)
+	if code != 1 || !strings.HasPrefix(out, "warning: OLD_PORT is deprecated") || !strings.Contains(out, "WEBHOOK_KEYS: is secret") {
+		t.Fatalf("exit %d, stdout:\n%s", code, out)
+	}
+	if strings.Contains(out, "not-a-reference") {
+		t.Fatalf("vet printed a key:\n%s", out)
+	}
+
+	// Unset, there is nothing to warn about.
+	out, _, code = docuconf(t, "vet", "-contract", contract)
+	if code != 0 || out != "svc: ok\n" {
+		t.Fatalf("exit %d, stdout:\n%s", code, out)
+	}
+}

@@ -41,7 +41,10 @@
 //	minItems maxItems       list length
 //	itemMin:"0" itemMax:"9" bounds on each item of an integer list
 //	itemMinLength itemMaxLength  length of each item of a string list
-//	group, examples ("a|b"), deprecated, configKey
+//	minKeys maxKeys         number of keys in a KeySet (default 1 and 2)
+//	keyMinLength keyMaxLength  length of each key of a KeySet
+//	deprecated:"Use PORT"   what to use instead, or why it is going away
+//	group, examples ("a|b"), configKey
 //
 // A tag key that is not one of these but is close to one (secrte, mni) is
 // a declaration error, so a typo never drops a rule silently. Keys of
@@ -55,14 +58,27 @@
 // messages, and Redacted and LogValue give the whole configuration with
 // every secret replaced by ***.
 //
+// A field of type KeySet is a set of secret keys that are all valid at
+// once, so a key can be rotated without an outage (contract type
+// "keySet"): its Contains and Verify methods check a candidate against
+// every key.
+//
 // The contract type follows from the Go type: string, bool, every int and
 // uint kind, float32/64, time.Duration (encoding "go"), url.URL, slices of
-// strings or integers (encoding "csv" with envSeparator), JSON[T] for a
-// structured value, and any encoding.TextUnmarshaler as a string. Nested
-// structs are walked with their envPrefix. Integer bounds include the
-// range caarlos0/env parses the kind with (int is parsed as 32 bits), for
-// scalars as min and max and for list items as itemMin and itemMax: a
-// []uint16 exports itemMin 0 and itemMax 65535 without any tag.
+// strings or integers (encoding "csv" with envSeparator), KeySet (also
+// "csv"), JSON[T] for a structured value, and any encoding.TextUnmarshaler
+// as a string. Nested structs are walked with their envPrefix. Integer
+// bounds include the range caarlos0/env parses the kind with (int is
+// parsed as 32 bits), for scalars as min and max and for list items as
+// itemMin and itemMax: a []uint16 exports itemMin 0 and itemMax 65535
+// without any tag.
+//
+// # Deprecated inputs
+//
+// A deprecated tag marks a variable or file input for removal: the
+// platform should stop setting it. Parse logs a warning naming the input
+// and the message, never the value, when one is set, and docuconf vet
+// warns about it too. A required input cannot be deprecated.
 //
 // # File inputs
 //

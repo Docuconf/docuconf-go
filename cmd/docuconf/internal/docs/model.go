@@ -100,8 +100,10 @@ type Input struct {
 	ProfileSelector bool             `json:"profileSelector,omitempty"`
 	ProfileDefaults []ProfileDefault `json:"profileDefaults,omitempty"`
 	Wire            *Wire            `json:"wire,omitempty"`
+	Rotation        *Rotation        `json:"rotation,omitempty"`
 	File            *FileInfo        `json:"file,omitempty"`
 	Constraints     []Constraint     `json:"constraints"`
+	Fields          []Field          `json:"fields,omitempty"`
 	Sources         []Source         `json:"sources"`
 	Errors          []string         `json:"errors"`
 }
@@ -132,6 +134,28 @@ type Wire struct {
 	Text string `json:"text"`
 	// Platform says how it is written in a platform values file.
 	Platform string `json:"platform"`
+}
+
+// Rotation says how a key set's keys are rotated (SPEC §6.1): Text
+// introduces the steps, in order.
+type Rotation struct {
+	Text  string   `json:"text"`
+	Steps []string `json:"steps"`
+}
+
+// Field is one row of a JSON Schema's field table (SPEC §14.3): a
+// property of a json variable's value or of a config file. Path is
+// dotted, with [] for the items of a list. A subtree the table cannot
+// express has Type "see schema" and its raw Schema.
+type Field struct {
+	Path        string            `json:"path"`
+	Type        string            `json:"type"`
+	Required    bool              `json:"required"`
+	Default     json.RawMessage   `json:"default,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Enum        []json.RawMessage `json:"enum,omitempty"`
+	Constraints []Constraint      `json:"constraints"`
+	Schema      json.RawMessage   `json:"schema,omitempty"`
 }
 
 // FileInfo holds what is particular to a file input.

@@ -111,6 +111,9 @@ func common(name, kind, typ string, f fields) Input {
 		Details:     strings.TrimSpace(f.str("details")),
 		Constraints: constraints(kind, typ, f),
 	}
+	if s, ok := f["schema"]; ok {
+		in.Fields = schemaFields(s, f["secret"] == true)
+	}
 	if d, ok := f["deprecated"].(map[string]any); ok {
 		msg, _ := d["message"].(string)
 		by, _ := d["replacedBy"].(string)
@@ -126,6 +129,9 @@ func buildVar(name string, f fields, overlays []Overlay, selector bool) (Input, 
 	in.ConfigKey = f.str("configKey")
 	in.ProfileSelector = selector
 	in.Wire = wire(name, typ, f)
+	if typ == "keySet" {
+		in.Rotation = keySetRotation
+	}
 	in.Sources = varSources(typ, f, overlays, selector)
 	in.Errors = varErrors(typ, f)
 	// A secret never has a value in the docs (SPEC §6), even if a

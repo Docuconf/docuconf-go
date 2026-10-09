@@ -32,6 +32,7 @@ cases=(
   'docuconf: {values: {LOG_LEVEL: verbose}}|LOG_LEVEL'
   'docuconf: {values: {GOMEMLIMIT: {fieldRef: {fieldPath: metadata.name}}}}|GOMEMLIMIT'
   'docuconf: {values: {PARTNER_KEYSTORE_PASSWORD: hunter2}}|PARTNER_KEYSTORE_PASSWORD'
+  'docuconf: {values: {PARTNER_API_KEYS: [old-partner-key-0123456789abcdef01, new-partner-key-0123456789abcdef01]}}|PARTNER_API_KEYS'
   'docuconf: {values: {LOG_LEVL: warn}}|LOG_LEVL'
   'docuconf: {values: {RATE_LIMITS: {perMinute: 0}}}|RATE_LIMITS'
   'docuconf: {files: {serving-tls: {inline: "-----BEGIN CERTIFICATE-----"}}}|serving-tls'

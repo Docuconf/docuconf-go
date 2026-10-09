@@ -11,6 +11,11 @@ env:
         resource: limits.memory
   - name: RATE_LIMITS
     value: '{"perMinute":600,"burst":50}'
+  - name: PARTNER_API_KEYS
+    valueFrom:
+      secretKeyRef:
+        name: partner-api-keys
+        key: keys
   - name: PARTNER_KEYSTORE_PASSWORD
     valueFrom:
       secretKeyRef:

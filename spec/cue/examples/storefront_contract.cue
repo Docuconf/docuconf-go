@@ -2,7 +2,7 @@
 // A contract that exercises generated docs (SPEC §14): details with
 // Markdown headings, an input with no group next to grouped ones, a
 // deprecated input with a replacement, an indexed list, secret files, a
-// very long example and non-ASCII text.
+// very long example, non-ASCII text and a key set.
 package examples
 
 import "docuconf.dev/contract"
@@ -146,6 +146,14 @@ storefront: contract.#Contract & {
 				additionalProperties: false
 				properties: perMinute: {type: "integer", minimum: 1}
 			}
+		}
+		STOREFRONT__PAYMENTS__WEBHOOKKEYS: {
+			type:         "keySet"
+			description:  "Keys that verify the signature on incoming payment webhooks"
+			group:        "security"
+			secret:       true
+			keyMinLength: 32
+			keyMaxLength: 256
 		}
 		STOREFRONT__DB__PASSWORD: {
 			type:        "string"

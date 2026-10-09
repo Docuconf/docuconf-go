@@ -269,10 +269,17 @@ func (r *mdRenderer) input(b *strings.Builder, in Input, level int) {
 	row("Boot errors", codeList(in.Errors))
 	b.WriteString("\n")
 
-	if schema := schemaOf(in); schema != nil {
-		var pretty bytes.Buffer
-		json.Indent(&pretty, []byte(compact(schema)), "", "  ")
-		fmt.Fprintf(b, "<details>\n<summary>JSON Schema</summary>\n\n%s\n</details>\n\n", fence("json", pretty.String()))
+	if r := in.Rotation; r != nil {
+		fmt.Fprintf(b, "**Rotation.** %s\n\n", r.Text)
+		for i, s := range r.Steps {
+			fmt.Fprintf(b, "%d. %s\n", i+1, s)
+		}
+		b.WriteString("\n")
+	}
+	if len(in.Fields) > 0 {
+		r.fields(b, in)
+	} else if schema := schemaOf(in); schema != nil {
+		schemaBlock(b, "JSON Schema", schema)
 	}
 	if len(in.Examples) > 0 {
 		// Short examples in a list; long or multi-line ones in blocks.
@@ -299,6 +306,73 @@ func (r *mdRenderer) input(b *strings.Builder, in Input, level int) {
 		}
 		b.WriteString(md + "\n\n")
 	}
+}
+
+// fields renders a JSON Schema's field table, then the raw schema of each
+// subtree the table could not express (SPEC §14.3).
+func (r *mdRenderer) fields(b *strings.Builder, in Input) {
+	what := "Fields of the value"
+	if in.Kind == KindFile {
+		what = "Fields of the file"
+	}
+	fmt.Fprintf(b, "%s, from its JSON Schema:\n\n", what)
+	b.WriteString("| Field | Type | Required | Default | Constraints | Description |\n|---|---|---|---|---|---|\n")
+	for _, f := range in.Fields {
+		var cons []string
+		if len(f.Enum) > 0 {
+			vals := make([]string, len(f.Enum))
+			for i, e := range f.Enum {
+				vals[i] = valueCode(e)
+			}
+			cons = append(cons, "one of "+joinPlain(vals, "or"))
+		}
+		for _, c := range f.Constraints {
+			cons = append(cons, c.Text)
+		}
+		def := ""
+		if len(f.Default) > 0 {
+			def = valueCode(f.Default)
+		}
+		typ := f.Type
+		if f.Schema != nil {
+			typ = "see the schema below"
+		}
+		fmt.Fprintf(b, "| %s | %s | %s | %s | %s | %s |\n", fieldPath(f.Path), cell(typ), yesNo(f.Required), cell(def),
+			cell(strings.Join(cons, "; ")), cell(text(f.Description)))
+	}
+	b.WriteString("\n")
+	for _, f := range in.Fields {
+		if f.Schema != nil {
+			title := "JSON Schema"
+			if f.Path != "" {
+				title += " of " + code(f.Path)
+			}
+			schemaBlock(b, title, f.Schema)
+		}
+	}
+}
+
+// fieldPath shows a field's path as code, or says it is the whole value.
+func fieldPath(p string) string {
+	if p == "" {
+		return "(the whole value)"
+	}
+	return cell(code(p))
+}
+
+// schemaBlock writes a JSON Schema, indented, in a collapsed block.
+func schemaBlock(b *strings.Builder, title string, schema json.RawMessage) {
+	var pretty bytes.Buffer
+	json.Indent(&pretty, []byte(compact(schema)), "", "  ")
+	fmt.Fprintf(b, "<details>\n<summary>%s</summary>\n\n%s\n</details>\n\n", title, fence("json", pretty.String()))
+}
+
+// joinPlain joins phrases: a, b or c.
+func joinPlain(xs []string, last string) string {
+	if len(xs) < 2 {
+		return strings.Join(xs, "")
+	}
+	return strings.Join(xs[:len(xs)-1], ", ") + " " + last + " " + xs[len(xs)-1]
 }
 
 // link points at another input when the model has it.

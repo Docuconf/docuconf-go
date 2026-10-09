@@ -173,7 +173,7 @@ func (bt *booted) isSet(name, typ, encoding string) bool {
 	if v, ok := bt.environ[name]; ok && (v != "" || typ == "string") {
 		return true
 	}
-	if typ == "list" && encoding == "indexed" {
+	if (typ == "list" || typ == "keySet") && encoding == "indexed" {
 		for k, v := range bt.environ {
 			if n, ok := strings.CutPrefix(k, name+"__"); ok && v != "" && isIndex(n) {
 				return true

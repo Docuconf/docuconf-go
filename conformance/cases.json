@@ -208,6 +208,185 @@
       }
     },
     {
+      "id": "deprecated/a deprecated variable that is set still loads",
+      "source": "load/deprecated.yaml",
+      "requires": [
+        "deprecated"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-deprecated",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OLD_PORT": {
+            "name": "OLD_PORT",
+            "description": "Old name of the listen port",
+            "required": false,
+            "secret": false,
+            "deprecated": {
+              "message": "Use PORT instead",
+              "replacedBy": "PORT"
+            },
+            "type": "int",
+            "min": 1
+          },
+          "OLD_TOKEN": {
+            "name": "OLD_TOKEN",
+            "description": "Token of the retired billing API",
+            "required": false,
+            "secret": true,
+            "type": "string",
+            "deprecated": {
+              "message": "The billing API no longer takes a token"
+            }
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080
+          }
+        }
+      },
+      "env": {
+        "OLD_PORT": "9090",
+        "OLD_TOKEN": "tok-0123456789"
+      },
+      "expect": {
+        "OLD_PORT": 9090,
+        "OLD_TOKEN": "tok-0123456789",
+        "PORT": 8080
+      }
+    },
+    {
+      "id": "deprecated/the platform may still set a deprecated variable",
+      "source": "load/deprecated.yaml",
+      "requires": [
+        "deprecated"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-deprecated",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OLD_PORT": {
+            "name": "OLD_PORT",
+            "description": "Old name of the listen port",
+            "required": false,
+            "secret": false,
+            "deprecated": {
+              "message": "Use PORT instead",
+              "replacedBy": "PORT"
+            },
+            "type": "int",
+            "min": 1
+          },
+          "OLD_TOKEN": {
+            "name": "OLD_TOKEN",
+            "description": "Token of the retired billing API",
+            "required": false,
+            "secret": true,
+            "type": "string",
+            "deprecated": {
+              "message": "The billing API no longer takes a token"
+            }
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080
+          }
+        }
+      },
+      "env": {
+        "OLD_PORT": "9090"
+      },
+      "expect": {
+        "OLD_PORT": 9090,
+        "OLD_TOKEN": null,
+        "PORT": 8080
+      }
+    },
+    {
+      "id": "deprecated/a deprecated variable is still checked",
+      "source": "load/deprecated.yaml",
+      "requires": [
+        "deprecated"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-deprecated",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "OLD_PORT": {
+            "name": "OLD_PORT",
+            "description": "Old name of the listen port",
+            "required": false,
+            "secret": false,
+            "deprecated": {
+              "message": "Use PORT instead",
+              "replacedBy": "PORT"
+            },
+            "type": "int",
+            "min": 1
+          },
+          "OLD_TOKEN": {
+            "name": "OLD_TOKEN",
+            "description": "Token of the retired billing API",
+            "required": false,
+            "secret": true,
+            "type": "string",
+            "deprecated": {
+              "message": "The billing API no longer takes a token"
+            }
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port to listen on",
+            "required": false,
+            "secret": false,
+            "type": "int",
+            "default": 8080
+          }
+        }
+      },
+      "env": {
+        "OLD_PORT": "0"
+      },
+      "errors": [
+        {
+          "var": "OLD_PORT",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
       "id": "duration/typed values [duration=go]",
       "source": "load/duration.yaml",
       "requires": [],
@@ -4015,6 +4194,1026 @@
         {
           "var": "WEBHOOK_KEYS",
           "code": "too_many_items"
+        }
+      ]
+    },
+    {
+      "id": "key_set_type/one key",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "old-webhook-key-0123456789abcdef0123"
+      },
+      "expect": {
+        "API_KEYS": null,
+        "SIGNING_KEYS": null,
+        "WEBHOOK_KEYS": [
+          "old-webhook-key-0123456789abcdef0123"
+        ]
+      }
+    },
+    {
+      "id": "key_set_type/two keys during a rotation",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "old-webhook-key-0123456789abcdef0123,new-webhook-key-0123456789abcdef0123"
+      },
+      "expect": {
+        "API_KEYS": null,
+        "SIGNING_KEYS": null,
+        "WEBHOOK_KEYS": [
+          "old-webhook-key-0123456789abcdef0123",
+          "new-webhook-key-0123456789abcdef0123"
+        ]
+      }
+    },
+    {
+      "id": "key_set_type/a key at exactly keyMaxLength",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+      },
+      "expect": {
+        "API_KEYS": null,
+        "SIGNING_KEYS": null,
+        "WEBHOOK_KEYS": [
+          "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+        ]
+      }
+    },
+    {
+      "id": "key_set_type/an empty value is unset",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": ""
+      },
+      "expect": {
+        "API_KEYS": null,
+        "SIGNING_KEYS": null,
+        "WEBHOOK_KEYS": null
+      }
+    },
+    {
+      "id": "key_set_type/keys are never trimmed",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": " old-webhook-key-0123456789abcdef012 , new-webhook-key-0123456789abcdef012 "
+      },
+      "expect": {
+        "API_KEYS": null,
+        "SIGNING_KEYS": null,
+        "WEBHOOK_KEYS": [
+          " old-webhook-key-0123456789abcdef012 ",
+          " new-webhook-key-0123456789abcdef012 "
+        ]
+      }
+    },
+    {
+      "id": "key_set_type/a trailing comma leaves an empty second key",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "old-webhook-key-0123456789abcdef0123,"
+      },
+      "errors": [
+        {
+          "var": "WEBHOOK_KEYS",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "key_set_type/a truncated key",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "old-webhook-key-0123456789abcdef0123,new-webhook-key"
+      },
+      "errors": [
+        {
+          "var": "WEBHOOK_KEYS",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "key_set_type/a key one character above keyMaxLength",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+      },
+      "errors": [
+        {
+          "var": "WEBHOOK_KEYS",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "key_set_type/a third key",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "old-webhook-key-0123456789abcdef0123,new-webhook-key-0123456789abcdef0123,third-webhook-key-0123456789abcdef"
+      },
+      "errors": [
+        {
+          "var": "WEBHOOK_KEYS",
+          "code": "too_many_items"
+        }
+      ]
+    },
+    {
+      "id": "key_set_type/keys as a JSON array",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "API_KEYS": "[\"key-one\",\"key,two\",\"key-three\"]"
+      },
+      "expect": {
+        "API_KEYS": [
+          "key-one",
+          "key,two",
+          "key-three"
+        ],
+        "SIGNING_KEYS": null,
+        "WEBHOOK_KEYS": null
+      }
+    },
+    {
+      "id": "key_set_type/an empty key is out of range without keyMinLength",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "API_KEYS": "[\"key-one\",\"\"]"
+      },
+      "errors": [
+        {
+          "var": "API_KEYS",
+          "code": "out_of_range"
+        }
+      ]
+    },
+    {
+      "id": "key_set_type/an empty JSON array has too few keys",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "API_KEYS": "[]"
+      },
+      "errors": [
+        {
+          "var": "API_KEYS",
+          "code": "too_few_items"
+        }
+      ]
+    },
+    {
+      "id": "key_set_type/keys that are not a JSON array of strings",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "API_KEYS": "{\"key\": \"key-one\"}"
+      },
+      "errors": [
+        {
+          "var": "API_KEYS",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "key_set_type/one variable per key",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "SIGNING_KEYS__0": "cookie-key-old",
+        "SIGNING_KEYS__1": "cookie-key-new"
+      },
+      "expect": {
+        "API_KEYS": null,
+        "SIGNING_KEYS": [
+          "cookie-key-old",
+          "cookie-key-new"
+        ],
+        "WEBHOOK_KEYS": null
+      }
+    },
+    {
+      "id": "key_set_type/a gap in the indexed keys",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "SIGNING_KEYS__0": "cookie-key-old",
+        "SIGNING_KEYS__2": "cookie-key-new"
+      },
+      "errors": [
+        {
+          "var": "SIGNING_KEYS",
+          "code": "invalid_type"
+        }
+      ]
+    },
+    {
+      "id": "key_set_type/an unresolved injector reference",
+      "source": "load/key_set_type.yaml",
+      "requires": [
+        "key-set"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-key-set-type",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "vars": {
+          "API_KEYS": {
+            "name": "API_KEYS",
+            "description": "Keys that callers present, as a JSON array",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "json",
+            "minKeys": 1,
+            "maxKeys": 3
+          },
+          "SIGNING_KEYS": {
+            "name": "SIGNING_KEYS",
+            "description": "Keys that verify session cookies, one variable each",
+            "required": false,
+            "type": "keySet",
+            "secret": true,
+            "encoding": "indexed",
+            "minKeys": 1,
+            "maxKeys": 2
+          },
+          "WEBHOOK_KEYS": {
+            "name": "WEBHOOK_KEYS",
+            "description": "Keys that verify webhook signatures",
+            "required": false,
+            "separator": ",",
+            "type": "keySet",
+            "secret": true,
+            "encoding": "csv",
+            "minKeys": 1,
+            "maxKeys": 2,
+            "keyMinLength": 32,
+            "keyMaxLength": 256
+          }
+        }
+      },
+      "env": {
+        "WEBHOOK_KEYS": "vault:secret/data/payments#webhook-keys-0123456789"
+      },
+      "errors": [
+        {
+          "var": "WEBHOOK_KEYS",
+          "code": "invalid_type"
         }
       ]
     },

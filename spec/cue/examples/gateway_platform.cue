@@ -9,6 +9,8 @@ gatewayValues: {
 	GOMEMLIMIT: resourceFieldRef: resource: "limits.memory"
 	RATE_LIMITS: {perMinute: 600, burst: 50}
 	PARTNER_KEYSTORE_PASSWORD: secretKeyRef: {name: "partner-keystore", key: "password"}
+	// One Secret key holding the keys, "old,new" during a rotation.
+	PARTNER_API_KEYS: secretKeyRef: {name: "partner-api-keys", key: "keys"}
 }
 
 gatewayFiles: {

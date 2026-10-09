@@ -121,6 +121,12 @@ func (d *declaration) addFile(src reflect.Type, sf reflect.StructField, idx []in
 	f.desc = tag.Get("desc")
 	f.group = tag.Get("group")
 	f.deprecated = tag.Get("deprecated")
+	if _, ok := tag.Lookup("deprecated"); ok {
+		if f.required {
+			problem("a required file input cannot be deprecated: deprecating it asks the platform to stop supplying it")
+		}
+		checkDeprecated(f.deprecated, problem)
+	}
 
 	f.secret = f.typ == fileTLS || f.typ == fileKeystore
 	if s, ok := tag.Lookup("secret"); ok {

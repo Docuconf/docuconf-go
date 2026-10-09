@@ -76,22 +76,17 @@ type Config struct {
 
 	// Keys that verify the signature on incoming payment webhooks.
 	//
-	// A webhook is accepted when it is signed with any key in the list, so
-	// the key can be rotated without turning webhooks away. To rotate:
-	//
-	//  1. add the new key as the second item, and roll out;
-	//  2. switch the sender to the new key;
-	//  3. remove the old key, and roll out.
-	//
-	// Each key is 32 to 256 characters, so an empty or truncated key fails
-	// at boot. Without this variable, the service rejects every webhook.
-	WebhookKeys []docuconf.Secret `env:"WEBHOOK_KEYS" secret:"true" minItems:"1" maxItems:"2" itemMinLength:"32" itemMaxLength:"256"`
+	// A webhook is accepted when it is signed with any key in the set, so
+	// the key can be rotated without turning webhooks away. Each key is 32
+	// to 256 characters, so an empty or truncated key fails at boot.
+	// Without this variable, the service rejects every webhook.
+	WebhookKeys docuconf.KeySet `env:"WEBHOOK_KEYS" keyMinLength:"32" keyMaxLength:"256"`
 }
 ```
 
 Every input needs a description: the first paragraph of the field's doc comment, or a `desc` tag. Later paragraphs become the input's optional `details`, Markdown that says why the input exists and when to change it. Headings (`# Heading`), lists and indented code blocks in the comment carry over as Markdown. Details only go into generated docs; nothing reads them at runtime.
 
-`docuconf.Secret` is a string that prints `***` everywhere: `%v`, `%+v`, `slog` and JSON. A field of that type is secret in the contract. On a plain `string`, `secret:"true"` does the same for the contract but not for printing. A list of secrets, such as the webhook key set above, is a `[]docuconf.Secret` with `secret:"true"`: the tag makes the list secret in the contract, and the item type keeps each key from printing. Accepting either of two keys is how a key is rotated without downtime ([spec section 6.1](spec/SPEC.md#61-rotation)). A misspelled tag (`secrte`, `mni`) is an error, not a silently dropped rule.
+`docuconf.Secret` is a string that prints `***` everywhere: `%v`, `%+v`, `slog` and JSON. A field of that type is secret in the contract. On a plain `string`, `secret:"true"` does the same for the contract but not for printing. `docuconf.KeySet`, such as the webhook keys above, is a set of secret keys that are all valid at once, which is how a key is rotated without downtime ([spec section 6.1](spec/SPEC.md#61-rotation)): it holds one to two keys unless `minKeys` and `maxKeys` say otherwise, prints `***` like a `Secret`, and its `Contains` and `Verify` methods check a candidate against every key. The generated docs print the rotation steps. A misspelled tag (`secrte`, `mni`) is an error, not a silently dropped rule.
 
 ## 3. Run
 
@@ -273,7 +268,7 @@ Then run with `DOCUCONF_FILE_ROOT=./dev`. `.env` files are read only when listed
 
 ### Tags
 
-A doc comment's first paragraph is the description (a `desc` tag is the fallback), and the rest is details. docuconf's tags: `secret`, `min`/`max`, `minLength`/`maxLength` (in characters; `maxLength` also bounds a url or a `JSON[T]` value), `pattern` (RE2), `values` (enum), `schemes` (url), `minItems`/`maxItems`, `itemMin`/`itemMax` on integer lists, and `itemMinLength`/`itemMaxLength` on string lists (`` Shards []int `env:"SHARDS" itemMin:"0" itemMax:"1023"` ``). Integer bounds always include the range caarlos0/env parses the Go type with: an `int` exports `min: -2147483648, max: 2147483647` because caarlos0/env parses it as 32 bits, and a `[]uint16` exports `itemMin: 0, itemMax: 65535`. `JSON[T]` holds a structured variable. The full tag reference is in the [package docs](doc.go).
+A doc comment's first paragraph is the description (a `desc` tag is the fallback), and the rest is details. docuconf's tags: `secret`, `min`/`max`, `minLength`/`maxLength` (in characters; `maxLength` also bounds a url or a `JSON[T]` value), `pattern` (RE2), `values` (enum), `schemes` (url), `minItems`/`maxItems`, `itemMin`/`itemMax` on integer lists, `itemMinLength`/`itemMaxLength` on string lists (`` Shards []int `env:"SHARDS" itemMin:"0" itemMax:"1023"` ``), `minKeys`/`maxKeys` and `keyMinLength`/`keyMaxLength` on a `KeySet`, and `deprecated` (`` OldPort int `env:"OLD_PORT" deprecated:"Use PORT"` ``), which marks an input for removal: `docuconf vet` warns while the platform still sets it, and the SDK logs a warning at boot, never with the value. A required input cannot be deprecated. Integer bounds always include the range caarlos0/env parses the Go type with: an `int` exports `min: -2147483648, max: 2147483647` because caarlos0/env parses it as 32 bits, and a `[]uint16` exports `itemMin: 0, itemMax: 65535`. `JSON[T]` holds a structured variable. The full tag reference is in the [package docs](doc.go).
 
 A comma-separated list keeps empty items, as caarlos0/env does: `ALLOWED_ORIGINS=","` is two empty strings and satisfies `minItems:"1"`. The contract accepts empty items too, so `vet` and boot agree. Check for empty items in your code if they matter.
 

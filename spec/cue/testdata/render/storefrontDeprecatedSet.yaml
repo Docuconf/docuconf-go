@@ -1,0 +1,3 @@
+STOREFRONT__BANNER:
+  message: Banners are managed in the CMS now
+  replacedBy: STOREFRONT__CMS__URL

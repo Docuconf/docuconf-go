@@ -104,28 +104,12 @@ Database credentials, as {"username": ..., "password": ...}
 | Sources | `secret`, `csi`, `injected` (the injector writes the file at the path) |
 | Boot errors | `file_missing`, `file_unreadable`, `file_malformed`, `schema_mismatch` |
 
-<details>
-<summary>JSON Schema</summary>
+Fields of the file, from its JSON Schema:
 
-```json
-{
-  "properties": {
-    "password": {
-      "type": "string"
-    },
-    "username": {
-      "type": "string"
-    }
-  },
-  "required": [
-    "username",
-    "password"
-  ],
-  "type": "object"
-}
-```
-
-</details>
+| Field | Type | Required | Default | Constraints | Description |
+|---|---|---|---|---|---|
+| `password` | string | yes |  |  |  |
+| `username` | string | yes |  |  |  |
 
 ## Sources
 

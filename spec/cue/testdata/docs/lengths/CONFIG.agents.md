@@ -81,7 +81,7 @@ Run limits as JSON, PIC X(35)
 At boot the SDK reports every problem at once, one line each: `INPUT: message (code)`. Secret values never appear.
 
 - `invalid_type`: The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`). Fix: Write the value in the input's wire format. For an injected secret, make sure the injector runs.
-- `out_of_range`: A number, duration, length or list item is outside the input's bounds. Fix: Use a value within the input's constraints.
+- `out_of_range`: A number, duration, length, list item or key is outside the input's bounds; an empty key always is. Fix: Use a value within the input's constraints.
 - `invalid_scheme`: The URL's scheme is not one of the allowed schemes. Fix: Use a URL with an allowed scheme.
-- `too_few_items`: The list has fewer items than its minimum. Fix: Add items.
-- `too_many_items`: The list has more items than its maximum. Fix: Remove items.
+- `too_few_items`: The list has fewer items than its minimum, or the key set fewer keys. Fix: Add items, or keys.
+- `too_many_items`: The list has more items than its maximum, or the key set more keys. Fix: Remove items, or keys: a key set holds the old key only until the rotation is done.

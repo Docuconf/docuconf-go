@@ -98,6 +98,10 @@ import (
 // CommonMark: not blank, and at most 4000 characters (Unicode code points).
 #Details: strings.MaxRunes(4000) & =~"[^\\s]"
 
+// #DeprecationMessage says what to use instead of a deprecated input, or
+// why it is going away: not blank, and at most 500 characters.
+#DeprecationMessage: strings.MaxRunes(500) & =~"[^\\s]"
+
 #Common: {
 	name:        #EnvName
 	description: strings.MinRunes(5)
@@ -112,13 +116,20 @@ import (
 	// name: "Orders:CheckoutTimeout" in .NET, "orders.checkout-timeout"
 	// in Spring. Used for docs and for file-based rendering.
 	configKey?: string
+	// Staged removal (SPEC §4.2): the platform should stop setting it.
 	deprecated?: {
-		message:     string
+		message:     #DeprecationMessage
 		replacedBy?: #EnvName
 	}
 	// A required variable has no default: the platform must supply it.
 	if required {
 		default?: _|_
+	}
+
+	// Deprecating an input asks the platform to stop setting it, which a
+	// required one cannot do.
+	if deprecated != _|_ {
+		_aRequiredInputCannotBeDeprecated: true & !required
 	}
 
 	// Secrets never carry defaults or examples in the contract.
@@ -128,7 +139,7 @@ import (
 	}
 }
 
-#Var: #StringVar | #IntVar | #FloatVar | #BoolVar | #DurationVar | #URLVar | #EnumVar | #ListVar | #JSONVar
+#Var: #StringVar | #IntVar | #FloatVar | #BoolVar | #DurationVar | #URLVar | #EnumVar | #ListVar | #KeySetVar | #JSONVar
 
 #StringVar: close({
 	#Common
@@ -230,6 +241,40 @@ import (
 	default?: [...]
 })
 
+// A set of secret keys that are all valid at once, so that one can be
+// rotated without an outage (SPEC §6.1): webhook signature keys, inbound
+// API keys, JWT HMAC keys, cookie-signing fallbacks. It is always secret,
+// and travels in a list's wire encodings. Keys are never trimmed; an empty
+// key is always out of range.
+#KeySetVar: close({
+	#Common
+	type: "keySet"
+	// A key set is secret material: supply it as a secretKeyRef or injected.
+	secret:   true
+	encoding: *"csv" | #ListEncoding
+	if encoding == "csv" {
+		separator: *"," | string
+	}
+	// How many keys may be set at once: one normally, two during a rotation.
+	minKeys:                *1 | int
+	maxKeys:                *2 | int
+	_minKeysAtLeastOne:     true & minKeys >= 1
+	_maxKeysAtLeastMinKeys: true & maxKeys >= minKeys
+	// Bounds on the length of each key, in characters (Unicode code points).
+	// An empty key is always out of range, so a bound is at least 1.
+	keyMinLength?: int
+	keyMaxLength?: int
+	if keyMinLength != _|_ {
+		_keyMinLengthAtLeastOne: true & keyMinLength >= 1
+	}
+	if keyMaxLength != _|_ {
+		_keyMaxLengthAtLeastOne: true & keyMaxLength >= 1
+	}
+	if keyMinLength != _|_ && keyMaxLength != _|_ {
+		_keyMaxLengthAtLeastKeyMinLength: true & keyMaxLength >= keyMinLength
+	}
+})
+
 // A structured value in one variable, sent as JSON. As with config files,
 // `schema` is a JSON Schema generated from the app's own type.
 #JSONVar: close({
@@ -309,7 +354,7 @@ import (
 	if isInjected {
 		pod: #PodMetadata & {input: var.name, from: value.injected}
 	}
-	if isInjected && value.injected.ref != _|_ && var.type == "list" {
+	if isInjected && value.injected.ref != _|_ && (var.type == "list" || var.type == "keySet") {
 		// One env value cannot carry a list spread over NAME__0, NAME__1.
 		injectedRefNotIndexed: true & var.encoding != "indexed"
 	}
@@ -478,6 +523,20 @@ import (
 			for n, c in checks if c.pod != _|_ {(n): c.pod.out}
 			for n, c in fileChecks if c.pod != _|_ {(n): c.pod.out}
 		}}
+	}
+
+	// Deprecated inputs the platform still sets (SPEC §4.2), with their
+	// deprecation notices. They are warnings, not errors: the platform
+	// should stop setting them before the app removes them.
+	deprecatedSet: {
+		for n, v in contract.vars if v.deprecated != _|_ if values[n] != _|_ || _inOverlay[n] != _|_ {
+			(n): v.deprecated
+		}
+		if contract.files != _|_ {
+			for n, f in contract.files if f.deprecated != _|_ if files[n] != _|_ {
+				(n): f.deprecated
+			}
+		}
 	}
 
 	// Kept separate from values: making a field of values required based
