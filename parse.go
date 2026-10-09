@@ -347,6 +347,14 @@ type varResults struct {
 // place, before caarlos0/env reads it: an empty value is unset for every
 // type but string, and bools accept true and false in any case.
 func checkVars(vars []*varDecl, environ map[string]string, logger *slog.Logger) varResults {
+	return checkLayeredVars(vars, environ, nil, logger)
+}
+
+// checkLayeredVars is checkVars with values from below the environment:
+// a variable the environment does not set takes its layer's value (a
+// profile default, or an overlay value checked like an env value), which
+// also satisfies required.
+func checkLayeredVars(vars []*varDecl, environ map[string]string, layers map[string]layer, logger *slog.Logger) varResults {
 	for _, v := range vars {
 		raw, ok := environ[v.name]
 		if !ok {
@@ -383,6 +391,38 @@ func checkVars(vars []*varDecl, environ map[string]string, logger *slog.Logger) 
 		}
 		if ok && v.expand {
 			raw = os.Expand(raw, func(k string) string { return environ[k] })
+		}
+		l, layered := layers[v.name]
+		if ok && layered && !l.fixed && !l.bad {
+			logger.Warn("docuconf: variable is set in the environment and in an overlay; the environment wins", "name", v.name, "source", l.source)
+		}
+		if !ok && layered {
+			if l.bad {
+				res.flagged[v.name] = true
+				continue
+			}
+			if l.fixed {
+				res.typed[v.name] = l.typed
+				continue
+			}
+			if v.deprecated != "" {
+				logger.Warn("docuconf: deprecated variable is set", "name", v.name, "message", v.deprecated, "source", l.source)
+			}
+			var val any
+			var vs []Violation
+			if l.isList {
+				val, vs = v.parseItems(l.items)
+			} else {
+				res.raw[v.name] = l.raw
+				val, vs = v.parse(l.raw)
+			}
+			if len(vs) > 0 {
+				res.viols = append(res.viols, vs...)
+				res.flagged[v.name] = true
+				continue
+			}
+			res.typed[v.name] = val
+			continue
 		}
 		if !ok {
 			if v.required {

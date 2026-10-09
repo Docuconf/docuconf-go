@@ -1,0 +1,83 @@
+description: >
+  Profiles (SPEC §4.4): the contract's profiles.defaults stand for the
+  profile files baked into the image. The selector picks one; unset, it is
+  profiles.default. A variable the environment does not set takes the
+  selected profile's default, then its own; a profile default satisfies a
+  required variable; the environment beats the profile file; and a profile
+  with no file, or names in another case, leaves required variables to
+  the platform.
+requires: [profiles]
+vars:
+  APP_ENV:
+    type: string
+    description: Which profile file the app loads
+    default: Production
+  WAREHOUSE_URL:
+    type: url
+    description: Warehouse API base URL
+    required: true
+    schemes: [https]
+  PAGE_SIZE:
+    type: int
+    description: Items per page
+    min: 1
+    max: 500
+    default: 20
+  CACHE_TTL:
+    type: duration
+    description: How long to cache a page
+    encoding: go
+    default: 1m
+  REGIONS:
+    type: list
+    description: Regions to serve
+    items: string
+    encoding: csv
+profiles:
+  selector: APP_ENV
+  default: Production
+  defaults:
+    Production:
+      WAREHOUSE_URL: https://warehouse.internal
+      PAGE_SIZE: 50
+      CACHE_TTL: 90s
+      REGIONS: [eu, us]
+    Staging:
+      WAREHOUSE_URL: https://warehouse.staging.internal
+cases:
+  - name: the selector unset uses profiles.default
+    env: {}
+    expect: {WAREHOUSE_URL: https://warehouse.internal, PAGE_SIZE: 50, CACHE_TTL: 1m30s, REGIONS: [eu, us]}
+
+  - name: the selector picks a profile
+    env: {APP_ENV: Staging}
+    expect: {APP_ENV: Staging, WAREHOUSE_URL: https://warehouse.staging.internal}
+
+  - name: a profile default satisfies a required variable
+    # A values case: the platform's #Validate agrees that the selected
+    # profile supplies WAREHOUSE_URL.
+    values: {APP_ENV: Staging, PAGE_SIZE: 100}
+
+  - name: the environment beats the profile file
+    env: {WAREHOUSE_URL: "https://warehouse.example.com", PAGE_SIZE: "75", REGIONS: "ap"}
+    expect: {WAREHOUSE_URL: "https://warehouse.example.com", PAGE_SIZE: 75, REGIONS: [ap], CACHE_TTL: 1m30s}
+
+  - name: an empty value is unset, so the profile's default applies
+    env: {PAGE_SIZE: ""}
+    expect: {WAREHOUSE_URL: https://warehouse.internal, PAGE_SIZE: 50, CACHE_TTL: 1m30s, REGIONS: [eu, us]}
+
+  - name: a profile with no file leaves required variables to the platform
+    env: {APP_ENV: Development}
+    errors: [{var: WAREHOUSE_URL, code: missing_required}]
+
+  - name: a profile with no file, and the platform sets the required variable
+    env: {APP_ENV: Development, WAREHOUSE_URL: "https://warehouse.dev.internal"}
+    expect: {APP_ENV: Development, WAREHOUSE_URL: "https://warehouse.dev.internal"}
+
+  - name: profile names are case-sensitive
+    env: {APP_ENV: staging}
+    errors: [{var: WAREHOUSE_URL, code: missing_required}]
+
+  - name: an env value is checked even where the profile has a default
+    env: {PAGE_SIZE: "1000"}
+    errors: [{var: PAGE_SIZE, code: out_of_range}]

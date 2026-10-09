@@ -290,7 +290,7 @@ To validate an environment against a contract with no Go struct, for example one
 	timeout := vals["REQUEST_TIMEOUT"].(time.Duration) // int is int64, list is []string or []int64
 ```
 
-File inputs are loaded too, with the same checks as the Go file types, and returned by input name as those types (`TLSKeyPair`, `CABundle`, `Keystore`, `TextFile`, `BinaryFile`, or `ConfigFile[any]` checked against the contract's schema). A contract with `overlays` or `profiles` is rejected, and so is a `toml` config file or a `jks` keystore, which the Go SDK cannot read.
+File inputs are loaded too, with the same checks as the Go file types, and returned by input name as those types (`TLSKeyPair`, `CABundle`, `Keystore`, `TextFile`, `BinaryFile`, or `ConfigFile[any]` checked against the contract's schema). Config files may be `json`, `yaml` or `toml`; a `jks` keystore is rejected, since the Go SDK reads `pkcs12` only. A contract's `profiles` and `overlays` are layered as a host with config files would (SPEC §4.4, §4.7): a variable's default, then the selected profile's default, then an overlay (read from under `DOCUCONF_FILE_ROOT`), then the environment.
 
 A generator for another language that builds the contract itself can format it with `docuconf.ContractCUE(contractJSON, pkg)`, which checks it as `LoadContract` does and writes the same `contract.cue` layout as `Export`: header, package, import, variables and files sorted by name. The COBOL SDK's `docuconf-cobol generate` uses it.
 
@@ -319,7 +319,7 @@ ENTRYPOINT ["docuconf", "exec", "-contract", "/etc/docuconf/contract.cue", "--",
 
 `docuconf check -contract contract.cue` runs the same validation and exits 0 (printing `<name>: ok`) or 1, without starting anything. Use it in an init container or in CI.
 
-The checks are the SDK's: contract-first mode loads variables and files, but not `overlays` or `profiles` (a contract with them is rejected), and it reads `json` and `yaml` config files and `pkcs12` keystores only.
+The checks are the SDK's: contract-first mode loads variables, files, profiles and overlays, and it reads `json`, `yaml` and `toml` config files and `pkcs12` keystores (not `jks`).
 
 ### Conformance
 
@@ -330,7 +330,7 @@ go test -run TestConformance -v .
 DOCUCONF_CONFORMANCE=/path/to/cases.json go test -run TestConformance .
 ```
 
-The Go SDK supports every capability tag (`int64`, `json-schema`), so no case is skipped.
+The Go SDK supports every capability tag (`int64`, `json-schema`) and every transitional one (`key-set`, `deprecated`, `strict-parsing`, `files`, `profiles`, `overlays`), so no case is skipped, and the test fails if one is. Its export of the shared export fixture is kept in [`testdata/conformance-export.cue`](testdata/conformance-export.cue) and compared with [`conformance/export/golden.cue`](conformance/export/golden.cue) by the CLI's tests.
 
 ### More
 

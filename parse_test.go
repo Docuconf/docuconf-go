@@ -184,7 +184,7 @@ func TestParseCertificates(t *testing.T) {
 		}, docuconf.CodeFileMissing, "tls.key does not exist"},
 		{"garbage certificate", func(f *fixture) {
 			f.write(dir+"/tls.crt", "not a certificate")
-		}, docuconf.CodeCertificateInvalid, "tls.crt holds no PEM certificate"},
+		}, docuconf.CodeFileMalformed, "tls.crt holds no PEM certificate"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

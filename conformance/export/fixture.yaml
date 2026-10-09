@@ -1,0 +1,139 @@
+# The shared export fixture (SPEC §11.2 item 3, §12), described without a
+# language. Declare these inputs in your SDK's own declaration API, export
+# the contract, and compare it with golden.cue:
+#
+#   docuconf conformance export --golden conformance/export/golden.cue exported.cue
+#
+# Export with metadata.name "docuconf-fixture" and appVersion "1.0.0".
+# Every description and details below comes from where your language
+# documents a setting (SPEC §14.7), or an explicit annotation where it
+# has none. Each input lists what the declaration says, in contract terms;
+# fields not listed are left at their defaults. Write lists in the order
+# given. Encodings are yours: the comparison ignores them, and a list's
+# separator unless both sides use csv.
+#
+# TestFixtureMatchesGolden (cmd/docuconf) checks that this file and
+# golden.cue name the same inputs with the same types.
+metadata:
+  name: docuconf-fixture
+  appVersion: "1.0.0"
+vars:
+  APP_NAME:
+    type: string
+    description: Service name, used in logs and metrics
+    details: Lower case, as a DNS label allows.
+    declare: >
+      An optional string with default "orders", 2 to 40 characters, matching
+      ^[a-z][a-z0-9-]*$, in group "general", with examples "orders" and
+      "billing", and config key "App:Name".
+  DATABASE_URL:
+    type: url
+    description: Primary Postgres connection string
+    declare: >
+      A required, secret URL with schemes postgres and postgresql, at most
+      2048 characters, in group "database".
+  PORT:
+    type: int
+    description: HTTP listen port
+    declare: An optional int with default 8080, between 1 and 65535.
+  TRACE_RATIO:
+    type: float
+    description: Fraction of requests traced
+    declare: An optional float with default 0.25, between 0 and 1.
+  DEBUG:
+    type: bool
+    description: Serve the debug endpoints
+    declare: An optional bool with default false.
+  REQUEST_TIMEOUT:
+    type: duration
+    description: Upstream request timeout
+    declare: >
+      An optional duration with default 1m30s, between 1s and 5m, written in
+      canonical form (1m30s, 1s, 5m).
+  LOG_LEVEL:
+    type: enum
+    description: Minimum log level
+    declare: An optional enum of debug, info, warn and error, in that order, with default info.
+  ALLOWED_ORIGINS:
+    type: list
+    description: CORS origins allowed to call the API
+    declare: >
+      An optional list of strings with 1 to 5 items, each 1 to 255
+      characters. In the csv encoding its separator is ";".
+  SHARDS:
+    type: list
+    description: Shards this instance owns
+    declare: An optional list of ints, each between 0 and 1023.
+  WEBHOOK_KEYS:
+    type: keySet
+    description: Keys that verify webhook signatures
+    declare: >
+      A key set (always secret) of 1 to 2 keys (the defaults), each 32 to
+      256 characters.
+  RATE_LIMITS:
+    type: json
+    description: Per-client rate limits
+    declare: >
+      An optional json value with default {"perMinute": 60}, at most 1024
+      characters, bound to an object type with a required integer perMinute
+      (minimum 1) and an optional integer burst (minimum 0), and no other
+      properties. Its schema is generated from that type.
+  OLD_PORT:
+    type: int
+    description: Port the service used to listen on
+    declare: An optional int, deprecated with message "Use PORT instead", replaced by PORT.
+  PARTNER_PASSWORD:
+    type: string
+    description: Password of the partner keystore
+    declare: An optional, secret string.
+files:
+  settings:
+    type: config
+    description: Application settings
+    declare: >
+      A required json config file at /etc/app/settings/settings.json, moved
+      by pathEnv SETTINGS_FILE, reload watch, maxSize 65536 bytes, in group
+      "general", bound to the settings type: an object with a required
+      string name (at least 1 character), a required integer replicas
+      (minimum 1), an optional list of strings tags, and no other
+      properties.
+  rules:
+    type: config
+    description: Routing rules
+    declare: An optional yaml config file at /etc/app/rules/rules.yaml, bound to the settings type.
+  flags:
+    type: config
+    description: Feature defaults
+    declare: An optional toml config file at /etc/app/flags/flags.toml, bound to the settings type.
+  serving-tls:
+    type: tls
+    description: Certificate the service serves HTTPS with
+    declare: >
+      A TLS key pair at /etc/app/tls, reload watch, covering
+      app.example.test and api.example.test, key algorithms ECDSA and
+      Ed25519, at least 720h left, and requireCA.
+  trust:
+    type: caBundle
+    description: CAs the service trusts
+    declare: A CA bundle at /etc/app/trust/bundle.pem with at least 2 certificates.
+  partner:
+    type: keystore
+    description: Client certificate for the partner API
+    declare: A pkcs12 keystore at /etc/app/partner/keystore.p12, opened with PARTNER_PASSWORD.
+  licence:
+    type: text
+    description: Licence key
+    declare: >
+      A text file at /etc/app/licence/licence.key, 8 to 64 characters,
+      matching ^[A-Z0-9-]+\n?$ (a backslash and n in the pattern).
+  geoip:
+    type: binary
+    description: GeoIP database
+    declare: >
+      A binary file at /data/geoip/geoip.mmdb, maxSize 134217728 bytes
+      (128 MiB), deprecated with message "Use geo-db instead", replaced by
+      geo-db.
+  geo-db:
+    type: binary
+    description: City-level location database
+    declare: A binary file at /data/geo-db/geo.mmdb.

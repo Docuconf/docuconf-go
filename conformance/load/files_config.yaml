@@ -1,0 +1,198 @@
+description: >
+  Config files (SPEC §4.6, §11.2 item 7) in every format the spec lists
+  (json, yaml, toml): a valid file parses and matches its schema, and its
+  expected value is the file's data as JSON. A file that does not parse is
+  file_malformed; one that parses but breaks its schema is
+  schema_mismatch. main is required; the other inputs are optional, so a
+  case writes only the files it tests.
+requires: [files]
+vars: {}
+files:
+  main:
+    type: config
+    format: json
+    description: Main settings, always present
+    required: true
+    path: /etc/app/main/main.json
+    maxSize: 64
+    schema:
+      type: object
+      properties:
+        port: {type: integer, minimum: 1, maximum: 65535}
+      required: [port]
+      additionalProperties: false
+  settings-json:
+    type: config
+    format: json
+    description: Settings as JSON
+    path: /etc/app/json/settings.json
+    schema: &settings
+      type: object
+      properties:
+        name: {type: string, minLength: 1}
+        replicas: {type: integer, minimum: 1}
+        ratio: {type: number}
+        enabled: {type: boolean}
+        tags: {type: array, items: {type: string}}
+        limits:
+          type: object
+          properties:
+            burst: {type: integer}
+          additionalProperties: false
+      required: [name, replicas]
+      additionalProperties: false
+  settings-yaml:
+    type: config
+    format: yaml
+    description: Settings as YAML
+    path: /etc/app/yaml/settings.yaml
+    schema: *settings
+  settings-toml:
+    type: config
+    format: toml
+    description: Settings as TOML
+    path: /etc/app/toml/settings.toml
+    schema: *settings
+  routes:
+    type: config
+    format: json
+    description: Routing table, which ROUTES_FILE may move
+    path: /etc/app/routes/routes.json
+    pathEnv: ROUTES_FILE
+cases:
+  - name: only the required file
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 8080}'
+    expect:
+      main: {port: 8080}
+
+  - name: a valid json file
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 8080}'
+      /etc/app/json/settings.json: |
+        {"name": "orders", "replicas": 3, "ratio": 0.5, "enabled": true, "tags": ["a", "b"], "limits": {"burst": 10}}
+    expect:
+      main: {port: 8080}
+      settings-json: {name: orders, replicas: 3, ratio: 0.5, enabled: true, tags: [a, b], limits: {burst: 10}}
+
+  - name: a valid yaml file
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 8080}'
+      /etc/app/yaml/settings.yaml: |
+        name: orders
+        replicas: 3
+        ratio: 0.5
+        enabled: true
+        tags: [a, b]
+        limits:
+          burst: 10
+    expect:
+      main: {port: 8080}
+      settings-yaml: {name: orders, replicas: 3, ratio: 0.5, enabled: true, tags: [a, b], limits: {burst: 10}}
+
+  - name: a valid toml file
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 8080}'
+      /etc/app/toml/settings.toml: |
+        name = "orders"
+        replicas = 3
+        ratio = 0.5
+        enabled = true
+        tags = ["a", "b"]
+
+        [limits]
+        burst = 10
+    expect:
+      main: {port: 8080}
+      settings-toml: {name: orders, replicas: 3, ratio: 0.5, enabled: true, tags: [a, b], limits: {burst: 10}}
+
+  - name: malformed json
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 8080}'
+      /etc/app/json/settings.json: '{"name": "orders",'
+    errors: [{var: settings-json, code: file_malformed}]
+
+  - name: malformed yaml
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 8080}'
+      /etc/app/yaml/settings.yaml: "name: [orders\n"
+    errors: [{var: settings-yaml, code: file_malformed}]
+
+  - name: malformed toml
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 8080}'
+      /etc/app/toml/settings.toml: "name = orders\n"
+    errors: [{var: settings-toml, code: file_malformed}]
+
+  - name: json that breaks the schema
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 8080}'
+      /etc/app/json/settings.json: '{"name": "orders", "replicas": "3"}'
+    errors: [{var: settings-json, code: schema_mismatch}]
+
+  - name: yaml that breaks the schema
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 8080}'
+      /etc/app/yaml/settings.yaml: "name: orders\n"
+    errors: [{var: settings-yaml, code: schema_mismatch}]
+
+  - name: toml that breaks the schema
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 8080}'
+      /etc/app/toml/settings.toml: "name = \"orders\"\nreplicas = 3\nextra = true\n"
+    errors: [{var: settings-toml, code: schema_mismatch}]
+
+  - name: a value outside the schema's bounds
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 0}'
+    errors: [{var: main, code: schema_mismatch}]
+
+  - name: the required file is missing
+    env: {}
+    files: {}
+    errors: [{var: main, code: file_missing}]
+
+  - name: a file above maxSize
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 8080, "padding": "................................................"}'
+    errors: [{var: main, code: file_too_large}]
+
+  - name: a file at exactly maxSize
+    env: {}
+    files:
+      # 64 bytes; the schema would reject the extra property, but the size
+      # check passes, so the error is schema_mismatch.
+      /etc/app/main/main.json: '{"port": 8080, "padding": "..................................."}'
+    errors: [{var: main, code: schema_mismatch}]
+
+  - name: an absent optional file is null
+    env: {}
+    files:
+      /etc/app/main/main.json: '{"port": 8080}'
+    expect:
+      main: {port: 8080}
+      settings-json: null
+      settings-yaml: null
+      settings-toml: null
+      routes: null
+
+  - name: pathEnv moves the file, under the file root
+    env: {ROUTES_FILE: /srv/routes/table.json}
+    files:
+      /etc/app/main/main.json: '{"port": 8080}'
+      /srv/routes/table.json: '[{"prefix": "/api", "upstream": "api"}]'
+    expect:
+      main: {port: 8080}
+      routes: [{prefix: /api, upstream: api}]

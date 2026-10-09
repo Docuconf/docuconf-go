@@ -55,22 +55,27 @@ import (
 //	config    ConfigFile[any], checked against the contract's schema and
 //	          decoded as encoding/json decodes into an any
 //
-// A config file in the toml format, or a jks keystore, is a
-// *DeclarationError: the Go SDK cannot read them.
+// Config files may be json, yaml or toml. A jks keystore is a
+// *DeclarationError: the Go SDK reads pkcs12 only.
+//
+// Profiles and overlays (SPEC §4.4, §4.7) are layered as a host with
+// config files layers them: a variable's default, then the selected
+// profile's default, then an overlay, read from its path under the file
+// root, then the environment.
 //
 // Options.Environment, DotEnv, FileRoot, TerminationLog, Now,
 // WatchInterval and Logger apply; Prefix and FuncMap concern declared
-// structs. A contract with overlays or profiles is rejected, since this
-// mode does not load them yet.
+// structs.
 //
 //	vals, err := docuconf.LoadContract(contractJSON, docuconf.Options{})
 //	timeout := vals["REQUEST_TIMEOUT"].(time.Duration)
 //	licence := vals["licence"].(docuconf.TextFile).Content()
 func LoadContract(contractJSON []byte, opts Options) (map[string]any, error) {
-	vars, files, err := declareContract(contractJSON)
+	c, err := declareContract(contractJSON)
 	if err != nil {
 		return nil, err
 	}
+	vars, files := c.vars, c.files
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -79,8 +84,13 @@ func LoadContract(contractJSON []byte, opts Options) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := checkVars(vars, environ, logger)
-	viols := res.viols
+	root := opts.FileRoot
+	if root == "" {
+		root = environ[EnvFileRoot]
+	}
+	layers, viols := loadLayers(c, environ, root, logger)
+	res := checkLayeredVars(vars, environ, layers, logger)
+	viols = append(viols, res.viols...)
 	loaded := loadContractFiles(files, environ, res.raw, opts, logger)
 	out := make(map[string]any, len(vars)+len(files))
 	for _, f := range loaded {
@@ -203,17 +213,25 @@ var contractGoTypes = map[string]reflect.Type{
 	typeJSON:     reflect.TypeFor[any](),
 }
 
+// contractDecl is a contract document as declarations.
+type contractDecl struct {
+	vars     []*varDecl
+	files    []*fileDecl
+	profiles *profilesDecl
+	overlays []*overlayDecl
+}
+
 // declareContract builds variable and file declarations from a contract
 // document, so contract-first loading runs the same checks as a Go
 // declaration.
-func declareContract(contractJSON []byte) ([]*varDecl, []*fileDecl, error) {
+func declareContract(contractJSON []byte) (*contractDecl, error) {
 	doc, err := decodeJSON(contractJSON)
 	if err != nil {
-		return nil, nil, &DeclarationError{Problems: []string{fmt.Sprintf("contract is not valid JSON: %v", err)}}
+		return nil, &DeclarationError{Problems: []string{fmt.Sprintf("contract is not valid JSON: %v", err)}}
 	}
 	root, ok := doc.(map[string]any)
 	if !ok {
-		return nil, nil, &DeclarationError{Problems: []string{"contract is not a JSON object"}}
+		return nil, &DeclarationError{Problems: []string{"contract is not a JSON object"}}
 	}
 	var problems []string
 	problemf := func(format string, args ...any) { problems = append(problems, fmt.Sprintf(format, args...)) }
@@ -222,11 +240,6 @@ func declareContract(contractJSON []byte) ([]*varDecl, []*fileDecl, error) {
 	}
 	if root["kind"] != "ConfigContract" {
 		problemf("kind must be ConfigContract")
-	}
-	for _, k := range []string{"overlays", "profiles"} {
-		if _, ok := root[k]; ok {
-			problemf("contract-first mode loads variables and files only; the contract's %s are not supported", k)
-		}
 	}
 	varsObj, ok := root["vars"].(map[string]any)
 	if !ok {
@@ -276,10 +289,17 @@ func declareContract(contractJSON []byte) ([]*varDecl, []*fileDecl, error) {
 			}
 		}
 	}
-	if len(problems) > 0 {
-		return nil, nil, &DeclarationError{Problems: problems}
+	c := &contractDecl{vars: vars, files: files}
+	if x, ok := root["profiles"]; ok {
+		c.profiles = contractProfiles(x, vars, problemf)
 	}
-	return vars, files, nil
+	if x, ok := root["overlays"]; ok {
+		c.overlays = contractOverlays(x, problemf)
+	}
+	if len(problems) > 0 {
+		return nil, &DeclarationError{Problems: problems}
+	}
+	return c, nil
 }
 
 // contractFileFields lists the fields each file type may carry, besides
@@ -425,8 +445,8 @@ func contractFile(name string, o map[string]any, problem func(string, ...any)) *
 	switch f.typ {
 	case fileConfig:
 		f.format, _ = str("format")
-		if f.format != "json" && f.format != "yaml" {
-			fail("format %q is not supported; the Go SDK reads json and yaml config files", f.format)
+		if f.format != "json" && f.format != "yaml" && f.format != "toml" {
+			fail("format %q is not a config file format (json, yaml or toml)", f.format)
 		}
 		f.schema = &jsonSchema{}
 		if s, ok := o["schema"]; ok {
@@ -834,10 +854,10 @@ func (v *varDecl) typedDefault(def any) (any, string) {
 // language Export cannot reflect on.
 //
 // The contract is first checked as LoadContract checks it, and a
-// *DeclarationError lists every problem; so, as there, overlays and
-// profiles are not supported.
+// *DeclarationError lists every problem. Profiles and overlays, which
+// a Go declaration cannot have, are written after the files, sorted.
 func ContractCUE(contractJSON []byte, pkg string) ([]byte, error) {
-	if _, _, err := declareContract(contractJSON); err != nil {
+	if _, err := declareContract(contractJSON); err != nil {
 		return nil, err
 	}
 	doc, _ := decodeJSON(contractJSON) // declareContract decoded it already
@@ -859,6 +879,10 @@ func ContractCUE(contractJSON []byte, pkg string) ([]byte, error) {
 			return ordered(v, nil, input(varFieldOrder))
 		case "files":
 			return ordered(v, nil, input(fileFieldOrder))
+		case "overlays":
+			return ordered(v, nil, input([]string{"description", "format", "path", "keySeparator", "reload"}))
+		case "profiles":
+			return ordered(v, []string{"selector", "default", "defaults"}, nil)
 		}
 		return fromJSON(v)
 	})

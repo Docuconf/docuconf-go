@@ -44,6 +44,7 @@
 //	minKeys maxKeys         number of keys in a KeySet (default 1 and 2)
 //	keyMinLength keyMaxLength  length of each key of a KeySet
 //	deprecated:"Use PORT"   what to use instead, or why it is going away
+//	replacedBy:"PORT"       the input that replaces a deprecated one
 //	group, examples ("a|b"), configKey
 //
 // A tag key that is not one of these but is close to one (secrte, mni) is
@@ -95,13 +96,13 @@
 // Tags for every file type: path (required; absolute), pathEnv (a variable
 // the platform sets to the path; it overrides path at runtime), reload
 // ("restart" or "watch"), maxSize (bytes, or with a Ki, Mi or Gi suffix),
-// secret, desc, group, deprecated. Per type:
+// secret, desc, group, deprecated, replacedBy. Per type:
 //
 //	TLSKeyPair  dnsNames:"a,b" keyAlgorithms:"ECDSA,RSA" minRemaining:"720h" requireCA:"true"
 //	CABundle    minCertificates:"2"
 //	Keystore    passwordVar:"KEYSTORE_PASSWORD" format:"pkcs12"
 //	TextFile    pattern, minLength, maxLength
-//	ConfigFile  format:"json" or "yaml" (default from the path's extension)
+//	ConfigFile  format:"json", "yaml" or "toml" (default from the path's extension)
 //
 // A config file's contract carries a JSON Schema generated from T: json
 // tags name the properties, fields without omitempty (or omitzero) and

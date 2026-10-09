@@ -196,7 +196,7 @@ func (v *varDecl) contract(desc, details string, docs *docResolver) (obj, error)
 		o = o.add("examples", stringsToList(v.examples))
 	}
 	if v.deprecated != "" {
-		o = o.add("deprecated", obj{}.add("message", v.deprecated))
+		o = o.add("deprecated", deprecation(v.deprecated, v.replacedBy))
 	}
 	if v.configKey != "" {
 		o = o.add("configKey", v.configKey)
@@ -366,7 +366,7 @@ func (f *fileDecl) contract(desc, details string, docs *docResolver) (obj, error
 		o = o.add("group", f.group)
 	}
 	if f.deprecated != "" {
-		o = o.add("deprecated", obj{}.add("message", f.deprecated))
+		o = o.add("deprecated", deprecation(f.deprecated, f.replacedBy))
 	}
 	switch f.typ {
 	case fileConfig:
@@ -408,4 +408,14 @@ func (f *fileDecl) contract(desc, details string, docs *docResolver) (obj, error
 		}
 	}
 	return o, nil
+}
+
+// deprecation is an input's deprecated field: its message, and the input
+// that replaces it when there is one.
+func deprecation(message, replacedBy string) obj {
+	o := obj{}.add("message", message)
+	if replacedBy != "" {
+		o = o.add("replacedBy", replacedBy)
+	}
+	return o
 }
