@@ -257,7 +257,7 @@ Each SDK checks its contract export against the shared fixture (SPEC
 
 The comparison unifies both contracts with the meta-schema, so a field
 left at its default equals one written out. It ignores
-`metadata.generator`, every `encoding`, and a `separator` unless both
+`metadata.generator`, every `encoding` and `configKey`, and a `separator` unless both
 contracts use `csv`. Numbers compare by value, and a JSON Schema compares
 without `title`, `$schema`, `$id`, `$comment` and `examples`, with
 `required` as a set. Everything else must match, including canonical

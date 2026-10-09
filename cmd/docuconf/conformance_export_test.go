@@ -47,13 +47,14 @@ func TestConformanceExportComparesAsData(t *testing.T) {
 	}
 
 	// What the comparison ignores: the generator, encodings (and with them
-	// a separator), defaults written out, a number's form, and schema
-	// annotations and the order of required.
+	// a separator), configKey, defaults written out, a number's form, and
+	// schema annotations and the order of required.
 	same := edit(t,
 		`sdk:      "docuconf-fixture"`, `sdk:      "docuconf-python"`,
 		`language: "go"`, `language: "python"`,
 		"encoding:      \"csv\"\n\t\t\tseparator:     \";\"", `encoding:      "json"`,
 		`encoding:    "go"`, `encoding:    "iso8601"`,
+		`configKey: "App:Name"`, `configKey: "app.name"`,
 		`description: "Serve the debug endpoints"`, "description: \"Serve the debug endpoints\"\n\t\t\trequired: false\n\t\t\tsecret: false",
 		`default:     0.25`, `default:     2.5e-1`,
 		`required: ["name", "replicas"]`, "title: \"Settings\"\n\t\t\t\trequired: [\"replicas\", \"name\"]",

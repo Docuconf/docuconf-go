@@ -21,9 +21,10 @@ import (
 //	docuconf conformance export --golden conformance/export/golden.cue exported.cue
 //
 // Both contracts are unified with the meta-schema, so a field left at its
-// default compares equal to one written out. metadata.generator and every
-// encoding are the SDK's own and are ignored, and so is a list's or key
-// set's separator unless both contracts use the csv encoding. Numbers
+// default compares equal to one written out. metadata.generator, every
+// encoding and every configKey are the SDK's own and are ignored, and so is
+// a list's or key set's separator unless both contracts use the csv
+// encoding. Numbers
 // compare by value (1 equals 1.0), and a JSON Schema compares without its
 // annotations (title, $schema, $id, $comment, examples) and with its
 // required lists as sets. Everything else, including the order of lists
@@ -120,6 +121,9 @@ func normalizeExport(c any, keepSeparator map[string]bool) any {
 				delete(v, "separator")
 			}
 			delete(v, "encoding")
+			// configKey is the host's own binding key (Spring's relaxed
+			// name, .NET's configuration path), so SDKs differ on it.
+			delete(v, "configKey")
 			if s, ok := v["schema"]; ok {
 				v["schema"] = normalizeSchema(s)
 			}
