@@ -1,0 +1,8 @@
+exit 1
+-- old --
+vars: IDS: {type: "list", items: "int", description: "Tenant ids"}
+-- new --
+vars: IDS: {type: "list", items: "string", description: "Tenant ids"}
+-- want --
+BREAKING  IDS: list items changed from "int" to "string" [items-changed]
+svc: 1 breaking, 0 notable, 0 compatible

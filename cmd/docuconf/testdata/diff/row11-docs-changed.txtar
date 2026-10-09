@@ -1,0 +1,11 @@
+exit 0
+-- old --
+vars: PORT: {type: "int", description: "HTTP listen port", group: "http", examples: ["8080"]}
+-- new --
+vars: PORT: {type: "int", description: "Port the HTTP server listens on", details: "Set it to the Service targetPort.", group: "server", examples: ["9090"]}
+-- want --
+ok        PORT: description changed (docs only) [description-changed]
+ok        PORT: details changed (docs only) [details-changed]
+ok        PORT: group changed (docs only) [group-changed]
+ok        PORT: examples changed (docs only) [examples-changed]
+svc: 0 breaking, 0 notable, 4 compatible

@@ -1,0 +1,11 @@
+exit 0
+-- old --
+vars: A: {type: "int", description: "Some number"}
+vars: B: {type: "int", description: "Another number", default: 3}
+-- new --
+vars: A: {type: "int", description: "Some number", default: 1}
+vars: B: {type: "int", description: "Another number"}
+-- want --
+NOTABLE   A: default added: 1; unset values now get it [default-added]
+NOTABLE   B: default 3 removed; unset values are now absent [default-removed]
+svc: 0 breaking, 2 notable, 0 compatible

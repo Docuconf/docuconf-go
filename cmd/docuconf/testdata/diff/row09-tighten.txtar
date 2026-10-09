@@ -1,0 +1,15 @@
+exit 1
+-- old --
+vars: PORT: {type: "int", description: "HTTP listen port", default: 8080, min: 1, max: 65535}
+vars: LOG_LEVEL: {type: "enum", description: "Minimum log level", values: ["debug", "info", "warn"]}
+vars: REGION: {type: "string", description: "Cloud region"}
+-- new --
+vars: PORT: {type: "int", description: "HTTP listen port", default: 8080, min: 1024, max: 9999}
+vars: LOG_LEVEL: {type: "enum", description: "Minimum log level", values: ["info", "warn"]}
+vars: REGION: {type: "string", description: "Cloud region", pattern: "^[a-z]+-[a-z]+-[0-9]$"}
+-- want --
+BREAKING  LOG_LEVEL: enum values removed: "debug" [values-tightened]
+BREAKING  PORT: min raised from 1 to 1024 [min-tightened]
+BREAKING  PORT: max lowered from 65535 to 9999 [max-tightened]
+BREAKING  REGION: pattern "^[a-z]+-[a-z]+-[0-9]$" added [pattern-added]
+svc: 4 breaking, 0 notable, 0 compatible

@@ -1,0 +1,10 @@
+exit 1
+-- old --
+files: routes: {type: "config", format: "yaml", description: "Routing table", path: "/etc/gw/routes/routes.yaml"}
+files: geoip: {type: "binary", description: "GeoIP database", path: "/data/geo/geo.mmdb", deprecated: message: "Lookups moved to the geo service"}
+-- new --
+vars: {}
+-- want --
+BREAKING  geoip: file input removed; it was deprecated (Lookups moved to the geo service), so a platform that heeded the warning is unaffected; values or sources that still set it fail [file-removed, platform only]
+BREAKING  routes: file input removed without being deprecated first; values or sources that still set it fail the unknown-input check [file-removed, platform only]
+svc: 2 breaking, 0 notable, 0 compatible

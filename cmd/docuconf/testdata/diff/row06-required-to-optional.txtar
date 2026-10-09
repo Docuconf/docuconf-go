@@ -1,0 +1,8 @@
+exit 0
+-- old --
+vars: API_TOKEN: {type: "string", description: "Partner API token", secret: true, required: true}
+-- new --
+vars: API_TOKEN: {type: "string", description: "Partner API token", secret: true}
+-- want --
+ok        API_TOKEN: required → optional [made-optional]
+svc: 0 breaking, 0 notable, 1 compatible

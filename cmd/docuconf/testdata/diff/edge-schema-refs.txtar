@@ -1,0 +1,11 @@
+exit 1
+-- old --
+vars: RATE_LIMITS: {type: "json", description: "Rate limits per route"
+	schema: {$ref: "#/$defs/Limits", $defs: {Limits: {type: "object", properties: {perMinute: {type: "integer", minimum: 1}, child: {$ref: "#/$defs/Limits"}}}}}}
+-- new --
+vars: RATE_LIMITS: {type: "json", description: "Rate limits per route"
+	schema: {$ref: "#/$defs/RateLimits", $defs: {RateLimits: {type: "object", additionalProperties: false, properties: {perMinute: {type: "integer", minimum: 10}, child: {$ref: "#/$defs/RateLimits"}}}}}}
+-- want --
+BREAKING  RATE_LIMITS: schema /additionalProperties: now accepts nothing [schema-tightened]
+BREAKING  RATE_LIMITS: schema /properties/perMinute: minimum changed from 1 to 10 [schema-tightened]
+svc: 2 breaking, 0 notable, 0 compatible

@@ -1,0 +1,10 @@
+exit 0
+-- old --
+vars: PORT: {type: "int", description: "HTTP listen port", default: 8080, min: 1, max: 65535}
+-- new --
+vars: PORT: {type: "int", description: "HTTP listen port", default: 8080, min: 1, max: 65535, deprecated: {message: "Use LISTEN_ADDR", replacedBy: "LISTEN_ADDR"}}
+vars: LISTEN_ADDR: {type: "string", description: "Address to listen on"}
+-- want --
+ok        LISTEN_ADDR: optional variable added [var-added]
+NOTABLE   PORT: deprecated: Use LISTEN_ADDR; replaced by LISTEN_ADDR; the platform should stop setting it [deprecated]
+svc: 0 breaking, 1 notable, 1 compatible

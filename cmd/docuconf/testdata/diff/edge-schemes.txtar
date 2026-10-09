@@ -1,0 +1,14 @@
+exit 1
+-- old --
+vars: DATABASE_URL: {type: "url", description: "Postgres connection string", schemes: ["postgres", "postgresql"]}
+vars: CALLBACK_URL: {type: "url", description: "Where to send callbacks"}
+vars: CACHE_URL: {type: "url", description: "Redis connection string", schemes: ["redis"]}
+-- new --
+vars: DATABASE_URL: {type: "url", description: "Postgres connection string", schemes: ["postgres"]}
+vars: CALLBACK_URL: {type: "url", description: "Where to send callbacks", schemes: ["https"]}
+vars: CACHE_URL: {type: "url", description: "Redis connection string"}
+-- want --
+ok        CACHE_URL: schemes no longer restricted [schemes-loosened]
+BREAKING  CALLBACK_URL: schemes now restricted to ["https"] [schemes-tightened]
+BREAKING  DATABASE_URL: schemes removed: "postgresql" [schemes-tightened]
+svc: 2 breaking, 0 notable, 1 compatible

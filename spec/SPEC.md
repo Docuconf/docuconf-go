@@ -655,6 +655,76 @@ A contract describes a specific build of an application. It MUST travel with the
 
 The contract format itself is versioned by `apiVersion`: `v1alpha1` (fields may change), then `v1beta1` (additive only), then `v1`.
 
+### 9.1 `docuconf diff`
+
+```
+docuconf diff <old.cue | old.json | -> <new.cue | new.json | -> [--format text|json] [--allow-breaking] [--ack file]
+```
+
+Both contracts are unified with the meta-schema first, so defaults (`required: false`, `reload: restart`, a list's `encoding`, a key set's `minKeys`) are explicit on both sides and a default written out is not a change. Either side, not both, may be `-` for standard input; JSON is recognised by a leading `{`.
+
+Every change gets a **change id** and one of four classes:
+
+| Class | Text label | Meaning |
+|---|---|---|
+| `compatible` | `ok` | Nothing the platform supplies stops working. |
+| `notable` | `NOTABLE` | Behaviour changes, or the app image changes in a way the platform re-renders (the rows above marked "reported as notable" or "breaking for the app image only"). |
+| `breaking-platform` | `BREAKING` (`platform only` after the change id) | Values or sources that still set something the contract dropped fail: removed inputs and overlays. |
+| `breaking` | `BREAKING` | Existing values or sources may no longer validate. |
+
+Constraints are compared field by field, as bounds: a lower bound (`min`, `minLength`, `minItems`, `itemMin`, `itemMinLength`, `minKeys`, `keyMinLength`, `minCertificates`, `minRemaining`) tightens when it is added or raised, and an upper bound (`max`, `maxLength`, `maxItems`, `itemMax`, `itemMaxLength`, `maxKeys`, `keyMaxLength`, `maxSize`) when it is added or lowered. Durations compare as durations. A list of allowed values (`values`, `schemes`, `keyAlgorithms`) tightens when a value is removed, or when the list appears where any value was allowed; `dnsNames`, a list of required names, tightens when a name is added. Changes the table does not list are classified conservatively:
+
+| Change | Class |
+|---|---|
+| `pattern` added or changed (diff cannot compare regular expressions) | breaking |
+| `pattern` removed | compatible |
+| List `items` changed | breaking |
+| `encoding` or `separator` changed | notable (the platform re-renders the wire value) |
+| `encoding` changed to `indexed` | breaking for the platform: an `injected` reference can no longer supply it (section 4.5) |
+| `default` added or removed | notable |
+| `deprecated` removed or its message changed | compatible |
+| `configKey` changed | notable; removed while the contract has overlays: breaking for the platform |
+| File input made `secret` | breaking (inline and `configMap` sources no longer validate) |
+| File `pathEnv` changed | notable |
+| `requireCA` set | breaking |
+| `reload: watch` → `restart` | notable: the platform must now roll the pods |
+| Overlay added | compatible |
+| Overlay removed | breaking for the platform |
+| Overlay `path`, `format` or `keySeparator` changed | notable, breaking for the app image only |
+| Profile value added or changed, `profiles.selector` or `profiles.default` changed | notable |
+| Profile value removed for a required variable | breaking: the platform must now supply it when that profile is selected |
+| `metadata.name` or `apiVersion` changed | notable (`appVersion` and `generator` are ignored) |
+| `schema` added | breaking |
+| Any field diff does not know | breaking, "changed in a way diff cannot classify" |
+
+`injected` sources live in the platform's values, not the contract, so only their one contract-side rule shows up (`indexed`). An injected value is checked at boot, against the new contract's constraints like any other.
+
+**JSON Schemas** (`schema` on `json` variables and config files) are compared structurally, keyword by keyword, following local `$ref`s into `$defs` and `definitions`: `type` (as a set; `integer` is within `number`), `required`, `properties`, `additionalProperties` and `items` (absent means `true`), `enum`, `const`, `pattern`, `format`, `uniqueItems`, and the numeric and length bounds. A property only one side declares is compared with what the other side's `additionalProperties` allowed for that key; a new property on an open object is notable, since values may already set that key in another shape. Annotations (`description`, `title`, `examples`, `default` and the like) are compatible. Any other keyword that differs, such as `oneOf`, `allOf` or a remote `$ref`, is reported as breaking with the reason "schema changed in a way diff cannot classify".
+
+**Output.** By default, one line per change, then a summary line:
+
+```
+BREAKING  WORKER_COUNT: max lowered from 64 to 32 [max-tightened]
+BREAKING  LEGACY_MODE: variable removed; it was deprecated (...) [var-removed, platform only]
+NOTABLE   PORT: default changed from 8080 to 9090 [default-changed]
+ok        LOG_LEVEL: description changed (docs only) [description-changed]
+orders-api: 2 breaking, 1 notable, 1 compatible
+```
+
+`--format json` prints a list of `{"input", "change", "class", "reason"}` objects, with `"acknowledged": true` on acknowledged changes, and `[]` when nothing changed. Variables and file inputs are named as in the contract, overlays as `overlays.<name>`, and profile settings by `profiles` or the variable they set.
+
+**Exit status:** 0 when no change is breaking, 1 when one is (in either breaking class), 2 on a usage or parse error. `--allow-breaking` prints the same and exits 0.
+
+**Acknowledging a change.** CI blocks unacknowledged breaking changes. `--ack file` names accepted ones, one per line as `<input> <change-id>`, with `#` comments:
+
+```
+# the platform stopped setting it in platform PR #142
+LEGACY_MODE var-removed
+WORKER_COUNT max-tightened
+```
+
+An acknowledged change is still printed, marked `acknowledged`, and does not fail the run. An acknowledgment that matches no breaking change is reported on standard error, so stale lines can be cleaned up. Keep the file in the app's repository and empty it after the release that carried the change.
+
 ## 10. Feature flags are not environment configuration
 
 They look similar, since both are often booleans, but they differ in every way that matters:

@@ -1,0 +1,16 @@
+exit 0
+-- old --
+files: routes: {type: "config", format: "yaml", description: "Routing table", path: "/etc/gw/routes/routes.yaml"
+	schema: {type: "object", required: ["prefix"], additionalProperties: false, properties: {prefix: {type: "string", maxLength: 64}, weight: {type: "integer", enum: [1, 2]}}}}
+-- new --
+files: routes: {type: "config", format: "yaml", description: "Routing table", path: "/etc/gw/routes/routes.yaml"
+	schema: {type: "object", description: "Routes", properties: {prefix: {type: "string"}, weight: {type: "number", enum: [1, 2, 3]}, upstream: {type: "string"}}}}
+-- want --
+ok        routes: schema /additionalProperties: now accepts anything [schema-loosened]
+ok        routes: schema /properties/prefix: maxLength 64 removed [schema-loosened]
+ok        routes: schema /properties/upstream: now accepts some values [schema-loosened]
+ok        routes: schema /properties/weight: enum values added: 3 [schema-loosened]
+ok        routes: schema /properties/weight: type widened from "integer" to "number" [schema-loosened]
+ok        routes: schema /: property "prefix" no longer required [schema-loosened]
+ok        routes: schema annotations changed (docs only) [schema-docs-changed]
+svc: 0 breaking, 0 notable, 7 compatible
