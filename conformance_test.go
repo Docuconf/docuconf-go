@@ -21,7 +21,7 @@ import (
 // (conformance/README.md): it holds every 64-bit integer, validates json
 // values against their schema, and knows the keySet type and deprecated
 // inputs. It runs every case: TestConformance fails on a skip.
-var supportedTags = map[string]bool{"int64": true, "json-schema": true, "key-set": true, "deprecated": true}
+var supportedTags = map[string]bool{"int64": true, "json-schema": true, "key-set": true, "deprecated": true, "strict-parsing": true}
 
 type conformanceCase struct {
 	ID       string            `json:"id"`

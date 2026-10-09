@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -437,8 +438,35 @@ func checkVars(vars []*varDecl, environ map[string]string, logger *slog.Logger) 
 			continue
 		}
 		res.typed[v.name] = val
+		if !indexed && !v.loadFile && !v.expand {
+			if canon, ok := hostForm(v, raw); ok {
+				environ[v.name] = canon
+			}
+		}
 	}
 	return res
+}
+
+// hostForm returns a valid integer, or csv list of integers, in the form
+// strconv parses for every Go kind. The spec's integers take a sign and
+// leading zeros (SPEC §5), which strconv.ParseUint rejects, so caarlos0/env
+// is given the canonical form of a value docuconf has already accepted.
+func hostForm(v *varDecl, raw string) (string, bool) {
+	canon := func(s string) string {
+		n, _ := new(big.Int).SetString(s, 10)
+		return n.String()
+	}
+	switch {
+	case v.typ == typeInt:
+		return canon(raw), true
+	case v.typ == typeList && v.items == "int" && (v.listEncoding == encCSV || v.listEncoding == ""):
+		items := strings.Split(raw, v.separator)
+		for i, item := range items {
+			items[i] = canon(item)
+		}
+		return strings.Join(items, v.separator), true
+	}
+	return "", false
 }
 
 // explainHostError turns an error from caarlos0/env into a violation,

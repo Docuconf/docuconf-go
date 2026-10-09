@@ -123,6 +123,7 @@ Report each failing case by `id`, so a failure points at its YAML source.
 | `json-schema` | Contract-first mode validates `json` values against the variable's JSON Schema. | Any SDK without a JSON Schema validator, documented in its README |
 | `key-set` | The `keySet` type (SPEC §4.3), in `load/key_set_type.yaml`. | Transitional: an SDK that does not have the type yet. Every SDK MUST support it by `v1beta1`. |
 | `deprecated` | Deprecated inputs (SPEC §4.2): a deprecated variable that is set still loads, in `load/deprecated.yaml`. | Transitional: an SDK that does not read `deprecated` yet. Every SDK MUST support it by `v1beta1`. |
+| `strict-parsing` | The exact parsing rules of SPEC §5, in `load/strict.yaml`: `bool` is only `true` or `false` in any case (never `1`, `t`, `yes`, `on`), `int` only decimal digits with an optional sign (never `0x10`, `1_000`, `1e3`), `float` only decimal (never hex, `inf`, `.5`), durations only their encoding's grammar, and nothing is trimmed, including `csv` items. | Transitional: an SDK whose host library is still more lenient than the spec. Every SDK MUST support it by `v1beta1`. |
 
 The transitional tags let the suite gain cases for a new feature while
 SDKs written before it stay green. When every SDK supports a feature, or
