@@ -18,7 +18,7 @@ import (
 )
 
 // Version is the docuconf-go SDK version recorded in exported contracts.
-const Version = "0.1.0" // x-release-please-version
+const Version = "0.2.0" // x-release-please-version
 
 // Meta describes the service a contract is exported for.
 type Meta struct {
