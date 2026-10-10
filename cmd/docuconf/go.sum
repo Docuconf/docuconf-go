@@ -8,8 +8,8 @@ github.com/cockroachdb/apd/v3 v3.2.3 h1:4Zx+I3R35bFXMnltzmjP79i2cravE4jTRL6ps9Au
 github.com/cockroachdb/apd/v3 v3.2.3/go.mod h1:klXJcjp+FffLTHlhIG69tezTDvdP065naDsHzKhYSqc=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/docuconf/docuconf-go v0.0.0-20261008000332-8ac56075a32f h1:9s+Pow2PE+PF++CCY8XOqJVOS1ndNFrwbJj9VxsmIsA=
-github.com/docuconf/docuconf-go v0.0.0-20261008000332-8ac56075a32f/go.mod h1:AwOGN7OM3S5unz/B4clT7qony8QNCp6vGcRiaCFjgbg=
+github.com/docuconf/docuconf-go v0.0.0-20261009180543-233f7407e2e4 h1:y8zqZcLXkhNLyS5Qlk3z8bxEbF/jJGhMlviWZUenc3U=
+github.com/docuconf/docuconf-go v0.0.0-20261009180543-233f7407e2e4/go.mod h1:mp16HiCZoy60hM1CPSHWLjcblG9FhxA6DcURbSzMsxc=
 github.com/emicklei/proto v1.14.3 h1:zEhlzNkpP8kN6utonKMzlPfIvy82t5Kb9mufaJxSe1Q=
 github.com/emicklei/proto v1.14.3/go.mod h1:rn1FgRS/FANiZdD2djyH7TMA9jdRDcYQ9IEN9yvjX0A=
 github.com/go-quicktest/qt v1.102.0 h1:HSQxCeh5YZH3EL3W39ixjtyaEhcWSXQHtHnMBzSs474=

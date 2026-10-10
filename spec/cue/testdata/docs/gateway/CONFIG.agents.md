@@ -6,10 +6,10 @@ This file lists every configuration input `gateway` reads, from its docuconf con
 
 ## Hard rules
 
-1. Never put a secret value in code, a `.env` file, a values file, a ConfigMap, an annotation, a commit, a log or a message. Supply a secret variable only as a `secretKeyRef` or `injected`, and a secret file only from a `secret`, `certificate` or `csi` source or `injected`. Secret inputs: `PARTNER_KEYSTORE_PASSWORD`, `partner-keystore` and `serving-tls`.
+1. Never put a secret value in code, a `.env` file, a values file, a ConfigMap, an annotation, a commit, a log or a message. Supply a secret variable only as a `secretKeyRef` or `injected`, and a secret file only from a `secret`, `certificate` or `csi` source or `injected`. Secret inputs: `PARTNER_API_KEYS`, `PARTNER_KEYSTORE_PASSWORD`, `partner-keystore` and `serving-tls`.
 2. Use each input's declared wire format when writing a raw environment value (a `.env` file, a shell, `docker run -e`): list and duration formats differ between apps. In a platform values file, write typed values instead (lists as lists, durations in Go syntax such as `90s`); docuconf renders the wire format.
 3. Validate before proposing a change: `docuconf vet -contract contract.cue -values values.yaml -files files.yaml` for platform values, and `docuconf check -contract contract.cue` in a running environment. Both print every problem and exit 1.
-4. Do not invent inputs. `gateway` reads only the 5 environment variables and 6 files below; `vet` rejects a value for anything else. A new input needs a change to the app's declaration and a new contract export.
+4. Do not invent inputs. `gateway` reads only the 6 environment variables and 6 files below; `vet` rejects a value for anything else. A new input needs a change to the app's declaration and a new contract export.
 5. Set every required input that has no default: `PARTNER_KEYSTORE_PASSWORD`, `POD_NAMESPACE`, `license`, `routes` and `serving-tls`.
 
 ## Using this config in code
@@ -55,6 +55,22 @@ Go runtime soft memory limit, in bytes
 
 Minimum log level emitted
 
+#### PARTNER_API_KEYS
+
+- kind: environment variable
+- type: `keySet` (key set)
+- required: no
+- secret: yes
+- constraint: between 1 and 2 keys
+- constraint: each key at least 32 characters (Unicode code points)
+- wire format: the keys joined by `,`, such as `old,new` during a rotation; keys are never trimmed, and an empty key is never valid
+- in a values file: a `secretKeyRef` or `injected` reference, never the value
+- rotation: The app accepts every key in the set, so a key is rotated without an outage, in three steps. The platform cannot check that a rollout keeps a key in common with the previous one, so follow them in order: (1) add the new key to the set, and roll out; (2) switch the sender (the side that signs or presents the key) to the new key; (3) remove the old key from the set, and roll out.
+- allowed sources: `secretKeyRef`, `injected`
+- boot errors: `invalid_type`, `out_of_range`, `too_few_items`, `too_many_items`
+
+Keys that partners present to call the API
+
 #### PARTNER_KEYSTORE_PASSWORD
 
 - kind: environment variable
@@ -91,7 +107,8 @@ Namespace the gateway runs in, for metrics labels
 - constraint: matches the JSON Schema in the contract
 - wire format: compact JSON on one line
 - in a values file: a JSON value (written as YAML or JSON in the values file)
-- schema: `{"additionalProperties":false,"properties":{"burst":{"minimum":0,"type":"integer"},"perMinute":{"minimum":1,"type":"integer"}},"required":["perMinute"],"type":"object"}`
+- field `burst`: integer, optional, at least 0
+- field `perMinute`: integer, required, at least 1
 - allowed sources: `literal`, `configMapKeyRef`, `injected`
 - boot errors: `invalid_type`, `schema_mismatch`
 
@@ -158,7 +175,10 @@ Client certificate for mTLS to the partner API
 - reload: `watch`: the app reloads the file when it changes
 - constraint: matches the JSON Schema in the contract
 - constraint: at most 64 KiB (65536 bytes)
-- schema: `{"additionalProperties":false,"properties":{"routes":{"items":{"additionalProperties":false,"properties":{"match":{"pattern":"^/","type":"string"},"timeout":{"pattern":"^([0-9]+(ms|s|m))+$","type":"string"},"upstream":{"pattern":"^https?://","type":"string"}},"required":["match","upstream"],"type":"object"},"minItems":1,"type":"array"}},"required":["routes"],"type":"object"}`
+- field `routes`: list of objects, required, at least 1 item
+- field `routes[].match`: string, required, contains a match for the RE2 pattern `^/`
+- field `routes[].timeout`: string, optional, matches the RE2 pattern `^([0-9]+(ms|s|m))+$`
+- field `routes[].upstream`: string, required, contains a match for the RE2 pattern `^https?://`
 - allowed sources: `inline`, `configMap`, `secret`, `csi`, `image`, `injected` (the injector writes the file at the path)
 - boot errors: `file_missing`, `file_unreadable`, `file_too_large`, `file_malformed`, `schema_mismatch`
 
@@ -218,9 +238,11 @@ At boot the SDK reports every problem at once, one line each: `INPUT: message (c
 
 - `missing_required`: A required input is not set, and has no default. Fix: Set it through one of its allowed sources.
 - `invalid_type`: The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`). Fix: Write the value in the input's wire format. For an injected secret, make sure the injector runs.
-- `out_of_range`: A number, duration, length or list item is outside the input's bounds. Fix: Use a value within the input's constraints.
+- `out_of_range`: A number, duration, length, list item or key is outside the input's bounds; an empty key always is. Fix: Use a value within the input's constraints.
 - `pattern_mismatch`: The value does not match the input's pattern. Fix: Use a value that matches the pattern.
 - `not_in_enum`: The value is not one of the allowed values. Fix: Use one of the listed values, spelled exactly as listed.
+- `too_few_items`: The list has fewer items than its minimum, or the key set fewer keys. Fix: Add items, or keys.
+- `too_many_items`: The list has more items than its maximum, or the key set more keys. Fix: Remove items, or keys: a key set holds the old key only until the rotation is done.
 - `file_missing`: The file is not at its path. Fix: Give the input a source, and check that it is mounted at the declared path (or that its path variable points at it).
 - `file_unreadable`: The file exists but cannot be read. Fix: Check the mount, the file mode and the user the app runs as.
 - `file_too_large`: The file is larger than its maximum size. Fix: Shrink the content, or raise `maxSize` in the app's declaration.

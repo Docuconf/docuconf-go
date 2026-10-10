@@ -184,7 +184,7 @@ func TestParseCertificates(t *testing.T) {
 		}, docuconf.CodeFileMissing, "tls.key does not exist"},
 		{"garbage certificate", func(f *fixture) {
 			f.write(dir+"/tls.crt", "not a certificate")
-		}, docuconf.CodeCertificateInvalid, "tls.crt holds no PEM certificate"},
+		}, docuconf.CodeFileMalformed, "tls.crt holds no PEM certificate"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -320,8 +320,14 @@ func TestParseVariables(t *testing.T) {
 		{"not a url", map[string]string{"STRIPE_API_BASE": "api.stripe.com"}, "STRIPE_API_BASE", docuconf.CodeInvalidType, "is not a URL"},
 		{"duration", map[string]string{"REQUEST_TIMEOUT": "10m"}, "REQUEST_TIMEOUT", docuconf.CodeOutOfRange, "10m is above max 5m"},
 		{"bad duration", map[string]string{"REQUEST_TIMEOUT": "90 sec"}, "REQUEST_TIMEOUT", docuconf.CodeInvalidType, "is not a duration"},
-		{"float", map[string]string{"TRACE_SAMPLE_RATIO": "NaN"}, "TRACE_SAMPLE_RATIO", docuconf.CodeInvalidType, "is not a finite number"},
+		{"float", map[string]string{"TRACE_SAMPLE_RATIO": "NaN"}, "TRACE_SAMPLE_RATIO", docuconf.CodeInvalidType, "is not a finite decimal number"},
 		{"bool", map[string]string{"DEBUG": "yes"}, "DEBUG", docuconf.CodeInvalidType, "is not a bool"},
+		// strconv.ParseBool, which caarlos0/env uses, takes 1, t and F.
+		{"bool 1", map[string]string{"DEBUG": "1"}, "DEBUG", docuconf.CodeInvalidType, "is not a bool"},
+		{"bool t", map[string]string{"DEBUG": "t"}, "DEBUG", docuconf.CodeInvalidType, "is not a bool"},
+		{"hex float", map[string]string{"TRACE_SAMPLE_RATIO": "0x1p-2"}, "TRACE_SAMPLE_RATIO", docuconf.CodeInvalidType, "is not a finite decimal number"},
+		{"float .5", map[string]string{"TRACE_SAMPLE_RATIO": ".5"}, "TRACE_SAMPLE_RATIO", docuconf.CodeInvalidType, "is not a finite decimal number"},
+		{"negative uint", map[string]string{"CACHE_SIZE": "-5"}, "CACHE_SIZE", docuconf.CodeOutOfRange, "-5 is outside the range of uint"},
 		{"pattern", map[string]string{"REGION": "Europe"}, "REGION", docuconf.CodePatternMismatch, "does not match pattern"},
 		{"too many items", map[string]string{"EXTRA_PORTS": "1;2;3;4;5"}, "EXTRA_PORTS", docuconf.CodeTooManyItems, "has 5 items, above maxItems 4"},
 		{"list item", map[string]string{"EXTRA_PORTS": "1;x"}, "EXTRA_PORTS", docuconf.CodeInvalidType, `item 1: "x" is not an integer`},
@@ -345,6 +351,21 @@ func TestParseVariables(t *testing.T) {
 			require.Len(t, verr.Violations, 1, "%v", verr)
 		})
 	}
+}
+
+// TestParseSignedAndZeroPaddedInts checks that the spec's integer form
+// (SPEC §5), which strconv.ParseUint rejects with a sign, reaches the
+// struct through caarlos0/env.
+func TestParseSignedAndZeroPaddedInts(t *testing.T) {
+	f := newFixture(t)
+	f.env["CACHE_SIZE"] = "+0050"
+	f.env["PORT"] = "+08080"
+	f.env["EXTRA_PORTS"] = "+1;007"
+	cfg, verr := f.parse()
+	require.Nil(t, verr)
+	require.Equal(t, uint(50), cfg.Cache.Size)
+	require.Equal(t, 8080, cfg.Port)
+	require.Equal(t, []uint16{1, 7}, cfg.ExtraPorts)
 }
 
 func TestParseEmptyIsUnset(t *testing.T) {

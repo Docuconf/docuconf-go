@@ -10,6 +10,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing/fstest"
 
@@ -212,9 +214,17 @@ func (p *Platform) Schemas(c *Contract) (map[string]cue.Value, error) {
 // Validate runs #Validate, and the policy against the values, and returns
 // one readable line per problem. Secret values never appear in the lines.
 func (p *Platform) Validate(c *Contract, values, files, overlays, policy cue.Value) ([]string, error) {
+	problems, _, err := p.ValidateWarn(c, values, files, overlays, policy)
+	return problems, err
+}
+
+// ValidateWarn is Validate, and also returns one line per warning: each
+// deprecated input the platform still sets (#Validate's deprecatedSet,
+// SPEC §4.2). Warnings do not make the values invalid.
+func (p *Platform) ValidateWarn(c *Contract, values, files, overlays, policy cue.Value) (problems, warnings []string, err error) {
 	schemas, err := p.Schemas(c)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	t := newTranslator(c, values, files, overlays)
 	// An undeclared name makes CUE reject the whole values struct, which
@@ -253,7 +263,33 @@ func (p *Platform) Validate(c *Contract, values, files, overlays, policy cue.Val
 	if err := v.Validate(cue.Concrete(true)); err != nil {
 		t.validate(err)
 	}
-	return t.lines(), nil
+	return t.lines(), deprecatedWarnings(v.LookupPath(cue.ParsePath("deprecatedSet"))), nil
+}
+
+// deprecatedWarnings phrases #Validate's deprecatedSet, one line per input
+// in name order: variables (upper case) sort before file inputs.
+func deprecatedWarnings(set cue.Value) []string {
+	var out []string
+	names := []string{}
+	m := fields(set)
+	for n := range m {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	for _, n := range names {
+		d := m[n]
+		msg, _ := d.LookupPath(cue.ParsePath("message")).String()
+		what := n
+		if !envNameRe.MatchString(n) {
+			what = "file input " + n
+		}
+		line := fmt.Sprintf("warning: %s is deprecated, and the platform still sets it: %s", what, msg)
+		if by, err := d.LookupPath(cue.ParsePath("replacedBy")).String(); err == nil {
+			line += fmt.Sprintf(" (replaced by %s)", by)
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 // Render runs #Render and returns its output as YAML.
@@ -295,6 +331,8 @@ func (p *Platform) Render(c *Contract, values, files, overlays cue.Value) ([]byt
 	}
 	return buf.Bytes(), nil
 }
+
+var envNameRe = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
 
 // sharedPodFields are the values document's keys that are not variables:
 // pod metadata shared by every injector (SPEC §4.5.2). Variable names are

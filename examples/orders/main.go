@@ -30,12 +30,18 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(docuconf.Redacted(cfg))
 	})
+	// Reload status of the watched certificate, for a health check: its
+	// generation, and the last rotation that was rejected, by code.
+	mux.HandleFunc("GET /reloadz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]docuconf.ReloadStatus{"serving-tls": cfg.TLS.ReloadStatus()})
+	})
 	mux.HandleFunc("GET /discounts", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(cfg.Discounts.Value().Codes)
 	})
-	// Payment webhooks, signed with any key in WEBHOOK_KEYS (see config.go
-	// for how to rotate it).
+	// Payment webhooks, signed with any key in WEBHOOK_KEYS (CONFIG.md says
+	// how to rotate it).
 	mux.HandleFunc("POST /webhooks/payments", func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 		if err != nil {
@@ -56,7 +62,12 @@ func main() {
 	}
 	var err error
 	if cfg.TLS.Present() {
+		// GetCertificate reads the current certificate on every handshake,
+		// so a renewed one is served without a restart.
 		srv.TLSConfig = &tls.Config{GetCertificate: cfg.TLS.GetCertificate}
+		cfg.TLS.OnChange(func(cert *tls.Certificate) {
+			slog.Info("serving a renewed certificate", "notAfter", cert.Leaf.NotAfter)
+		})
 		slog.Info("orders listening with HTTPS", "port", cfg.Port)
 		err = srv.ListenAndServeTLS("", "")
 	} else {

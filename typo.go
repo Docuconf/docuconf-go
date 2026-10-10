@@ -11,9 +11,10 @@ import (
 // varTagKeys are the struct tag keys docuconf reads on a variable field.
 var varTagKeys = []string{
 	"env", "envDefault", "envSeparator", "envPrefix",
-	"secret", "desc", "group", "examples", "deprecated", "configKey", "type",
+	"secret", "desc", "group", "examples", "deprecated", "replacedBy", "configKey", "type",
 	"minLength", "maxLength", "pattern", "min", "max", "schemes", "values",
 	"minItems", "maxItems", "itemMin", "itemMax", "itemMinLength", "itemMaxLength",
+	"minKeys", "maxKeys", "keyMinLength", "keyMaxLength",
 }
 
 // hostTagKeys are tag keys other common libraries own. They are never

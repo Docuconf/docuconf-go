@@ -1,0 +1,79 @@
+description: >
+  The keySet type (SPEC §4.3, §6.1): a set of secret keys that are all valid
+  at once, so a key can be rotated with an overlap in which both are valid.
+  The same cases as key_set.yaml, which declares the set as a secret list,
+  plus what the type adds: an empty key is out of range even without
+  keyMinLength, and keys travel in every list encoding. The typed value is
+  the keys in order, as a JSON array of strings. Every value is a secret, so
+  no error output may contain it. Tagged key-set until every SDK has the
+  type (SPEC §12).
+requires: [key-set]
+vars:
+  WEBHOOK_KEYS:
+    type: keySet
+    description: Keys that verify webhook signatures
+    secret: true
+    minKeys: 1
+    maxKeys: 2
+    keyMinLength: 32
+    keyMaxLength: 256
+  API_KEYS:
+    type: keySet
+    description: Keys that callers present, as a JSON array
+    secret: true
+    encoding: json
+    maxKeys: 3
+  SIGNING_KEYS:
+    type: keySet
+    description: Keys that verify session cookies, one variable each
+    secret: true
+    encoding: indexed
+cases:
+  - name: one key
+    env: {WEBHOOK_KEYS: "old-webhook-key-0123456789abcdef0123"}
+    expect: {WEBHOOK_KEYS: ["old-webhook-key-0123456789abcdef0123"]}
+  - name: two keys during a rotation
+    env: {WEBHOOK_KEYS: "old-webhook-key-0123456789abcdef0123,new-webhook-key-0123456789abcdef0123"}
+    expect: {WEBHOOK_KEYS: ["old-webhook-key-0123456789abcdef0123", "new-webhook-key-0123456789abcdef0123"]}
+  - name: a key at exactly keyMaxLength
+    env: {WEBHOOK_KEYS: "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"}
+    expect: {WEBHOOK_KEYS: ["kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"]}
+  - name: an empty value is unset
+    env: {WEBHOOK_KEYS: ""}
+    expect: {WEBHOOK_KEYS: null}
+  - name: keys are never trimmed
+    env: {WEBHOOK_KEYS: " old-webhook-key-0123456789abcdef012 , new-webhook-key-0123456789abcdef012 "}
+    expect: {WEBHOOK_KEYS: [" old-webhook-key-0123456789abcdef012 ", " new-webhook-key-0123456789abcdef012 "]}
+  - name: a trailing comma leaves an empty second key
+    env: {WEBHOOK_KEYS: "old-webhook-key-0123456789abcdef0123,"}
+    errors: [{var: WEBHOOK_KEYS, code: out_of_range}]
+  - name: a truncated key
+    env: {WEBHOOK_KEYS: "old-webhook-key-0123456789abcdef0123,new-webhook-key"}
+    errors: [{var: WEBHOOK_KEYS, code: out_of_range}]
+  - name: a key one character above keyMaxLength
+    env: {WEBHOOK_KEYS: "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"}
+    errors: [{var: WEBHOOK_KEYS, code: out_of_range}]
+  - name: a third key
+    env: {WEBHOOK_KEYS: "old-webhook-key-0123456789abcdef0123,new-webhook-key-0123456789abcdef0123,third-webhook-key-0123456789abcdef"}
+    errors: [{var: WEBHOOK_KEYS, code: too_many_items}]
+  - name: keys as a JSON array
+    env: {API_KEYS: '["key-one","key,two","key-three"]'}
+    expect: {API_KEYS: ["key-one", "key,two", "key-three"]}
+  - name: an empty key is out of range without keyMinLength
+    env: {API_KEYS: '["key-one",""]'}
+    errors: [{var: API_KEYS, code: out_of_range}]
+  - name: an empty JSON array has too few keys
+    env: {API_KEYS: '[]'}
+    errors: [{var: API_KEYS, code: too_few_items}]
+  - name: keys that are not a JSON array of strings
+    env: {API_KEYS: '{"key": "key-one"}'}
+    errors: [{var: API_KEYS, code: invalid_type}]
+  - name: one variable per key
+    env: {SIGNING_KEYS__0: "cookie-key-old", SIGNING_KEYS__1: "cookie-key-new"}
+    expect: {SIGNING_KEYS: ["cookie-key-old", "cookie-key-new"]}
+  - name: a gap in the indexed keys
+    env: {SIGNING_KEYS__0: "cookie-key-old", SIGNING_KEYS__2: "cookie-key-new"}
+    errors: [{var: SIGNING_KEYS, code: invalid_type}]
+  - name: an unresolved injector reference
+    env: {WEBHOOK_KEYS: "vault:secret/data/payments#webhook-keys-0123456789"}
+    errors: [{var: WEBHOOK_KEYS, code: invalid_type}]

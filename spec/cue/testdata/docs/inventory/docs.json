@@ -215,7 +215,7 @@
     },
     {
       "code": "out_of_range",
-      "meaning": "A number, duration, length or list item is outside the input's bounds.",
+      "meaning": "A number, duration, length, list item or key is outside the input's bounds; an empty key always is.",
       "fix": "Use a value within the input's constraints."
     },
     {

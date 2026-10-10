@@ -165,7 +165,7 @@ import (
 
 	// An indexed list spans several variables, so an injector may set it
 	// but not resolve one reference into it.
-	let injected = [if var.type == "list" if var.encoding == "indexed" {_helmInjectedNoRef}, _helmInjected][0]
+	let injected = [if (var.type == "list" || var.type == "keySet") if var.encoding == "indexed" {_helmInjectedNoRef}, _helmInjected][0]
 
 	// The schema of a literal value, also used for overlays.
 	literal: _literal

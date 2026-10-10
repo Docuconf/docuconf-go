@@ -1,0 +1,31 @@
+description: >
+  Deprecated variables (SPEC §4.2). A deprecated variable that is set still
+  loads and is still checked; the SDK only warns, naming the variable and the
+  message, never the value. The platform may still set it: #Validate lists it
+  as a warning, not an error. Tagged deprecated until every SDK has
+  deprecated inputs (SPEC §12).
+requires: [deprecated]
+vars:
+  PORT:
+    type: int
+    description: Port to listen on
+    default: 8080
+  OLD_PORT:
+    type: int
+    description: Old name of the listen port
+    min: 1
+    deprecated: {message: Use PORT instead, replacedBy: PORT}
+  OLD_TOKEN:
+    type: string
+    description: Token of the retired billing API
+    secret: true
+    deprecated: {message: The billing API no longer takes a token}
+cases:
+  - name: a deprecated variable that is set still loads
+    env: {OLD_PORT: "9090", OLD_TOKEN: "tok-0123456789"}
+    expect: {PORT: 8080, OLD_PORT: 9090, OLD_TOKEN: "tok-0123456789"}
+  - name: the platform may still set a deprecated variable
+    values: {OLD_PORT: 9090}
+  - name: a deprecated variable is still checked
+    env: {OLD_PORT: "0"}
+    errors: [{var: OLD_PORT, code: out_of_range}]

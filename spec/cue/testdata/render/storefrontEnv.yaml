@@ -1,0 +1,12 @@
+- name: STOREFRONT__BANNER
+  value: Summer sale
+- name: STOREFRONT__PAYMENTS__WEBHOOKKEYS
+  valueFrom:
+    secretKeyRef:
+      name: payments-webhook
+      key: keys
+- name: STOREFRONT__DB__PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: storefront-db
+      key: password

@@ -22,7 +22,7 @@ shows the three things the Go SDK gives an app:
 | `ALLOWED_ORIGINS` | list of strings, comma-separated | at least 1 item; default `http://localhost:3000` |
 | `REQUEST_TIMEOUT` | duration | `1s`–`5m`, default `30s` |
 | `WORKER_COUNT` | int | 1–64, default `4` |
-| `WEBHOOK_KEYS` | list of strings, comma-separated | secret, optional; 1–2 keys of 32–256 characters each |
+| `WEBHOOK_KEYS` | key set, comma-separated | secret, optional; 1–2 keys of 32–256 characters each |
 
 | File input | Type | Rules |
 |---|---|---|
@@ -73,7 +73,16 @@ $ echo 'codes: {WELCOME10: 10}' > dev/etc/orders/discounts/discounts.yaml
 $ DATABASE_URL=postgres://orders:pw@localhost:5432/orders DOCUCONF_FILE_ROOT=./dev go run .
 $ curl -k https://localhost:8080/discounts
 {"WELCOME10":10}
+$ curl -k https://localhost:8080/reloadz
+{"serving-tls":{"generation":1}}
 ```
+
+The certificate is watched: replace `tls.crt` and `tls.key` and, within
+10 seconds, the next handshake gets the new certificate, the service
+logs it, and `/reloadz` shows generation 2. A replacement that fails the
+checks is not used; `/reloadz` then shows it under `lastRejected`, with
+its codes. [`internal/upstream`](internal/upstream/upstream.go) shows an
+HTTP client that rebuilds itself when a watched CA bundle changes.
 
 [`smoke.sh`](smoke.sh) checks all three runs, and the webhook key set below; CI runs it on every push.
 
@@ -81,14 +90,17 @@ $ curl -k https://localhost:8080/discounts
 
 `WEBHOOK_KEYS` is a key set: `POST /webhooks/payments` accepts a body
 whose `X-Signature` header is the hex HMAC-SHA256 of the body under any
-key in the list ([`internal/webhook`](internal/webhook/webhook.go)). A
-variable is read once, at start, so a new key reaches the service only
-when the pods restart; with two keys valid at once, no webhook is turned
-away while that happens:
+key in the set ([`internal/webhook`](internal/webhook/webhook.go), with
+`docuconf.KeySet`'s `Verify`). A variable is read once, at start, so a new
+key reaches the service only when the pods restart; with two keys valid
+at once, no webhook is turned away while that happens:
 
-1. Add the new key as the second item (`old,new` in the Secret), and roll out.
+1. Add the new key as the second key (`old,new` in the Secret), and roll out.
 2. Switch the sender to the new key.
 3. Remove the old key (`new`), and roll out.
+
+[`CONFIG.md`](CONFIG.md) prints these steps for every key set, so the
+field's doc comment does not repeat them.
 
 The contract allows 1 or 2 keys of 32 to 256 characters each, so a
 trailing comma or a truncated key stops the service at boot instead of
@@ -98,7 +110,7 @@ locking out the sender:
 $ DATABASE_URL=postgres://orders:pw@localhost:5432/orders \
     WEBHOOK_KEYS=old-webhook-key-0123456789abcdef0123, go run .
 docuconf: 1 configuration problem:
-  WEBHOOK_KEYS: item 1: value is 0 characters, below itemMinLength 32 (out_of_range)
+  WEBHOOK_KEYS: key 2 is empty (out_of_range)
 exit status 1
 ```
 
@@ -139,7 +151,8 @@ $ docuconf docs contract.cue --check CONFIG.md
 
 `WORKER_COUNT` shows where the text comes from: the first paragraph of
 its doc comment is the description, and the second paragraph its
-details. `WEBHOOK_KEYS`'s details carry its rotation steps as a list.
+details. `WEBHOOK_KEYS` is a key set, so its docs carry the rotation
+steps, and its details need not repeat them.
 
 ## Deploy
 

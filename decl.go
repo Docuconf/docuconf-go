@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/caarlos0/env/v11"
 )
@@ -27,6 +28,7 @@ const (
 	typeURL      = "url"
 	typeEnum     = "enum"
 	typeList     = "list"
+	typeKeySet   = "keySet"
 	typeJSON     = "json"
 )
 
@@ -75,7 +77,12 @@ type varDecl struct {
 	group      string
 	examples   []string
 	deprecated string
+	replacedBy string // deprecated.replacedBy
 	configKey  string
+
+	// keySet variables keep their bounds in minItems, maxItems,
+	// itemMinLength and itemMaxLength, and export them under the key
+	// names: minKeys, maxKeys, keyMinLength and keyMaxLength.
 
 	minLength, maxLength *int
 	pattern              *regexp.Regexp
@@ -135,6 +142,7 @@ type fileDecl struct {
 	desc       string
 	group      string
 	deprecated string
+	replacedBy string // deprecated.replacedBy
 
 	format string // config: json|yaml; keystore: pkcs12
 
@@ -310,6 +318,10 @@ var constraintTags = map[string][]string{
 	"itemMax":       {typeList},
 	"itemMinLength": {typeList},
 	"itemMaxLength": {typeList},
+	"minKeys":       {typeKeySet},
+	"maxKeys":       {typeKeySet},
+	"keyMinLength":  {typeKeySet},
+	"keyMaxLength":  {typeKeySet},
 }
 
 func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int, fp, name string, envOpts []string, opts declOptions) {
@@ -355,6 +367,7 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 	v.group = tag.Get("group")
 	v.configKey = tag.Get("configKey")
 	v.deprecated = tag.Get("deprecated")
+	v.replacedBy = tag.Get("replacedBy")
 	if ex, ok := tag.Lookup("examples"); ok {
 		v.examples = strings.Split(ex, "|")
 	}
@@ -365,9 +378,9 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 		}
 		v.secret = b
 	}
-	if v.goType == secretType {
+	if v.goType == secretType || v.goType == keySetType {
 		if !v.secret && tag.Get("secret") != "" {
-			problem("a docuconf.Secret field is always secret; remove secret:%q", tag.Get("secret"))
+			problem("a %v field is always secret; remove secret:%q", v.goType, tag.Get("secret"))
 		}
 		v.secret = true
 	}
@@ -392,6 +405,20 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 	}
 	if v.secret && len(v.examples) > 0 {
 		problem("a secret variable must not have examples")
+	}
+	if _, ok := tag.Lookup("deprecated"); ok {
+		if v.required {
+			problem("a required variable cannot be deprecated: deprecating it asks the platform to stop setting it")
+		}
+		checkDeprecated(v.deprecated, problem)
+	}
+	if _, ok := tag.Lookup("replacedBy"); ok {
+		switch {
+		case v.deprecated == "":
+			problem("replacedBy needs a deprecated tag")
+		case !envNameRe.MatchString(v.replacedBy):
+			problem("replacedBy must be a variable name matching %s", envNameRe)
+		}
 	}
 	if v.hasDef && v.def != "" && !v.loadFile {
 		for _, viol := range v.check(v.def) {
@@ -434,6 +461,13 @@ func (d *declaration) contractType(v *varDecl, tag reflect.StructTag, opts declO
 	}
 
 	switch {
+	case t == keySetType:
+		v.items = "string"
+		v.separator = tag.Get("envSeparator")
+		if v.separator == "" {
+			v.separator = ","
+		}
+		return typeKeySet
 	case t == durationType:
 		return typeDuration
 	case t == urlType:
@@ -568,6 +602,11 @@ func (v *varDecl) parseConstraints(tag reflect.StructTag, problem func(string, .
 	if (v.itemMinLength != nil || v.itemMaxLength != nil) && v.typ == typeList && v.items != "string" {
 		problem("itemMinLength and itemMaxLength apply only to lists of strings")
 	}
+	if v.typ == typeKeySet {
+		v.minItems, v.maxItems = nonNeg("minKeys"), nonNeg("maxKeys")
+		v.itemMinLength, v.itemMaxLength = nonNeg("keyMinLength"), nonNeg("keyMaxLength")
+		v.checkKeySetBounds(problem)
+	}
 	if p, ok := tag.Lookup("pattern"); ok {
 		re, err := regexp.Compile(p)
 		if err != nil {
@@ -660,6 +699,51 @@ func (v *varDecl) intBounds(tag reflect.StructTag, minName, maxName string, t re
 		problem("%s is greater than %s", minName, maxName)
 	}
 	return lo, hi
+}
+
+// checkKeySetBounds fills in a key set's default bounds (one to two keys)
+// and checks them.
+func (v *varDecl) checkKeySetBounds(problem func(string, ...any)) {
+	if v.minItems == nil {
+		one := 1
+		v.minItems = &one
+	}
+	if v.maxItems == nil {
+		two := max(2, *v.minItems)
+		v.maxItems = &two
+	}
+	if *v.minItems < 1 {
+		problem("minKeys must be at least 1")
+	}
+	if *v.maxItems < *v.minItems {
+		problem("maxKeys must be at least minKeys")
+	}
+	for _, b := range []struct {
+		name string
+		n    *int
+	}{{"keyMinLength", v.itemMinLength}, {"keyMaxLength", v.itemMaxLength}} {
+		if b.n != nil && *b.n < 1 {
+			problem("%s must be at least 1: an empty key is never valid", b.name)
+		}
+	}
+	if v.itemMinLength != nil && v.itemMaxLength != nil && *v.itemMaxLength < *v.itemMinLength {
+		problem("keyMaxLength must be at least keyMinLength")
+	}
+}
+
+// maxDeprecation is the most characters a deprecation message may have.
+const maxDeprecation = 500
+
+// checkDeprecated applies SPEC §4.2's rule for a deprecation message: it
+// says what to use instead, or why the input is going away, so it is not
+// blank, and at most maxDeprecation characters.
+func checkDeprecated(msg string, fail func(string, ...any)) {
+	switch {
+	case strings.TrimSpace(msg) == "":
+		fail("deprecated must say what to use instead, or why the input is going away")
+	case utf8.RuneCountInString(msg) > maxDeprecation:
+		fail("deprecated must be at most %d characters", maxDeprecation)
+	}
 }
 
 // crossCheck applies rules that span several inputs.

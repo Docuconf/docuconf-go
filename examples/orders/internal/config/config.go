@@ -37,16 +37,11 @@ type Config struct {
 
 	// Keys that verify the signature on incoming payment webhooks.
 	//
-	// A webhook is accepted when it is signed with any key in the list, so
-	// the key can be rotated without turning webhooks away. To rotate:
-	//
-	//  1. add the new key as the second item, and roll out;
-	//  2. switch the sender to the new key;
-	//  3. remove the old key, and roll out.
-	//
-	// Each key is 32 to 256 characters, so an empty or truncated key fails
-	// at boot. Without this variable, the service rejects every webhook.
-	WebhookKeys []docuconf.Secret `env:"WEBHOOK_KEYS" secret:"true" minItems:"1" maxItems:"2" itemMinLength:"32" itemMaxLength:"256"`
+	// A webhook is accepted when it is signed with any key in the set, so
+	// the key can be rotated without turning webhooks away. Each key is 32
+	// to 256 characters, so an empty or truncated key fails at boot.
+	// Without this variable, the service rejects every webhook.
+	WebhookKeys docuconf.KeySet `env:"WEBHOOK_KEYS" keyMinLength:"32" keyMaxLength:"256"`
 
 	// Certificate to serve HTTPS with. Without it, the service serves HTTP.
 	TLS docuconf.TLSKeyPair `file:"serving-tls" path:"/etc/orders/tls" dnsNames:"orders.example.com" minRemaining:"720h" reload:"watch"`

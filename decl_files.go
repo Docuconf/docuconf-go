@@ -31,6 +31,7 @@ var fileTags = map[string][]string{
 	"desc":            nil,
 	"group":           nil,
 	"deprecated":      nil,
+	"replacedBy":      nil,
 	"secret":          nil,
 	"format":          {fileConfig, fileKeystore},
 	"dnsNames":        {fileTLS},
@@ -121,6 +122,21 @@ func (d *declaration) addFile(src reflect.Type, sf reflect.StructField, idx []in
 	f.desc = tag.Get("desc")
 	f.group = tag.Get("group")
 	f.deprecated = tag.Get("deprecated")
+	if _, ok := tag.Lookup("deprecated"); ok {
+		if f.required {
+			problem("a required file input cannot be deprecated: deprecating it asks the platform to stop supplying it")
+		}
+		checkDeprecated(f.deprecated, problem)
+	}
+	if r, ok := tag.Lookup("replacedBy"); ok {
+		f.replacedBy = r
+		switch {
+		case f.deprecated == "":
+			problem("replacedBy needs a deprecated tag")
+		case !inputNameRe.MatchString(r):
+			problem("replacedBy must be a file input name matching %s", inputNameRe)
+		}
+	}
 
 	f.secret = f.typ == fileTLS || f.typ == fileKeystore
 	if s, ok := tag.Lookup("secret"); ok {
@@ -144,10 +160,12 @@ func (d *declaration) addFile(src reflect.Type, sf reflect.StructField, idx []in
 				f.format = "json"
 			case ".yaml", ".yml":
 				f.format = "yaml"
+			case ".toml":
+				f.format = "toml"
 			}
 		}
-		if f.format != "json" && f.format != "yaml" {
-			problem("format must be json or yaml (set it with a format tag, or use a .json, .yaml or .yml path)")
+		if f.format != "json" && f.format != "yaml" && f.format != "toml" {
+			problem("format must be json, yaml or toml (set it with a format tag, or use a .json, .yaml, .yml or .toml path)")
 		}
 		f.configType = fi.(configInput).configType()
 		s, err := schemaFor(f.configType, nil)

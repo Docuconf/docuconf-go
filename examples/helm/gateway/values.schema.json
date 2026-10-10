@@ -425,6 +425,90 @@
                 }
               ]
             },
+            "PARTNER_API_KEYS": {
+              "description": "Keys that partners present to call the API (secret: supply a secretKeyRef or injected)",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "secretKeyRef"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "secretKeyRef": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "key"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "injected"
+                  ],
+                  "additionalProperties": {
+                    "type": "null"
+                  },
+                  "properties": {
+                    "injected": {
+                      "type": "object",
+                      "required": [
+                        "provider"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "podAnnotations": {
+                          "description": "Pod annotations the injector needs; {input}, and for a file {path}, {dir} and {file}, are expanded.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "podLabels": {
+                          "description": "Pod labels the injector needs; placeholders as for podAnnotations.",
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?$"
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "null",
+                  "description": "Unset."
+                }
+              ]
+            },
             "PARTNER_KEYSTORE_PASSWORD": {
               "description": "Password for the partner mTLS keystore (secret: supply a secretKeyRef or injected)",
               "oneOf": [

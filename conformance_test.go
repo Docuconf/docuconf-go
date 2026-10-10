@@ -2,6 +2,7 @@ package docuconf_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,9 +19,14 @@ import (
 )
 
 // supportedTags are the conformance capability tags the Go SDK has
-// (conformance/README.md): it holds every 64-bit integer and validates
-// json values against their schema.
-var supportedTags = map[string]bool{"int64": true, "json-schema": true}
+// (conformance/README.md): it holds every 64-bit integer, validates json
+// values against their schema, knows the keySet type and deprecated
+// inputs, parses strictly, and loads file inputs, profiles and overlays in
+// contract-first mode. It runs every case: TestConformance fails on a skip.
+var supportedTags = map[string]bool{
+	"int64": true, "json-schema": true, "key-set": true, "deprecated": true, "strict-parsing": true,
+	"files": true, "profiles": true, "overlays": true,
+}
 
 type conformanceCase struct {
 	ID       string            `json:"id"`
@@ -28,8 +34,12 @@ type conformanceCase struct {
 	Requires []string          `json:"requires"`
 	Contract json.RawMessage   `json:"contract"`
 	Env      map[string]string `json:"env"`
-	Expect   map[string]any    `json:"expect"`
-	Errors   []struct {
+	Files    map[string]struct {
+		Text   *string `json:"text"`
+		Base64 *string `json:"base64"`
+	} `json:"files"`
+	Expect map[string]any `json:"expect"`
+	Errors []struct {
 		Var  string `json:"var"`
 		Code string `json:"code"`
 	} `json:"errors"`
@@ -82,13 +92,41 @@ func TestConformance(t *testing.T) {
 		n += k
 	}
 	t.Logf("conformance: %d cases, %d skipped %v", len(suite.Cases), n, skipped)
+	if n > 0 {
+		t.Errorf("the Go SDK must run every case, but skipped %d: %v", n, skipped)
+	}
 }
 
 func runCase(t *testing.T, c conformanceCase) []string {
 	termLog := filepath.Join(t.TempDir(), "termination-log")
-	env := c.Env
-	if env == nil {
-		env = map[string]string{}
+	env := map[string]string{}
+	for k, v := range c.Env {
+		env[k] = v
+	}
+	// Files go under a fresh DOCUCONF_FILE_ROOT, set for every case, so that
+	// no case reads the machine's own files.
+	root := t.TempDir()
+	env[docuconf.EnvFileRoot] = root
+	for p, f := range c.Files {
+		var data []byte
+		switch {
+		case f.Text != nil:
+			data = []byte(*f.Text)
+		case f.Base64 != nil:
+			var err error
+			if data, err = base64.StdEncoding.DecodeString(*f.Base64); err != nil {
+				t.Fatalf("file %s: %v", p, err)
+			}
+		default:
+			t.Fatalf("file %s has neither text nor base64", p)
+		}
+		full := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	vals, err := docuconf.LoadContract(c.Contract, docuconf.Options{Environment: env, TerminationLog: termLog})
 
@@ -196,6 +234,27 @@ func toJSONValue(v any) (any, error) {
 		return json.Number(strconv.FormatFloat(x, 'g', -1, 64)), nil
 	case time.Duration:
 		return canonicalDuration(x), nil
+	case docuconf.ConfigFile[any]:
+		if !x.Present() {
+			return nil, nil
+		}
+		return toJSONValue(x.Value())
+	case docuconf.TextFile:
+		if !x.Present() {
+			return nil, nil
+		}
+		return x.Content(), nil
+	case docuconf.TLSKeyPair, docuconf.CABundle, docuconf.Keystore, docuconf.BinaryFile:
+		if !x.(interface{ Present() bool }).Present() {
+			return nil, nil
+		}
+		return true, nil
+	case docuconf.KeySet:
+		keys := make([]any, len(x))
+		for i, k := range x.Keys() {
+			keys[i] = k.Reveal()
+		}
+		return keys, nil
 	case []string, []int64, []any:
 		rv := reflect.ValueOf(x)
 		out := make([]any, rv.Len())

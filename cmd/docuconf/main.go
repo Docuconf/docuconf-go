@@ -24,8 +24,9 @@
 // docuconf conformance regenerates conformance/cases.json from
 // conformance/load, for maintainers of the spec.
 //
-// vet prints one line per problem and exits 1 if there is any. Secret
-// values are never printed. The contract meta-schema is built in.
+// vet prints one line per problem and exits 1 if there is any. It also
+// prints a warning line for each deprecated input the values still set,
+// which alone does not fail it. Secret values are never printed. The contract meta-schema is built in.
 package main
 
 import (
@@ -167,9 +168,14 @@ func runVet(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	lines, err := l.p.Validate(l.c, l.values, l.files, l.overlays, l.policy)
+	lines, warnings, err := l.p.ValidateWarn(l.c, l.values, l.files, l.overlays, l.policy)
 	if err != nil {
 		return err
+	}
+	// Warnings do not fail vet: a deprecated input still works, but the
+	// platform should stop setting it before the app removes it.
+	for _, w := range warnings {
+		fmt.Fprintln(stdout, w)
 	}
 	if len(lines) == 0 {
 		fmt.Fprintf(stdout, "%s: ok\n", l.c.Name)

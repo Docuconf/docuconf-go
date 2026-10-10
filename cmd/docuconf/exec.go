@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -95,7 +96,11 @@ func boot(b *bootFlags, stderr io.Writer) (*booted, error) {
 		}
 	}
 	logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	_, err = sdk.LoadContract(doc, sdk.Options{Environment: environ, Logger: logger})
+	checked, err := withoutOverlayReload(doc)
+	if err != nil {
+		return nil, err
+	}
+	_, err = sdk.LoadContract(checked, sdk.Options{Environment: environ, Logger: logger})
 	var verr *sdk.ValidationError
 	if errors.As(err, &verr) {
 		fmt.Fprintln(stderr, verr.Error())
@@ -173,7 +178,7 @@ func (bt *booted) isSet(name, typ, encoding string) bool {
 	if v, ok := bt.environ[name]; ok && (v != "" || typ == "string") {
 		return true
 	}
-	if typ == "list" && encoding == "indexed" {
+	if (typ == "list" || typ == "keySet") && encoding == "indexed" {
 		for k, v := range bt.environ {
 			if n, ok := strings.CutPrefix(k, name+"__"); ok && v != "" && isIndex(n) {
 				return true
@@ -275,4 +280,30 @@ func startProblem(err error) string {
 		return errno.Error()
 	}
 	return err.Error()
+}
+
+// withoutOverlayReload drops each overlay's reload field. boot checks the
+// overlays once, as the program sees them at startup; reloading a watched
+// overlay is the program's own host's job. The SDK's contract-first
+// loader rejects reload "watch" on an overlay, since it would read it
+// only once.
+func withoutOverlayReload(doc []byte) ([]byte, error) {
+	// UseNumber keeps every number exactly as written, such as an int
+	// bound above 2^53.
+	dec := json.NewDecoder(bytes.NewReader(doc))
+	dec.UseNumber()
+	var c map[string]any
+	if err := dec.Decode(&c); err != nil {
+		return nil, err
+	}
+	overlays, ok := c["overlays"].(map[string]any)
+	if !ok {
+		return doc, nil
+	}
+	for _, o := range overlays {
+		if m, ok := o.(map[string]any); ok {
+			delete(m, "reload")
+		}
+	}
+	return json.Marshal(c)
 }

@@ -1,0 +1,174 @@
+description: >
+  TLS key pairs, CA bundles and keystores (SPEC §4.6, §11.2 items 5 and
+  7). The certificates are in conformance/fixtures, written by
+  conformance/gen: valid ones run from 2026-01-01 for 50 years, signed by
+  ca.crt, with ECDSA P-256 keys unless named otherwise. A present input's
+  expected value is true. Every input is optional, so a case writes only
+  the files it tests.
+requires: [files]
+vars:
+  KEYSTORE_PASSWORD:
+    type: string
+    description: Password of the keystore
+    secret: true
+files:
+  serving-tls:
+    type: tls
+    description: Certificate the app serves HTTPS with
+    path: /etc/app/tls
+    dnsNames: [app.example.test]
+    keyAlgorithms: [ECDSA]
+  mtls:
+    type: tls
+    description: Client certificate that must chain to its CA
+    path: /etc/app/mtls
+    requireCA: true
+  renewing-tls:
+    type: tls
+    description: Certificate that must have 57 years left
+    path: /etc/app/renewing
+    minRemaining: 500000h
+  trust:
+    type: caBundle
+    description: CAs the app trusts
+    path: /etc/app/trust/bundle.pem
+    minCertificates: 2
+  keystore:
+    type: keystore
+    format: pkcs12
+    description: Partner client certificate
+    path: /etc/app/keystore/keystore.p12
+    passwordVar: KEYSTORE_PASSWORD
+cases:
+  - name: a valid key pair
+    env: {}
+    files:
+      /etc/app/tls/tls.crt: {fixture: valid.crt}
+      /etc/app/tls/tls.key: {fixture: valid.key}
+    expect: {serving-tls: true}
+
+  - name: an expired certificate
+    env: {}
+    files:
+      /etc/app/tls/tls.crt: {fixture: expired.crt}
+      /etc/app/tls/tls.key: {fixture: expired.key}
+    errors: [{var: serving-tls, code: certificate_invalid}]
+
+  - name: a certificate that is not valid yet
+    env: {}
+    files:
+      /etc/app/tls/tls.crt: {fixture: not-yet-valid.crt}
+      /etc/app/tls/tls.key: {fixture: not-yet-valid.key}
+    errors: [{var: serving-tls, code: certificate_invalid}]
+
+  - name: a certificate for another name
+    env: {}
+    files:
+      /etc/app/tls/tls.crt: {fixture: other-name.crt}
+      /etc/app/tls/tls.key: {fixture: other-name.key}
+    errors: [{var: serving-tls, code: certificate_name_mismatch}]
+
+  - name: a key that does not match the certificate
+    env: {}
+    files:
+      /etc/app/tls/tls.crt: {fixture: valid.crt}
+      /etc/app/tls/tls.key: {fixture: other-name.key}
+    errors: [{var: serving-tls, code: key_mismatch}]
+
+  - name: a key algorithm that is not allowed
+    env: {}
+    files:
+      /etc/app/tls/tls.crt: {fixture: ed25519.crt}
+      /etc/app/tls/tls.key: {fixture: ed25519.key}
+    errors: [{var: serving-tls, code: certificate_invalid}]
+
+  - name: a key pair without its key
+    env: {}
+    files:
+      /etc/app/tls/tls.crt: {fixture: valid.crt}
+    errors: [{var: serving-tls, code: file_missing}]
+
+  - name: a certificate file that is not PEM
+    env: {}
+    files:
+      /etc/app/tls/tls.crt: "not a certificate\n"
+      /etc/app/tls/tls.key: {fixture: valid.key}
+    errors: [{var: serving-tls, code: file_malformed}]
+
+  - name: less than minRemaining left
+    env: {}
+    files:
+      /etc/app/renewing/tls.crt: {fixture: valid.crt}
+      /etc/app/renewing/tls.key: {fixture: valid.key}
+    errors: [{var: renewing-tls, code: certificate_expiring}]
+
+  - name: requireCA with a certificate that chains to ca.crt
+    env: {}
+    files:
+      /etc/app/mtls/tls.crt: {fixture: valid.crt}
+      /etc/app/mtls/tls.key: {fixture: valid.key}
+      /etc/app/mtls/ca.crt: {fixture: ca.crt}
+    expect: {mtls: true}
+
+  - name: requireCA with a certificate from another CA
+    env: {}
+    files:
+      /etc/app/mtls/tls.crt: {fixture: other-ca-leaf.crt}
+      /etc/app/mtls/tls.key: {fixture: other-ca-leaf.key}
+      /etc/app/mtls/ca.crt: {fixture: ca.crt}
+    errors: [{var: mtls, code: certificate_invalid}]
+
+  - name: requireCA without ca.crt
+    env: {}
+    files:
+      /etc/app/mtls/tls.crt: {fixture: valid.crt}
+      /etc/app/mtls/tls.key: {fixture: valid.key}
+    errors: [{var: mtls, code: file_missing}]
+
+  - name: a CA bundle with enough certificates
+    env: {}
+    files:
+      /etc/app/trust/bundle.pem: {fixture: ca-bundle.pem}
+    expect: {trust: true}
+
+  - name: a CA bundle with too few certificates
+    env: {}
+    files:
+      /etc/app/trust/bundle.pem: {fixture: ca.crt}
+    errors: [{var: trust, code: file_malformed}]
+
+  - name: a CA bundle with no certificate
+    env: {}
+    files:
+      /etc/app/trust/bundle.pem: "no PEM here\n"
+    errors: [{var: trust, code: file_malformed}]
+
+  - name: a keystore that opens with its password
+    env: {KEYSTORE_PASSWORD: conformance-password}
+    files:
+      /etc/app/keystore/keystore.p12: {fixture: keystore.p12}
+    expect: {KEYSTORE_PASSWORD: conformance-password, keystore: true}
+
+  - name: a keystore with the wrong password
+    env: {KEYSTORE_PASSWORD: not-the-password}
+    files:
+      /etc/app/keystore/keystore.p12: {fixture: keystore.p12}
+    errors: [{var: keystore, code: keystore_unreadable}]
+
+  - name: an unset password variable is an empty password
+    env: {}
+    files:
+      /etc/app/keystore/keystore.p12: {fixture: keystore-no-password.p12}
+    expect: {keystore: true}
+
+  - name: a keystore with a password, and the variable unset
+    env: {}
+    files:
+      /etc/app/keystore/keystore.p12: {fixture: keystore.p12}
+    errors: [{var: keystore, code: keystore_unreadable}]
+
+  - name: a keystore that is not PKCS#12
+    env: {KEYSTORE_PASSWORD: conformance-password}
+    files:
+      /etc/app/keystore/keystore.p12: "not a keystore\n"
+    errors: [{var: keystore, code: keystore_unreadable}]

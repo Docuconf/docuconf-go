@@ -164,7 +164,7 @@ At boot the SDK checks every input and reports all problems together, one line e
 |---|---|---|
 | `missing_required` | A required input is not set, and has no default. | Set it through one of its allowed sources. |
 | `invalid_type` | The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`). | Write the value in the input's wire format. For an injected secret, make sure the injector runs. |
-| `out_of_range` | A number, duration, length or list item is outside the input's bounds. | Use a value within the input's constraints. |
+| `out_of_range` | A number, duration, length, list item or key is outside the input's bounds; an empty key always is. | Use a value within the input's constraints. |
 | `not_in_enum` | The value is not one of the allowed values. | Use one of the listed values, spelled exactly as listed. |
 | `invalid_scheme` | The URL's scheme is not one of the allowed schemes. | Use a URL with an allowed scheme. |
-| `too_many_items` | The list has more items than its maximum. | Remove items. |
+| `too_many_items` | The list has more items than its maximum, or the key set more keys. | Remove items, or keys: a key set holds the old key only until the rotation is done. |

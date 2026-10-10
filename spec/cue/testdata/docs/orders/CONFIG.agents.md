@@ -80,5 +80,5 @@ At boot the SDK reports every problem at once, one line each: `INPUT: message (c
 
 - `missing_required`: A required input is not set, and has no default. Fix: Set it through one of its allowed sources.
 - `invalid_type`: The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`). Fix: Write the value in the input's wire format. For an injected secret, make sure the injector runs.
-- `out_of_range`: A number, duration, length or list item is outside the input's bounds. Fix: Use a value within the input's constraints.
-- `too_few_items`: The list has fewer items than its minimum. Fix: Add items.
+- `out_of_range`: A number, duration, length, list item or key is outside the input's bounds; an empty key always is. Fix: Use a value within the input's constraints.
+- `too_few_items`: The list has fewer items than its minimum, or the key set fewer keys. Fix: Add items, or keys.

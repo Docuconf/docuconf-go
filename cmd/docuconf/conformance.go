@@ -2,17 +2,20 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/encoding/yaml"
@@ -23,7 +26,13 @@ import (
 // runConformance expands the language-neutral cases in conformance/load
 // into conformance/cases.json, the file every SDK's conformance runner
 // reads (SPEC §12). With -check it fails if cases.json is out of date.
+//
+// docuconf conformance export compares an SDK's export of the shared
+// fixture with conformance/export/golden.cue (runConformanceExport).
 func runConformance(args []string, stdout, stderr io.Writer) error {
+	if len(args) > 0 && args[0] == "export" {
+		return runConformanceExport(args[1:], stdout, stderr)
+	}
 	fs := flag.NewFlagSet("conformance", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dir := fs.String("dir", "conformance", "the conformance directory")
@@ -59,9 +68,17 @@ func runConformance(args []string, stdout, stderr io.Writer) error {
 }
 
 type sourceFile struct {
-	Description string                    `json:"description"`
-	Vars        map[string]map[string]any `json:"vars"`
-	Cases       []sourceCase              `json:"cases"`
+	Description string `json:"description"`
+	// Requires lists capability tags every case in the file needs, on top
+	// of each case's own.
+	Requires []string                  `json:"requires"`
+	Vars     map[string]map[string]any `json:"vars"`
+	// Files, Profiles and Overlays are the contract's own, as in a
+	// contract (SPEC §4.4, §4.6, §4.7).
+	Files    map[string]map[string]any `json:"files"`
+	Profiles map[string]any            `json:"profiles"`
+	Overlays map[string]map[string]any `json:"overlays"`
+	Cases    []sourceCase              `json:"cases"`
 }
 
 type sourceCase struct {
@@ -70,8 +87,12 @@ type sourceCase struct {
 	Only     map[string][]string `json:"only"`
 	Values   map[string]any      `json:"values"`
 	Env      map[string]any      `json:"env"`
-	Expect   map[string]any      `json:"expect"`
-	Errors   []caseError         `json:"errors"`
+	// Files maps an absolute path to its content: a string, or one of
+	// {text: ...}, {base64: ...} and {fixture: name}, a file in
+	// conformance/fixtures.
+	Files  map[string]any `json:"files"`
+	Expect map[string]any `json:"expect"`
+	Errors []caseError    `json:"errors"`
 }
 
 type caseError struct {
@@ -85,14 +106,19 @@ type expandedCase struct {
 	Requires []string          `json:"requires"`
 	Contract json.RawMessage   `json:"contract"`
 	Env      map[string]string `json:"env"`
-	Expect   map[string]any    `json:"expect,omitempty"`
-	Errors   []caseError       `json:"errors,omitempty"`
+	// Files holds each file's content, {"text": ...} or {"base64": ...},
+	// by its absolute path; the runner writes it under DOCUCONF_FILE_ROOT.
+	Files  map[string]map[string]string `json:"files,omitempty"`
+	Expect map[string]any               `json:"expect,omitempty"`
+	Errors []caseError                  `json:"errors,omitempty"`
 }
 
 var (
 	listEncodings     = []string{"csv", "json", "indexed"}
 	durationEncodings = []string{"go", "iso8601", "seconds", "timespan"}
-	codes             = []string{"missing_required", "invalid_type", "out_of_range", "pattern_mismatch", "not_in_enum", "invalid_scheme", "too_few_items", "too_many_items", "schema_mismatch"}
+	codes             = []string{"missing_required", "invalid_type", "out_of_range", "pattern_mismatch", "not_in_enum", "invalid_scheme", "too_few_items", "too_many_items",
+		"file_missing", "file_unreadable", "file_too_large", "file_malformed", "schema_mismatch", "certificate_invalid", "certificate_expiring",
+		"certificate_name_mismatch", "key_mismatch", "keystore_unreadable"}
 )
 
 func generateCases(p *platform.Platform, loadDir string) ([]byte, error) {
@@ -163,7 +189,17 @@ func expandFile(p *platform.Platform, file string) ([]expandedCase, error) {
 			return nil, fmt.Errorf("case names must be present and unique: %q", sc.Name)
 		}
 		seen[sc.Name] = true
-		cs, err := expandCase(p, stem, sf, sc)
+		for _, tag := range sf.Requires {
+			if !slices.Contains(sc.Requires, tag) {
+				sc.Requires = append(sc.Requires, tag)
+			}
+		}
+		slices.Sort(sc.Requires)
+		files, err := caseFiles(filepath.Join(filepath.Dir(filepath.Dir(file)), "fixtures"), sc.Files)
+		if err != nil {
+			return nil, fmt.Errorf("case %q: %w", sc.Name, err)
+		}
+		cs, err := expandCase(p, stem, sf, sc, files)
 		if err != nil {
 			return nil, fmt.Errorf("case %q: %w", sc.Name, err)
 		}
@@ -172,9 +208,72 @@ func expandFile(p *platform.Platform, file string) ([]expandedCase, error) {
 	return out, nil
 }
 
-func expandCase(p *platform.Platform, stem string, sf sourceFile, sc sourceCase) ([]expandedCase, error) {
+// caseFiles reads a case's files into the form cases.json holds them in:
+// text when the content is UTF-8, base64 otherwise.
+func caseFiles(fixtures string, in map[string]any) (map[string]map[string]string, error) {
+	if in == nil {
+		return nil, nil
+	}
+	out := map[string]map[string]string{}
+	for p, x := range in {
+		if !strings.HasPrefix(p, "/") || path.Clean(p) != p {
+			return nil, fmt.Errorf("file %s: paths are absolute and clean", p)
+		}
+		var data []byte
+		switch x := x.(type) {
+		case string:
+			data = []byte(x)
+		case map[string]any:
+			if len(x) != 1 {
+				return nil, fmt.Errorf("file %s: give one of text, base64 and fixture", p)
+			}
+			for k, v := range x {
+				s, ok := v.(string)
+				if !ok {
+					return nil, fmt.Errorf("file %s: %s must be a string", p, k)
+				}
+				var err error
+				switch k {
+				case "text":
+					data = []byte(s)
+				case "base64":
+					data, err = base64.StdEncoding.DecodeString(s)
+				case "fixture":
+					if filepath.Base(s) != s {
+						return nil, fmt.Errorf("file %s: fixture %q is a file name in conformance/fixtures", p, s)
+					}
+					data, err = os.ReadFile(filepath.Join(fixtures, s))
+				default:
+					return nil, fmt.Errorf("file %s: unknown field %s", p, k)
+				}
+				if err != nil {
+					return nil, fmt.Errorf("file %s: %w", p, err)
+				}
+			}
+		default:
+			return nil, fmt.Errorf("file %s: content is a string or an object", p)
+		}
+		if utf8.Valid(data) {
+			out[p] = map[string]string{"text": string(data)}
+		} else {
+			out[p] = map[string]string{"base64": base64.StdEncoding.EncodeToString(data)}
+		}
+	}
+	return out, nil
+}
+
+// inputNames are the names an error or an expectation may give: the
+// variables, the file inputs and, for errors, the overlays.
+func (sf sourceFile) isInput(name string, overlays bool) bool {
+	return sf.Vars[name] != nil || sf.Files[name] != nil || (overlays && sf.Overlays[name] != nil)
+}
+
+func expandCase(p *platform.Platform, stem string, sf sourceFile, sc sourceCase, files map[string]map[string]string) ([]expandedCase, error) {
 	if (sc.Values == nil) == (sc.Env == nil) {
 		return nil, errors.New("give exactly one of values and env")
+	}
+	if files != nil && sc.Values != nil {
+		return nil, errors.New("files go with an env case")
 	}
 	if sc.Values != nil && (sc.Expect != nil || sc.Errors != nil) {
 		return nil, errors.New("a values case is always valid, and its expected result is derived from the values")
@@ -183,16 +282,16 @@ func expandCase(p *platform.Platform, stem string, sf sourceFile, sc sourceCase)
 		return nil, errors.New("an env case gives exactly one of expect and errors")
 	}
 	for _, e := range sc.Errors {
-		if sf.Vars[e.Var] == nil {
-			return nil, fmt.Errorf("error for undeclared variable %s", e.Var)
+		if !sf.isInput(e.Var, true) {
+			return nil, fmt.Errorf("error for undeclared input %s", e.Var)
 		}
 		if !slices.Contains(codes, e.Code) {
 			return nil, fmt.Errorf("unknown error code %q", e.Code)
 		}
 	}
 	for n := range sc.Expect {
-		if sf.Vars[n] == nil {
-			return nil, fmt.Errorf("expect names undeclared variable %s", n)
+		if !sf.isInput(n, false) {
+			return nil, fmt.Errorf("expect names undeclared input %s", n)
 		}
 	}
 
@@ -242,7 +341,7 @@ func expandCase(p *platform.Platform, stem string, sf sourceFile, sc sourceCase)
 				}
 				label = append(label, "duration="+de)
 			}
-			ec, err := expandVariant(p, stem, sc, vars)
+			ec, err := expandVariant(p, stem, sf, sc, vars, files)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", strings.Join(label, " "), err)
 			}
@@ -257,7 +356,7 @@ func expandCase(p *platform.Platform, stem string, sf sourceFile, sc sourceCase)
 
 var nonLabel = regexp.MustCompile(`[^a-z0-9-]+`)
 
-func expandVariant(p *platform.Platform, stem string, sc sourceCase, vars map[string]map[string]any) (expandedCase, error) {
+func expandVariant(p *platform.Platform, stem string, sf sourceFile, sc sourceCase, vars map[string]map[string]any, files map[string]map[string]string) (expandedCase, error) {
 	doc := map[string]any{
 		"apiVersion": "docuconf.dev/v1alpha1",
 		"kind":       "ConfigContract",
@@ -266,6 +365,15 @@ func expandVariant(p *platform.Platform, stem string, sc sourceCase, vars map[st
 			"generator": map[string]any{"language": "go", "sdk": "docuconf-conformance", "version": "1"},
 		},
 		"vars": vars,
+	}
+	if sf.Files != nil {
+		doc["files"] = sf.Files
+	}
+	if sf.Profiles != nil {
+		doc["profiles"] = sf.Profiles
+	}
+	if sf.Overlays != nil {
+		doc["overlays"] = sf.Overlays
 	}
 	data, err := json.Marshal(doc)
 	if err != nil {
@@ -281,7 +389,13 @@ func expandVariant(p *platform.Platform, stem string, sc sourceCase, vars map[st
 		return expandedCase{}, err
 	}
 	var contract struct {
-		Vars map[string]map[string]any `json:"vars"`
+		Vars     map[string]map[string]any `json:"vars"`
+		Files    map[string]map[string]any `json:"files"`
+		Profiles *struct {
+			Selector string                    `json:"selector"`
+			Default  string                    `json:"default"`
+			Defaults map[string]map[string]any `json:"defaults"`
+		} `json:"profiles"`
 	}
 	if err := decodeNumbers(contractJSON, &contract); err != nil {
 		return expandedCase{}, err
@@ -292,6 +406,7 @@ func expandVariant(p *platform.Platform, stem string, sc sourceCase, vars map[st
 		Requires: sc.Requires,
 		Contract: contractJSON,
 		Env:      map[string]string{},
+		Files:    files,
 		Errors:   sc.Errors,
 	}
 	if ec.Requires == nil {
@@ -340,8 +455,41 @@ func expandVariant(p *platform.Platform, stem string, sc sourceCase, vars map[st
 
 	if sc.Errors == nil {
 		ec.Expect = map[string]any{}
+		// A variable the case does not give takes the selected profile's
+		// default (SPEC §4.4), or its own.
+		var profileDefaults map[string]any
+		if pr := contract.Profiles; pr != nil {
+			selected := pr.Default
+			if sc.Values != nil {
+				if s, ok := sc.Values[pr.Selector].(string); ok {
+					selected = s
+				}
+			} else if s, ok := ec.Env[pr.Selector]; ok && (s != "" || contract.Vars[pr.Selector]["type"] == "string") {
+				selected = s
+			}
+			profileDefaults = pr.Defaults[selected]
+		}
+		for n, f := range contract.Files {
+			if x, ok := given[n]; ok {
+				ec.Expect[n] = x
+				continue
+			}
+			dir, _ := f["path"].(string)
+			if pe, ok := f["pathEnv"].(string); ok && ec.Env[pe] != "" {
+				dir = ec.Env[pe]
+			}
+			for fp := range files {
+				if fp == dir || strings.HasPrefix(fp, dir+"/") {
+					return ec, fmt.Errorf("the case writes %s for file input %s, so give its expected value", fp, n)
+				}
+			}
+			ec.Expect[n] = nil
+		}
 		for n, v := range contract.Vars {
 			x, ok := given[n]
+			if !ok {
+				x, ok = profileDefaults[n]
+			}
 			if !ok {
 				x, ok = v["default"]
 			}

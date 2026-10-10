@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net/url"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -26,6 +27,10 @@ const (
 	encJSON    = "json"
 	encIndexed = "indexed"
 )
+
+// floatRe is the wire form of a float (SPEC §5): decimal digits on both
+// sides of an optional point, an optional sign and an optional exponent.
+var floatRe = regexp.MustCompile(`^[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
 
 // check validates one present value of a variable against its type and
 // constraints. Messages never include the value of a secret variable.
@@ -97,9 +102,14 @@ func (v *varDecl) parse(raw string) (any, []Violation) {
 		if v.goType.Kind() == reflect.Float32 {
 			bits = 32
 		}
+		// The wire form is decimal only (SPEC §5): ParseFloat alone would
+		// also take hex floats, inf, nan, ".5" and "5.".
+		if !floatRe.MatchString(raw) {
+			return nil, viol(CodeInvalidType, "%s is not a finite decimal number", show(raw))
+		}
 		f, err := strconv.ParseFloat(raw, bits)
 		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
-			return nil, viol(CodeInvalidType, "%s is not a finite number", show(raw))
+			return nil, viol(CodeInvalidType, "%s is not a finite decimal number", show(raw))
 		}
 		if v.minFloat != nil && f < *v.minFloat {
 			return nil, viol(CodeOutOfRange, "%s is below min %s", v.showNum(raw), formatFloat(*v.minFloat))
@@ -110,14 +120,12 @@ func (v *varDecl) parse(raw string) (any, []Violation) {
 		return f, nil
 
 	case typeBool:
+		// Exactly true or false, in any case (SPEC §5): never 1, 0, t, f,
+		// yes or no, which strconv.ParseBool and other hosts accept.
 		if strings.EqualFold(raw, "true") || strings.EqualFold(raw, "false") {
 			return strings.EqualFold(raw, "true"), nil
 		}
-		b, err := strconv.ParseBool(raw)
-		if err != nil {
-			return nil, viol(CodeInvalidType, "%s is not a bool (true or false)", show(raw))
-		}
-		return b, nil
+		return nil, viol(CodeInvalidType, "%s is not a bool (true or false)", show(raw))
 
 	case typeDuration:
 		d, err := v.parseDuration(raw)
@@ -153,7 +161,7 @@ func (v *varDecl) parse(raw string) (any, []Violation) {
 		}
 		return raw, nil
 
-	case typeList:
+	case typeList, typeKeySet:
 		items, out := v.splitItems(raw)
 		if len(out) > 0 {
 			return nil, out
@@ -244,9 +252,13 @@ func (v *varDecl) splitItems(raw string) ([]string, []Violation) {
 }
 
 // parseItems checks a list's items and returns them as []string or
-// []int64. (A []uint64 declaration may hold larger items; its typed
-// value is never used, since caarlos0/env parses declared lists.)
+// []int64, or a key set's keys as a KeySet. (A []uint64 declaration may
+// hold larger items; its typed value is never used, since caarlos0/env
+// parses declared lists.)
 func (v *varDecl) parseItems(items []string) (any, []Violation) {
+	if v.typ == typeKeySet {
+		return v.parseKeys(items)
+	}
 	viol := v.violation
 	var ints []int64
 	for i, item := range items {
@@ -292,6 +304,35 @@ func (v *varDecl) parseItems(items []string) (any, []Violation) {
 	return slices.Clone(items), nil
 }
 
+// parseKeys checks a key set's keys (SPEC §4.3): their number, and the
+// length of each, which is never zero. Keys are secret, so no message
+// holds one; a message names a key by its 1-based position, as in
+// "key 2 is empty" for "old,".
+func (v *varDecl) parseKeys(keys []string) (any, []Violation) {
+	for i, key := range keys {
+		n := utf8.RuneCountInString(key)
+		switch {
+		case n == 0:
+			return nil, v.violation(CodeOutOfRange, "key %d is empty", i+1)
+		case v.itemMinLength != nil && n < *v.itemMinLength:
+			return nil, v.violation(CodeOutOfRange, "key %d is %d characters, below keyMinLength %d", i+1, n, *v.itemMinLength)
+		case v.itemMaxLength != nil && n > *v.itemMaxLength:
+			return nil, v.violation(CodeOutOfRange, "key %d is %d characters, above keyMaxLength %d", i+1, n, *v.itemMaxLength)
+		}
+	}
+	if v.minItems != nil && len(keys) < *v.minItems {
+		return nil, v.violation(CodeTooFewItems, "has %s, below minKeys %d", plural(len(keys), "key"), *v.minItems)
+	}
+	if v.maxItems != nil && len(keys) > *v.maxItems {
+		return nil, v.violation(CodeTooManyItems, "has %s, above maxKeys %d", plural(len(keys), "key"), *v.maxItems)
+	}
+	out := make(KeySet, len(keys))
+	for i, key := range keys {
+		out[i] = Secret(key)
+	}
+	return out, nil
+}
+
 // indexedItems collects an indexed list from NAME__0, NAME__1, ... The
 // list is present when any NAME__<n> is set. Indices must run from 0 with
 // no gap; otherwise missing names the first absent index. Only canonical
@@ -330,27 +371,34 @@ func listIndex(key, prefix string) (int, bool) {
 	return i, err == nil
 }
 
-// parseInt parses an integer the way caarlos0/env does for the field's
-// kind. On failure it returns a code and message.
+// intRe is the wire form of an integer (SPEC §5): decimal ASCII digits
+// with an optional sign. Leading zeros are decimal, never octal.
+var intRe = regexp.MustCompile(`^[+-]?[0-9]+$`)
+
+// parseInt parses an integer and checks it against the range of the
+// field's Go kind (64-bit signed in contract-first mode). On failure it
+// returns a code and message.
 func (v *varDecl) parseInt(raw string) (*big.Int, Code, string) {
-	var err error
-	if v.unsigned {
-		_, err = strconv.ParseUint(raw, 10, v.intBits)
-	} else {
-		_, err = strconv.ParseInt(raw, 10, v.intBits)
-	}
-	if err != nil {
-		if errors.Is(err, strconv.ErrRange) {
-			return nil, CodeOutOfRange, fmt.Sprintf("%s is outside the range of %v", v.showNum(raw), v.goTypeOrElem())
-		}
+	n, ok := new(big.Int).SetString(raw, 10)
+	if !intRe.MatchString(raw) || !ok {
 		return nil, CodeInvalidType, fmt.Sprintf("%s is not an integer", v.show(raw))
 	}
-	n, _ := new(big.Int).SetString(raw, 10)
+	lo, hi := new(big.Int), new(big.Int).Lsh(big.NewInt(1), uint(v.intBits))
+	if v.unsigned {
+		hi.Sub(hi, big.NewInt(1))
+	} else {
+		hi.Rsh(hi, 1)
+		lo.Neg(hi)
+		hi.Sub(hi, big.NewInt(1))
+	}
+	if n.Cmp(lo) < 0 || n.Cmp(hi) > 0 {
+		return nil, CodeOutOfRange, fmt.Sprintf("%s is outside the range of %v", v.showNum(raw), v.goTypeOrElem())
+	}
 	return n, "", ""
 }
 
 func (v *varDecl) goTypeOrElem() any {
-	if v.typ == typeList {
+	if v.typ == typeList || v.typ == typeKeySet {
 		return v.goType.Elem()
 	}
 	return v.goType

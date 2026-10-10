@@ -296,7 +296,7 @@ These can start as soon as Phase 0's conformance suite and Phase 1's runner exis
 | CUE errors put off platform teams. | The CLI and the function translate errors (SPEC §7). |
 | Contract and image version skew. | Distribution by image digest (SPEC §8). |
 | A new required variable breaks deploys. | `docuconf diff` in app CI. The platform pull request lands values first. |
-| Removing a variable breaks validation. | A deprecation workflow, or the non-strict mode in SPEC §13.2. |
+| Removing a variable breaks validation. | Mark it `deprecated` first (SPEC §4.2): `vet` warns while the platform still sets it, then remove it. |
 
 ## 8. Decisions needed from you
 

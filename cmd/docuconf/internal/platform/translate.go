@@ -523,7 +523,7 @@ func explainInjected(cv, x cue.Value) []string {
 	if ref.Exists() {
 		if r, err := ref.String(); err != nil || r == "" {
 			out = append(out, "injected.ref, when given, must be a non-empty string")
-		} else if str(cv, "type") == "list" && str(cv, "encoding") == "indexed" {
+		} else if (str(cv, "type") == "list" || str(cv, "type") == "keySet") && str(cv, "encoding") == "indexed" {
 			out = append(out, "an indexed list is spread over NAME__0, NAME__1, …, so one injected reference cannot carry it; let the injector set the variables, without ref")
 		}
 	}

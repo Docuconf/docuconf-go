@@ -78,6 +78,9 @@ import "strings"
 		replacedBy?: string
 	})
 	constraints: [...#Constraint]
+	// json variables and config files with a schema: the schema as a
+	// table, one row per field (SPEC §14.3).
+	fields?: [...#Field]
 	// Where the platform may get the value or content from.
 	sources: [#Source, ...#Source]
 	// Boot error codes the SDK may report for this input. Empty for an
@@ -97,7 +100,7 @@ import "strings"
 	#InputCommon
 	kind: "var"
 	name: #EnvName
-	type: "string" | "int" | "float" | "bool" | "duration" | "url" | "enum" | "list" | "json"
+	type: "string" | "int" | "float" | "bool" | "duration" | "url" | "enum" | "list" | "keySet" | "json"
 	// The contract's default, as a typed platform value.
 	default?: _
 	// The default as the process environment holds it, in the wire
@@ -109,10 +112,15 @@ import "strings"
 	profileSelector?: true
 	// Defaults from the app's profile files, by profile name.
 	profileDefaults?: [...close({profile: string, value: _})]
+	// keySet only: how its keys are rotated, as numbered steps.
+	rotation?: close({
+		text: string & !=""
+		steps: [string & !="", ...string & !=""]
+	})
 	wire: close({
-		// list and duration only: the encoding the app parses.
+		// list, keySet and duration only: the encoding the app parses.
 		encoding?: string
-		// csv lists only.
+		// csv lists and key sets only.
 		separator?: string
 		// How the value is written in the process environment.
 		text: string & !=""
@@ -146,9 +154,30 @@ import "strings"
 // "between 1 and 65535" or "at most 120 characters (Unicode code points)".
 #Constraint: close({
 	rule: "range" | "length" | "pattern" | "schemes" | "values" | "itemCount" | "itemRange" | "itemLength" |
-		"schema" | "maxSize" | "dnsNames" | "keyAlgorithms" | "minRemaining" | "requireCA" | "minCertificates" | "passwordVar"
+		"keyCount" | "keyLength" | "schema" | "maxSize" | "dnsNames" | "keyAlgorithms" | "minRemaining" | "requireCA" |
+		"minCertificates" | "passwordVar" |
+		// Field table rows only (#Field), under JSON Schema keywords.
+		"exclusiveRange" | "format" | "uniqueItems"
 	params: {[string]: _}
 	text: string & !=""
+})
+
+// One row of a JSON Schema's field table. path is dotted for nested
+// objects (database.host), with [] for the items of a list (routes[].match),
+// and "" for a schema that is not an object. required says whether the
+// field must be present in its parent. A subtree the table cannot express
+// (anyOf, oneOf, allOf, $ref, patternProperties, an additionalProperties
+// schema, ...) is one row of type "see schema", with that subtree's raw
+// schema; renderers show the table, then those schemas.
+#Field: close({
+	path:         string
+	type:         string & !=""
+	required:     bool
+	default?:     _
+	description?: string
+	enum?: [_, ...]
+	constraints: [...#Constraint]
+	schema?: {...}
 })
 
 // A source the platform may use: a value source for a variable

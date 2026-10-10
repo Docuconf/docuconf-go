@@ -60,15 +60,15 @@ diff -u "$tmp/want.txt" "$tmp/problems.txt" || { echo "unexpected boot output" >
 echo "bad env: exited 1 with:"
 sed 's/^/  /' "$tmp/bad.txt"
 
-# 2b. A key set with an empty second key (a trailing comma): the item
-# length constraint fails it at boot, without printing the key.
+# 2b. A key set with an empty second key (a trailing comma): an empty key
+# is never valid, so it fails at boot, without printing the key.
 set +e
 PORT=$port DATABASE_URL="$secret" WEBHOOK_KEYS="$old_key," "$tmp/orders" >"$tmp/bad.txt" 2>&1
 code=$?
 set -e
 cat >"$tmp/want.txt" <<'WANT'
 docuconf: 1 configuration problem:
-  WEBHOOK_KEYS: item 1: value is 0 characters, below itemMinLength 32 (out_of_range)
+  WEBHOOK_KEYS: key 2 is empty (out_of_range)
 WANT
 if [ "$code" != 1 ] || ! diff -u "$tmp/want.txt" "$tmp/bad.txt" || grep -q webhook-key "$tmp/bad.txt"; then
   echo "want exit 1 for an empty webhook key, got $code:" >&2; cat "$tmp/bad.txt" >&2; exit 1
@@ -92,6 +92,9 @@ pid=$!
 wait_for "https://127.0.0.1:$port/discounts"
 [ "$(cat "$tmp/body")" = '{"WELCOME10":10}' ] || { echo "GET /discounts: $(cat "$tmp/body")" >&2; exit 1; }
 echo "dev files: HTTPS up, /discounts $(cat "$tmp/body")"
+wait_for "https://127.0.0.1:$port/reloadz"
+[ "$(cat "$tmp/body")" = '{"serving-tls":{"generation":1}}' ] || { echo "GET /reloadz: $(cat "$tmp/body")" >&2; exit 1; }
+echo "dev files: /reloadz $(cat "$tmp/body")"
 kill "$pid"; wait "$pid" 2>/dev/null || true; pid=""
 
 # 4. Mid-rotation, a webhook signed with either key is accepted, and one

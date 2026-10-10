@@ -72,6 +72,17 @@ contract.#Contract & {
 			group:       "logging"
 			values: ["debug", "info", "warn", "error"]
 		}
+		PARTNER_API_KEYS: {
+			type:         "keySet"
+			description:  "Keys that partners present to call the API"
+			secret:       true
+			encoding:     "csv"
+			separator:    " "
+			minKeys:      1
+			maxKeys:      2
+			keyMinLength: 32
+			keyMaxLength: 128
+		}
 		PARTNER_KEYSTORE_PASSWORD: {
 			type:        "string"
 			description: "Password for the partner mTLS keystore"

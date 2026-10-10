@@ -1,0 +1,90 @@
+description: >
+  Text files (SPEC §4.6, §11.2 item 7): minLength and maxLength count
+  characters (Unicode code points, SPEC §4.3), a trailing newline
+  included, since nothing is trimmed; pattern matches anywhere unless
+  anchored. A present file's expected value is its text.
+requires: [files]
+vars: {}
+files:
+  licence:
+    type: text
+    description: Licence key
+    required: true
+    path: /etc/app/licence/licence.key
+    pattern: '^[A-Z0-9]{5}(-[A-Z0-9]{5}){3}\n?$'
+  motd:
+    type: text
+    description: Message of the day
+    path: /etc/app/motd/motd.txt
+    minLength: 2
+    maxLength: 4
+cases:
+  - name: a valid licence
+    env: {}
+    files:
+      /etc/app/licence/licence.key: "ABCDE-12345-FGHIJ-67890\n"
+    expect: {licence: "ABCDE-12345-FGHIJ-67890\n"}
+
+  - name: a licence without the trailing newline
+    env: {}
+    files:
+      /etc/app/licence/licence.key: "ABCDE-12345-FGHIJ-67890"
+    expect: {licence: "ABCDE-12345-FGHIJ-67890"}
+
+  - name: a licence that does not match the pattern
+    env: {}
+    files:
+      /etc/app/licence/licence.key: "abcde-12345-FGHIJ-67890\n"
+    errors: [{var: licence, code: pattern_mismatch}]
+
+  - name: the required licence is missing
+    env: {}
+    errors: [{var: licence, code: file_missing}]
+
+  - name: text at its maximum length in characters
+    env: {}
+    files:
+      /etc/app/licence/licence.key: "ABCDE-12345-FGHIJ-67890\n"
+      /etc/app/motd/motd.txt: "日本語!"
+    expect: {licence: "ABCDE-12345-FGHIJ-67890\n", motd: "日本語!"}
+
+  - name: text at its minimum length
+    env: {}
+    files:
+      /etc/app/licence/licence.key: "ABCDE-12345-FGHIJ-67890\n"
+      /etc/app/motd/motd.txt: "hi"
+    expect: {licence: "ABCDE-12345-FGHIJ-67890\n", motd: "hi"}
+
+  - name: text below its minimum length
+    env: {}
+    files:
+      /etc/app/licence/licence.key: "ABCDE-12345-FGHIJ-67890\n"
+      /etc/app/motd/motd.txt: "h"
+    errors: [{var: motd, code: out_of_range}]
+
+  - name: a trailing newline counts toward maxLength
+    env: {}
+    files:
+      /etc/app/licence/licence.key: "ABCDE-12345-FGHIJ-67890\n"
+      /etc/app/motd/motd.txt: "日本語!\n"
+    errors: [{var: motd, code: out_of_range}]
+
+  - name: an empty file is present, and below minLength
+    env: {}
+    files:
+      /etc/app/licence/licence.key: "ABCDE-12345-FGHIJ-67890\n"
+      /etc/app/motd/motd.txt: ""
+    errors: [{var: motd, code: out_of_range}]
+
+  - name: text that is not UTF-8
+    env: {}
+    files:
+      /etc/app/licence/licence.key: "ABCDE-12345-FGHIJ-67890\n"
+      /etc/app/motd/motd.txt: {base64: "/v8A"}
+    errors: [{var: motd, code: file_malformed}]
+
+  - name: an absent optional text file is null
+    env: {}
+    files:
+      /etc/app/licence/licence.key: "ABCDE-12345-FGHIJ-67890\n"
+    expect: {licence: "ABCDE-12345-FGHIJ-67890\n", motd: null}

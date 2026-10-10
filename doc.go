@@ -41,7 +41,11 @@
 //	minItems maxItems       list length
 //	itemMin:"0" itemMax:"9" bounds on each item of an integer list
 //	itemMinLength itemMaxLength  length of each item of a string list
-//	group, examples ("a|b"), deprecated, configKey
+//	minKeys maxKeys         number of keys in a KeySet (default 1 and 2)
+//	keyMinLength keyMaxLength  length of each key of a KeySet
+//	deprecated:"Use PORT"   what to use instead, or why it is going away
+//	replacedBy:"PORT"       the input that replaces a deprecated one
+//	group, examples ("a|b"), configKey
 //
 // A tag key that is not one of these but is close to one (secrte, mni) is
 // a declaration error, so a typo never drops a rule silently. Keys of
@@ -55,14 +59,27 @@
 // messages, and Redacted and LogValue give the whole configuration with
 // every secret replaced by ***.
 //
+// A field of type KeySet is a set of secret keys that are all valid at
+// once, so a key can be rotated without an outage (contract type
+// "keySet"): its Contains and Verify methods check a candidate against
+// every key.
+//
 // The contract type follows from the Go type: string, bool, every int and
 // uint kind, float32/64, time.Duration (encoding "go"), url.URL, slices of
-// strings or integers (encoding "csv" with envSeparator), JSON[T] for a
-// structured value, and any encoding.TextUnmarshaler as a string. Nested
-// structs are walked with their envPrefix. Integer bounds include the
-// range caarlos0/env parses the kind with (int is parsed as 32 bits), for
-// scalars as min and max and for list items as itemMin and itemMax: a
-// []uint16 exports itemMin 0 and itemMax 65535 without any tag.
+// strings or integers (encoding "csv" with envSeparator), KeySet (also
+// "csv"), JSON[T] for a structured value, and any encoding.TextUnmarshaler
+// as a string. Nested structs are walked with their envPrefix. Integer
+// bounds include the range caarlos0/env parses the kind with (int is
+// parsed as 32 bits), for scalars as min and max and for list items as
+// itemMin and itemMax: a []uint16 exports itemMin 0 and itemMax 65535
+// without any tag.
+//
+// # Deprecated inputs
+//
+// A deprecated tag marks a variable or file input for removal: the
+// platform should stop setting it. Parse logs a warning naming the input
+// and the message, never the value, when one is set, and docuconf vet
+// warns about it too. A required input cannot be deprecated.
 //
 // # File inputs
 //
@@ -79,19 +96,29 @@
 // Tags for every file type: path (required; absolute), pathEnv (a variable
 // the platform sets to the path; it overrides path at runtime), reload
 // ("restart" or "watch"), maxSize (bytes, or with a Ki, Mi or Gi suffix),
-// secret, desc, group, deprecated. Per type:
+// secret, desc, group, deprecated, replacedBy. Per type:
 //
 //	TLSKeyPair  dnsNames:"a,b" keyAlgorithms:"ECDSA,RSA" minRemaining:"720h" requireCA:"true"
 //	CABundle    minCertificates:"2"
 //	Keystore    passwordVar:"KEYSTORE_PASSWORD" format:"pkcs12"
 //	TextFile    pattern, minLength, maxLength
-//	ConfigFile  format:"json" or "yaml" (default from the path's extension)
+//	ConfigFile  format:"json", "yaml" or "toml" (default from the path's extension)
 //
 // A config file's contract carries a JSON Schema generated from T: json
 // tags name the properties, fields without omitempty (or omitzero) and
 // not pointers are required, and other properties are rejected. T's fields
 // take the constraint tags above, which become schema keywords, and T may
 // implement Validate() error.
+//
+// # Reloading
+//
+// A file input with reload "watch" swaps in changed content that passes
+// its boot checks, at most once per Options.WatchInterval; content that
+// fails them is logged and not used. Read the value at each use
+// (TLSKeyPair.GetCertificate, ConfigFile.Value, ...), or rebuild what was
+// made from it in an OnChange hook. ReloadStatus gives the generation and
+// the last accepted and rejected reloads. A keystore reload keeps the
+// password read at boot, so rotating that password needs a rollout.
 //
 // # Boot checks
 //

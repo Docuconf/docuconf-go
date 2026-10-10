@@ -76,22 +76,17 @@ type Config struct {
 
 	// Keys that verify the signature on incoming payment webhooks.
 	//
-	// A webhook is accepted when it is signed with any key in the list, so
-	// the key can be rotated without turning webhooks away. To rotate:
-	//
-	//  1. add the new key as the second item, and roll out;
-	//  2. switch the sender to the new key;
-	//  3. remove the old key, and roll out.
-	//
-	// Each key is 32 to 256 characters, so an empty or truncated key fails
-	// at boot. Without this variable, the service rejects every webhook.
-	WebhookKeys []docuconf.Secret `env:"WEBHOOK_KEYS" secret:"true" minItems:"1" maxItems:"2" itemMinLength:"32" itemMaxLength:"256"`
+	// A webhook is accepted when it is signed with any key in the set, so
+	// the key can be rotated without turning webhooks away. Each key is 32
+	// to 256 characters, so an empty or truncated key fails at boot.
+	// Without this variable, the service rejects every webhook.
+	WebhookKeys docuconf.KeySet `env:"WEBHOOK_KEYS" keyMinLength:"32" keyMaxLength:"256"`
 }
 ```
 
 Every input needs a description: the first paragraph of the field's doc comment, or a `desc` tag. Later paragraphs become the input's optional `details`, Markdown that says why the input exists and when to change it. Headings (`# Heading`), lists and indented code blocks in the comment carry over as Markdown. Details only go into generated docs; nothing reads them at runtime.
 
-`docuconf.Secret` is a string that prints `***` everywhere: `%v`, `%+v`, `slog` and JSON. A field of that type is secret in the contract. On a plain `string`, `secret:"true"` does the same for the contract but not for printing. A list of secrets, such as the webhook key set above, is a `[]docuconf.Secret` with `secret:"true"`: the tag makes the list secret in the contract, and the item type keeps each key from printing. Accepting either of two keys is how a key is rotated without downtime ([spec section 6.1](spec/SPEC.md#61-rotation)). A misspelled tag (`secrte`, `mni`) is an error, not a silently dropped rule.
+`docuconf.Secret` is a string that prints `***` everywhere: `%v`, `%+v`, `slog` and JSON. A field of that type is secret in the contract. On a plain `string`, `secret:"true"` does the same for the contract but not for printing. `docuconf.KeySet`, such as the webhook keys above, is a set of secret keys that are all valid at once, which is how a key is rotated without downtime ([spec section 6.1](spec/SPEC.md#61-rotation)): it holds one to two keys unless `minKeys` and `maxKeys` say otherwise, prints `***` like a `Secret`, and its `Contains` and `Verify` methods check a candidate against every key. The generated docs print the rotation steps. A misspelled tag (`secrte`, `mni`) is an error, not a silently dropped rule.
 
 ## 3. Run
 
@@ -271,9 +266,55 @@ echo 'codes: {WELCOME10: 10}' > dev/etc/orders/discounts/discounts.yaml
 
 Then run with `DOCUCONF_FILE_ROOT=./dev`. `.env` files are read only when listed in `Options.DotEnv`. Set `Options.DotEnvRequired` to make a missing one an error.
 
+### Using a watched value
+
+With `reload:"watch"`, docuconf swaps in a changed file once it passes the checks it passed at boot; a change that fails them is logged and not used, and the previous value stays current. Changes are found by each file's identity, size and modification time, following symlinks, so the kubelet's swap of a projected volume is seen. Files are checked at most once per `Options.WatchInterval` (10s by default): when the app reads the value, and in the background while an on-change hook is registered.
+
+An app that copies a watched value once, into a TLS server context, an HTTP client or a pool, keeps the old value until the certificate expires. Read the value on each use, or rebuild what you made from it in an `OnChange` hook. A TLS server reads the certificate on every handshake with `GetCertificate`; the hook here only logs:
+
+```go
+	if cfg.TLS.Present() {
+		// GetCertificate reads the current certificate on every handshake,
+		// so a renewed one is served without a restart.
+		srv.TLSConfig = &tls.Config{GetCertificate: cfg.TLS.GetCertificate}
+		cfg.TLS.OnChange(func(cert *tls.Certificate) {
+			slog.Info("serving a renewed certificate", "notAfter", cert.Leaf.NotAfter)
+		})
+```
+
+An HTTP client copies its CA pool when it is built, so build a new one when a `CABundle` changes:
+
+```go
+	build := func(certs []*x509.Certificate) {
+		pool := x509.NewCertPool()
+		for _, cert := range certs {
+			pool.AddCert(cert)
+		}
+		next := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}}
+		if old := c.cur.Swap(next); old != nil {
+			old.CloseIdleConnections()
+		}
+	}
+	build(ca.Certificates())
+	c.cancel = ca.OnChange(build)
+```
+
+`TLSKeyPair`, `CABundle`, `Keystore`, `TextFile` and `ConfigFile[T]` each have `OnChange(fn)`, which returns a function that unregisters `fn`. A hook is called with the new value after a reload is accepted, never after a rejected one. Hooks run one at a time; one that panics is logged by input name and panic type, and the others still run. `BinaryFile` has no hook: the app opens the file itself, so it always reads the current one.
+
+`ReloadStatus()` returns the input's `Generation` (1 after boot, plus one per accepted reload), `LastReload` (the time of the last accepted reload) and `LastRejected` (the last rejected change: its time, input and violation codes, never the content; cleared by the next accepted reload). It encodes as JSON for a health check:
+
+```go
+	mux.HandleFunc("GET /reloadz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]docuconf.ReloadStatus{"serving-tls": cfg.TLS.ReloadStatus()})
+	})
+```
+
+A `Keystore` reload opens the new keystore with the password read at boot, since a process's environment does not change. Rotating a keystore's password needs a rollout; a changed keystore that does not open with the boot password is rejected as `keystore_unreadable`, and the previous one stays current.
+
 ### Tags
 
-A doc comment's first paragraph is the description (a `desc` tag is the fallback), and the rest is details. docuconf's tags: `secret`, `min`/`max`, `minLength`/`maxLength` (in characters; `maxLength` also bounds a url or a `JSON[T]` value), `pattern` (RE2), `values` (enum), `schemes` (url), `minItems`/`maxItems`, `itemMin`/`itemMax` on integer lists, and `itemMinLength`/`itemMaxLength` on string lists (`` Shards []int `env:"SHARDS" itemMin:"0" itemMax:"1023"` ``). Integer bounds always include the range caarlos0/env parses the Go type with: an `int` exports `min: -2147483648, max: 2147483647` because caarlos0/env parses it as 32 bits, and a `[]uint16` exports `itemMin: 0, itemMax: 65535`. `JSON[T]` holds a structured variable. The full tag reference is in the [package docs](doc.go).
+A doc comment's first paragraph is the description (a `desc` tag is the fallback), and the rest is details. docuconf's tags: `secret`, `min`/`max`, `minLength`/`maxLength` (in characters; `maxLength` also bounds a url or a `JSON[T]` value), `pattern` (RE2), `values` (enum), `schemes` (url), `minItems`/`maxItems`, `itemMin`/`itemMax` on integer lists, `itemMinLength`/`itemMaxLength` on string lists (`` Shards []int `env:"SHARDS" itemMin:"0" itemMax:"1023"` ``), `minKeys`/`maxKeys` and `keyMinLength`/`keyMaxLength` on a `KeySet`, and `deprecated` (`` OldPort int `env:"OLD_PORT" deprecated:"Use PORT"` ``), which marks an input for removal: `docuconf vet` warns while the platform still sets it, and the SDK logs a warning at boot, never with the value. A required input cannot be deprecated. Integer bounds always include the range caarlos0/env parses the Go type with: an `int` exports `min: -2147483648, max: 2147483647` because caarlos0/env parses it as 32 bits, and a `[]uint16` exports `itemMin: 0, itemMax: 65535`. `JSON[T]` holds a structured variable. The full tag reference is in the [package docs](doc.go).
 
 A comma-separated list keeps empty items, as caarlos0/env does: `ALLOWED_ORIGINS=","` is two empty strings and satisfies `minItems:"1"`. The contract accepts empty items too, so `vet` and boot agree. Check for empty items in your code if they matter.
 
@@ -295,7 +336,7 @@ To validate an environment against a contract with no Go struct, for example one
 	timeout := vals["REQUEST_TIMEOUT"].(time.Duration) // int is int64, list is []string or []int64
 ```
 
-File inputs are loaded too, with the same checks as the Go file types, and returned by input name as those types (`TLSKeyPair`, `CABundle`, `Keystore`, `TextFile`, `BinaryFile`, or `ConfigFile[any]` checked against the contract's schema). A contract with `overlays` or `profiles` is rejected, and so is a `toml` config file or a `jks` keystore, which the Go SDK cannot read.
+File inputs are loaded too, with the same checks as the Go file types, and returned by input name as those types (`TLSKeyPair`, `CABundle`, `Keystore`, `TextFile`, `BinaryFile`, or `ConfigFile[any]` checked against the contract's schema). Config files may be `json`, `yaml` or `toml`; a `jks` keystore is rejected, since the Go SDK reads `pkcs12` only. A watched file input reloads exactly as in a struct, with `OnChange` and `ReloadStatus`. A contract's `profiles` and `overlays` are layered as a host with config files would (SPEC §4.4, §4.7): a variable's default, then the selected profile's default, then an overlay (read from under `DOCUCONF_FILE_ROOT`), then the environment. `LoadContract` returns values read once, so an overlay declared `reload: watch` is a `*DeclarationError`; `docuconf check` and `exec` check such an overlay once, at boot.
 
 A generator for another language that builds the contract itself can format it with `docuconf.ContractCUE(contractJSON, pkg)`, which checks it as `LoadContract` does and writes the same `contract.cue` layout as `Export`: header, package, import, variables and files sorted by name. The COBOL SDK's `docuconf-cobol generate` uses it.
 
@@ -324,7 +365,7 @@ ENTRYPOINT ["docuconf", "exec", "-contract", "/etc/docuconf/contract.cue", "--",
 
 `docuconf check -contract contract.cue` runs the same validation and exits 0 (printing `<name>: ok`) or 1, without starting anything. Use it in an init container or in CI.
 
-The checks are the SDK's: contract-first mode loads variables and files, but not `overlays` or `profiles` (a contract with them is rejected), and it reads `json` and `yaml` config files and `pkcs12` keystores only.
+The checks are the SDK's: contract-first mode loads variables, files, profiles and overlays, and it reads `json`, `yaml` and `toml` config files and `pkcs12` keystores (not `jks`).
 
 ### Conformance
 
@@ -335,7 +376,7 @@ go test -run TestConformance -v .
 DOCUCONF_CONFORMANCE=/path/to/cases.json go test -run TestConformance .
 ```
 
-The Go SDK supports every capability tag (`int64`, `json-schema`), so no case is skipped.
+The Go SDK supports every capability tag (`int64`, `json-schema`) and every transitional one (`key-set`, `deprecated`, `strict-parsing`, `files`, `profiles`, `overlays`), so no case is skipped, and the test fails if one is. Its export of the shared export fixture is kept in [`testdata/conformance-export.cue`](testdata/conformance-export.cue) and compared with [`conformance/export/golden.cue`](conformance/export/golden.cue) by the CLI's tests.
 
 ### More
 

@@ -94,7 +94,8 @@ OTLP collector the app sends traces to
 - contents: a JSON file, read at the path
 - reload: `restart`: the app reads the file at startup; a changed source needs a rollout
 - constraint: matches the JSON Schema in the contract
-- schema: `{"properties":{"password":{"type":"string"},"username":{"type":"string"}},"required":["username","password"],"type":"object"}`
+- field `password`: string, required
+- field `username`: string, required
 - allowed sources: `secret`, `csi`, `injected` (the injector writes the file at the path)
 - boot errors: `file_missing`, `file_unreadable`, `file_malformed`, `schema_mismatch`
 

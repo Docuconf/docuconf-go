@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -346,6 +347,14 @@ type varResults struct {
 // place, before caarlos0/env reads it: an empty value is unset for every
 // type but string, and bools accept true and false in any case.
 func checkVars(vars []*varDecl, environ map[string]string, logger *slog.Logger) varResults {
+	return checkLayeredVars(vars, environ, nil, logger)
+}
+
+// checkLayeredVars is checkVars with values from below the environment:
+// a variable the environment does not set takes its layer's value (a
+// profile default, or an overlay value checked like an env value), which
+// also satisfies required.
+func checkLayeredVars(vars []*varDecl, environ map[string]string, layers map[string]layer, logger *slog.Logger) varResults {
 	for _, v := range vars {
 		raw, ok := environ[v.name]
 		if !ok {
@@ -369,7 +378,7 @@ func checkVars(vars []*varDecl, environ map[string]string, logger *slog.Logger) 
 		var raw string
 		var items []string
 		var ok bool
-		indexed := v.typ == typeList && v.listEncoding == encIndexed
+		indexed := (v.typ == typeList || v.typ == typeKeySet) && v.listEncoding == encIndexed
 		if indexed {
 			var missing int
 			items, ok, missing = indexedItems(environ, v.name)
@@ -382,6 +391,38 @@ func checkVars(vars []*varDecl, environ map[string]string, logger *slog.Logger) 
 		}
 		if ok && v.expand {
 			raw = os.Expand(raw, func(k string) string { return environ[k] })
+		}
+		l, layered := layers[v.name]
+		if ok && layered && !l.fixed && !l.bad {
+			logger.Warn("docuconf: variable is set in the environment and in an overlay; the environment wins", "name", v.name, "source", l.source)
+		}
+		if !ok && layered {
+			if l.bad {
+				res.flagged[v.name] = true
+				continue
+			}
+			if l.fixed {
+				res.typed[v.name] = l.typed
+				continue
+			}
+			if v.deprecated != "" {
+				logger.Warn("docuconf: deprecated variable is set", "name", v.name, "message", v.deprecated, "source", l.source)
+			}
+			var val any
+			var vs []Violation
+			if l.isList {
+				val, vs = v.parseItems(l.items)
+			} else {
+				res.raw[v.name] = l.raw
+				val, vs = v.parse(l.raw)
+			}
+			if len(vs) > 0 {
+				res.viols = append(res.viols, vs...)
+				res.flagged[v.name] = true
+				continue
+			}
+			res.typed[v.name] = val
+			continue
 		}
 		if !ok {
 			if v.required {
@@ -437,8 +478,35 @@ func checkVars(vars []*varDecl, environ map[string]string, logger *slog.Logger) 
 			continue
 		}
 		res.typed[v.name] = val
+		if !indexed && !v.loadFile && !v.expand {
+			if canon, ok := hostForm(v, raw); ok {
+				environ[v.name] = canon
+			}
+		}
 	}
 	return res
+}
+
+// hostForm returns a valid integer, or csv list of integers, in the form
+// strconv parses for every Go kind. The spec's integers take a sign and
+// leading zeros (SPEC §5), which strconv.ParseUint rejects, so caarlos0/env
+// is given the canonical form of a value docuconf has already accepted.
+func hostForm(v *varDecl, raw string) (string, bool) {
+	canon := func(s string) string {
+		n, _ := new(big.Int).SetString(s, 10)
+		return n.String()
+	}
+	switch {
+	case v.typ == typeInt:
+		return canon(raw), true
+	case v.typ == typeList && v.items == "int" && (v.listEncoding == encCSV || v.listEncoding == ""):
+		items := strings.Split(raw, v.separator)
+		for i, item := range items {
+			items[i] = canon(item)
+		}
+		return strings.Join(items, v.separator), true
+	}
+	return "", false
 }
 
 // explainHostError turns an error from caarlos0/env into a violation,

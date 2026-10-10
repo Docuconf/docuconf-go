@@ -27,7 +27,7 @@ One contract format, one validation model, one SDK per language.
 ### 1.2 Non-goals
 
 - **Feature flags.** See [section 10](#10-feature-flags-are-not-environment-configuration).
-- Secret storage and issuance. docuconf validates that a secret is *referenced*; External Secrets, Vault or the CSI driver store it, and generate, lease or revoke it. How a rotated value reaches the app, and how the contract declares the keys of a rotation that must overlap, is covered (section 6.1); performing the rotation is not.
+- Secret storage and issuance. docuconf validates that a secret is *referenced*; External Secrets, Vault or the CSI driver store it, and generate, lease or revoke it. How a rotated value reaches the app, and how the contract declares the keys of a rotation that must overlap (a `keySet`), is covered (section 6.1); performing the rotation is not.
 - Provisioning the things an app depends on (databases, queues, DNS, buckets). That is the job of Crossplane composite resources or a workload spec such as [Score](https://score.dev). docuconf types how their outputs reach the app: a connection string Secret, a CA bundle, a credentials file.
 - Command-line arguments. Twelve-factor apps take configuration from the environment and files; arguments may be added later.
 - Replacing a language's config ecosystem. Each SDK extends that language's leading environment library rather than competing with it (section 11.1).
@@ -131,10 +131,10 @@ Fields common to every type:
 | `secret` | `false` | The value must come from a secret reference (section 6). A secret MUST NOT have a `default` or `examples`. |
 | `group` | — | Free-form grouping for docs (`database`, `http`). |
 | `examples` | — | Example values, as strings, for docs. |
-| `deprecated` | — | `{message, replacedBy?}`. SDKs warn at boot when a deprecated variable is set. |
+| `deprecated` | — | `{message, replacedBy?}`, for staged removal: the platform should stop setting the input. `message` says what to use instead, or why the input is going away: not blank, and at most 500 characters. `replacedBy` names the input that replaces it. A `required` input MUST NOT be deprecated, since the platform could not stop setting it. A deprecated input the platform still sets is a warning, never an error (section 7), and SDKs SHOULD warn at boot (section 11.2). |
 | `configKey` | — | The app's own configuration key (SDKs MAY emit it even when it matches the env name): `Orders:CheckoutTimeout` in .NET, `orders.checkout-timeout` in Spring. Used in docs, so readers can find the setting in the app's config files. |
 
-An optional variable with no default is legal. The SDK exposes it as absent (`nil`, `undefined`, `null`, `Option`).
+An optional variable with no default is legal. The SDK exposes it as absent (`nil`, `undefined`, `null`, `Option`). Whether an input is optional is the app's choice: docuconf does not prescribe how systems are set up.
 
 ### 4.3 Types
 
@@ -148,6 +148,7 @@ An optional variable with no default is legal. The SDK exposes it as absent (`ni
 | `url` | `schemes`, `maxLength` | string with a `scheme://` | as is |
 | `enum` | `values` (non-empty) | one of `values` | as is |
 | `list` | `items` (`string`\|`int`), `encoding`, `separator` (csv only, default `,`), `minItems`, `maxItems`, `itemMin` and `itemMax` (`int` items only), `itemMinLength` and `itemMaxLength` (`string` items only) | list | depends on `encoding` |
+| `keySet` | `secret: true` (always), `encoding`, `separator` (csv only, default `,`), `minKeys` (default 1, at least 1), `maxKeys` (default 2, at least `minKeys`), `keyMinLength`, `keyMaxLength` (at least 1) | a secret reference only | as a `list` of strings (section 5) |
 | `json` | `schema` (JSON Schema), `maxLength` | any JSON value | compact JSON |
 
 Rules:
@@ -155,12 +156,15 @@ Rules:
 - `pattern` is RE2, the only regex dialect every SDK can match exactly (Go native, `re2` bindings or a compatible subset elsewhere). SDKs MUST reject patterns that use features outside RE2, such as lookaround or backreferences, at declaration time.
 - RE2's `\d`, `\w`, `\s` and `\b` are ASCII-only. Where the host engine treats them as Unicode (Python, .NET, Rust's `regex` by default), SDKs SHOULD warn and suggest explicit classes such as `[0-9]`, since the platform and the app would otherwise disagree on non-ASCII input.
 - `pattern` matches **anywhere** in the value, as CUE's `=~` and JSON Schema's `pattern` do; anchor it with `^` and `$` to match the whole value. Some host libraries match the whole value instead (.NET `[RegularExpression]`, Java `@Pattern`); their SDKs MUST anchor such patterns on export, as `^(?:p)$`, so the platform and the app accept exactly the same values.
-- **Lengths count characters**, meaning Unicode code points, never bytes or UTF-16 code units. This applies to `minLength` and `maxLength` on a `string`, to `maxLength` on a `url` or `json` value, to `itemMinLength` and `itemMaxLength` on each item of a `string` list, and to text files (section 4.6). `日本` is 2 characters, and `ZÜ01` fits an `itemMaxLength` of 4. CUE's `strings.MinRunes`/`MaxRunes` and JSON Schema's `minLength`/`maxLength` count the same way. A host whose strings are UTF-16 (Java, .NET, JavaScript) counts code points, not `length`. An app that stores values in fixed-width byte fields, such as a COBOL `PIC X(n)`, should declare a limit that leaves room for multi-byte characters, or reject them with a `pattern` such as `^[ -~]*$`.
+- **Lengths count characters**, meaning Unicode code points, never bytes or UTF-16 code units. This applies to `minLength` and `maxLength` on a `string`, to `maxLength` on a `url` or `json` value, to `itemMinLength` and `itemMaxLength` on each item of a `string` list, to `keyMinLength` and `keyMaxLength` on each key of a `keySet`, and to text files (section 4.6). `日本` is 2 characters, and `ZÜ01` fits an `itemMaxLength` of 4. CUE's `strings.MinRunes`/`MaxRunes` and JSON Schema's `minLength`/`maxLength` count the same way. A host whose strings are UTF-16 (Java, .NET, JavaScript) counts code points, not `length`. An app that stores values in fixed-width byte fields, such as a COBOL `PIC X(n)`, should declare a limit that leaves room for multi-byte characters, or reject them with a `pattern` such as `^[ -~]*$`.
 - `maxLength` on a `url` bounds the URL string as it is.
 - `maxLength` on a `json` value bounds its **wire string**. Before deploy, that is the compact JSON `#Render` writes: no insignificant whitespace, object fields in the order the platform wrote them, and no escaping beyond what JSON requires (`<`, `>` and `&` stay as they are). At boot, it is the raw value the app receives, whitespace included, before the SDK parses it. A value the platform rendered measures the same in both places. A `json` value read from a config-file overlay (section 4.7) is not a string, so the SDK measures its compact JSON. The Helm values schema cannot express this limit, so it is checked by `docuconf vet` and at boot.
 - `itemMinLength` and `itemMaxLength` apply to each item after the list is split in its encoding, so a `csv` separator is never counted. They MUST NOT be set on an `int` list, just as `itemMin` and `itemMax` MUST NOT be set on a `string` list.
 - `default` MUST satisfy the variable's own constraints. SDKs MUST check this at declaration time.
 - A `json` variable carries a structured value, such as a rate-limit object. Its `schema` is a JSON Schema the SDK generates from the app's own type, so the platform checks the value against the same type the app deserializes into (section 4.6).
+- A `keySet` is a set of secret keys that are all valid at once, so one can be rotated without an outage (section 6.1). It is for the side that verifies: webhook signatures, inbound API keys, JWT HMAC verification, cookie-signing fallbacks. `secret` MUST be `true`, so it has no `default` and no `examples`, and the meta-schema rejects anything else. It travels in a list's wire encodings, with the same `encoding` and `separator` (section 5). Keys are never trimmed. The number of keys outside `minKeys`..`maxKeys` is `too_few_items` or `too_many_items`; a key outside `keyMinLength`..`keyMaxLength`, and an empty key whatever the bounds (a stray separator), is `out_of_range`. Like every secret, no message holds a key.
+- An empty key's message is exactly `key N is empty`, where `N` is the key's 1-based position in the list as received: `old,` has an empty key 2, `,new` an empty key 1, and `a,,b` an empty key 2. An SDK that reports an empty item in a `list` says `item N is empty`, also 1-based. Conformance compares codes, not messages (section 12), but this wording is still required, so that every SDK reports the same mistake the same way.
+- A `keySet`'s typed value is its keys, in the order the platform gave them: SDKs MUST expose them as ordered keys, and SHOULD offer a constant-time `contains(candidate)` and a helper that tries every key with a check the caller supplies, such as an HMAC comparison, without stopping at the first match. In conformance JSON (section 12) the value is an array of strings.
 - The type set is closed in v1alpha1. A new type needs a spec change, because every SDK must parse it identically.
 
 ### 4.4 Config files and profiles
@@ -169,7 +173,7 @@ Many apps do not get their configuration only from the environment. .NET layers 
 
 - A value in an **always-loaded base file** (`appsettings.json`, `application.yml`) is an ordinary `default`. A `[Required]` property with a value in the base file is therefore exported as optional with that default.
 - A value in a **profile file** goes in `profiles.defaults`, keyed by profile name. It applies only when that profile is selected.
-- `profiles.selector` names the environment variable that picks the profile (`ASPNETCORE_ENVIRONMENT`, `DOTNET_ENVIRONMENT`, `SPRING_PROFILES_ACTIVE`). It MUST be a declared variable; when the app does not declare it itself, the SDK adds it as an optional `string` variable whose default is `profiles.default`, as the .NET and Ruby SDKs do for `ASPNETCORE_ENVIRONMENT` and `RAILS_ENV`. `profiles.default` is the profile in effect when the selector is unset (`Production` in .NET, `development` in Rails).
+- `profiles.selector` names the environment variable that picks the profile (`ASPNETCORE_ENVIRONMENT`, `DOTNET_ENVIRONMENT`, `SPRING_PROFILES_ACTIVE`). It MUST be a declared variable; when the app does not declare it itself, the SDK adds it as an optional `string` variable whose default is `profiles.default`, as the .NET and Ruby SDKs do for `ASPNETCORE_ENVIRONMENT` and `RAILS_ENV`. `profiles.default` is the profile in effect when the selector is unset (`Production` in .NET, `development` in Rails). When it is set, its value names the profile, read as section 5 reads the selector's type: for a `string` selector the empty string is a value, which names a profile with no file, exactly as `#Validate` selects it.
 
 ```cue
 profiles: {
@@ -203,8 +207,8 @@ A non-secret variable's value is usually a literal. Some values only exist in th
 | `configMapKeyRef` | `{configMapKeyRef: {name: "limits", key: "rate"}}` | every non-secret type except `list` | at boot |
 | `fieldRef` (Downward API) | `{fieldRef: fieldPath: "metadata.namespace"}` | `string` | always valid |
 | `resourceFieldRef` | `{resourceFieldRef: resource: "limits.memory"}` | `int` | always valid |
-| `secretKeyRef` | `{secretKeyRef: {name: "db", key: "url"}}` | secret variables (one of the two secret sources) | at boot |
-| `injected` with `ref` | `{injected: {provider: "bank-vaults", ref: "vault:secret/data/db#url"}}` | every type, including secrets; not an `indexed` list | the reference's shape before deploy; the value at boot |
+| `secretKeyRef` | `{secretKeyRef: {name: "db", key: "url"}}` | secret variables, including every `keySet` (one of the two secret sources) | at boot |
+| `injected` with `ref` | `{injected: {provider: "bank-vaults", ref: "vault:secret/data/db#url"}}` | every type, including secrets; not a list or key set in the `indexed` encoding | the reference's shape before deploy; the value at boot |
 | `injected` without `ref` | `{injected: {provider: "otel-operator"}}` | every type, including secrets | at boot |
 
 The Downward API always yields a string, and resource fields an integer, so the meta-schema rejects a `fieldRef` for an `int` variable. Typical uses are a pod's namespace for metrics labels, and `GOMEMLIMIT` or `DOTNET_GCHeapHardLimit` from the container's memory limit.
@@ -405,6 +409,18 @@ A source that changes after deploy (a renewed certificate, an updated ConfigMap)
 
 Inline content is content-hashed, so it always rolls the pods when it changes.
 
+With `watch`, the SDK swaps in changed content once it passes the checks it passed at boot; changed content that fails them is not used, and the previous value stays current. For each watched input the SDK:
+
+- MUST give the app a way to read the current value at each use, such as a getter or a `GetCertificate` callback, rather than only a value copied at startup.
+- SHOULD offer an **on-change hook**: a callback the app registers, called with the new value after a reload is accepted, and never after a rejected change. Several hooks are allowed on one input. A hook that fails is logged, by input name and error type only, and neither stops the other hooks nor undoes the reload.
+- SHOULD expose its **reload status**: `generation`, which is 1 after boot and grows by one with each accepted reload; the time of the last accepted reload; and the last rejected change, as its time, the input's name and the violation codes, never the content. An app can serve it in a health check or as a metric.
+
+An app that copies a watched value into a long-lived object, such as a TLS server context, an HTTP client or a connection pool, keeps using the old value until it rebuilds that object. It must either read the value at each use (a TLS server that asks for the certificate on each handshake) or rebuild the object in an on-change hook. Otherwise a renewed certificate is mounted but never served, and the old one stays in use until it expires.
+
+A `keystore` reload opens the new keystore with the password the app read at boot, since a process's environment does not change (section 6.1). Rotating the password therefore needs a rollout, which also delivers the new keystore. A changed keystore that does not open with the boot password is `keystore_unreadable`: the change is rejected and the previous value is kept.
+
+An SDK detects a change from each file's identity and metadata (for example its device, inode, size and modification time), following symlinks, so that the kubelet's swap of the `..data` symlink in a projected volume is seen as a new file. Outside Kubernetes this has a limit: an edit in place that keeps the file's size, within the file system's timestamp resolution, can be missed. SDKs MAY also compare a hash of the content.
+
 Section 6.1 covers rotation for every kind of input, including variables, injected values and dynamic secrets.
 
 ### 4.7 Config-file overlays
@@ -451,7 +467,8 @@ Rules, enforced by the meta-schema:
 
 What the SDK does at boot:
 
-- It loads the overlay as an optional file: a missing one is not an error; one that does not parse is `file_malformed`, reported with the other violations.
+- It loads the overlay as an optional file, from under `DOCUCONF_FILE_ROOT` like a file input (section 11.1): a missing one is not an error; one that does not parse, or does not hold an object at its top level, is `file_malformed` for the overlay's name, reported with the other violations.
+- It reads each variable's value at its `configKey`, split on `keySeparator`, matching keys exactly as `#Render` writes them (case-sensitive), and converts the native value to the wire string it stands for (section 5): a string as it is; a boolean as `true` or `false`; a number with an integral value as a base-10 integer (`50.0` is `50`), and any other number in shortest round-trip decimal; a list item by item, each converted like a scalar; and, for a `json` variable, the value's compact JSON. A `null` is unset, like an empty env value. An object or list where the type takes a scalar is `invalid_type` for the variable. The result is then parsed in the variable's own encoding: a `seconds` duration from a number, any other duration from a string.
 - It validates the values it binds from the overlay exactly as it validates env values, and a `json` value in its bound form: hosts that merge layers key by key may combine an overlay object with baked-in keys, and the app checks the result.
 - It MUST NOT take a secret's value from an overlay, and SHOULD fail with `invalid_type` if one is there, without printing it.
 - When a variable is set both in the environment and in an overlay, the environment wins, as the precedence says. The platform rejects this before deploy; an SDK that sees it at boot SHOULD log a warning naming the variable.
@@ -493,19 +510,29 @@ Lists and durations are different: the leading libraries disagree, and making an
 | `seconds` | `90` | anything that takes a number |
 | `timespan` | `00:01:30` (`d.hh:mm:ss.fff` when needed) | .NET `TimeSpan.Parse` |
 
+A `keySet` uses the same encodings and the same `separator` as a list of strings, with keys for items: during a rotation a `csv` key set is `old,new`.
+
 An `indexed` list is present when any `NAME__<n>` is set, where `<n>` is a decimal index with no leading zero; other suffixes (`NAME__HOST`) are not items. Its items MUST be numbered from `0` with no gap: `NAME__0`, `NAME__2` without `NAME__1` is `invalid_type`, because a host that stops at the gap and one that skips it would read different lists.
 
 Encodings other than `go` carry at most millisecond precision, and `#Validate` rejects finer values. Platform authors never see encodings: they write `"90s"` and `["a", "b"]` for every app.
 
 Renderers MUST double every `$` in a literal value (`$` becomes `$$`). Kubernetes expands `$(NAME)` references inside env values and reduces `$$` to `$`, so this is the only way a literal containing `$` arrives unchanged.
 
-SDK parsing rules:
+SDK parsing rules. There is one rule per type, and it is exact: an SDK accepts exactly the strings below, whatever its host library accepts on its own. Where the host is more lenient (Go's `strconv.ParseBool` takes `1` and `t`, Python's `float` takes `inf` and surrounding spaces, Ruby's `Integer` reads `010` as octal), the SDK adds a pre-check that rejects the extra forms with `invalid_type`. The platform only ever renders the canonical forms in the tables above; the wider forms below are what an app accepts from values set outside the platform, so that every SDK accepts the same ones. The conformance suite tests them under the `strict-parsing` tag (section 12).
 
-- `bool` MUST accept `true` and `false`, case-insensitive. Host libraries that also accept `1`, `0`, `yes` and so on may keep doing so, since the platform only ever emits `true` / `false`.
-- `int` MUST reject non-integers (`invalid_type`) and values outside the 64-bit signed range (`out_of_range`). When the app's field is narrower (a 32-bit `Int`, an `int8`, an unsigned type, a JavaScript `number` beyond 2^53), the SDK MUST export `min`/`max` within that range, so the platform never accepts a value the app cannot hold. The same applies to the items of an `int` list, through `itemMin`/`itemMax`; an item outside them is `out_of_range`.
-- Values are never trimmed. A trailing newline is part of the value. Host libraries that trim whitespace around `csv` separators may keep doing so: the renderer never emits it.
-- `float` MUST NOT be `NaN` or infinite, and SDKs MUST parse floats independently of the process locale.
+- **Values are never trimmed.** Leading and trailing spaces, tabs and newlines are part of the value, so `" true"`, `"8080\n"` and `"5s "` fail for every type that does not take them. Digits are ASCII `0`-`9` only.
 - An **empty string** is a present value for `string` (and fails `minLength` if set). For every other type, empty means *unset*, so a defaulted variable takes its default and a required one fails. Where a host library treats empty differently, the SDK adds a pre-check rather than changing the spec.
+- `bool`: `true` or `false`, in any combination of upper and lower case (`TRUE`, `False`). Nothing else: not `1`, `0`, `t`, `f`, `yes`, `no`, `on` or `off`.
+- `int`: `^[+-]?[0-9]+$`, read as base 10. A leading `+` is allowed, and leading zeros are decimal (`007` is 7, `010` is 10, never octal). Hex, octal and binary prefixes (`0x10`, `0o17`, `0b101`), underscores, exponents and decimal points are `invalid_type`. A value outside the 64-bit signed range is `out_of_range`. When the app's field is narrower (a 32-bit `Int`, an `int8`, an unsigned type, a JavaScript `number` beyond 2^53), the SDK MUST export `min`/`max` within that range, so the platform never accepts a value the app cannot hold, and reports a value outside the field's range as `out_of_range`. The same applies to the items of an `int` list, through `itemMin`/`itemMax`; an item outside them is `out_of_range`.
+- `float`: `^[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$`, a decimal number with at least one digit on each side of the point, rounded to the nearest IEEE 754 double. Hex floats (`0x1p4`), `inf`, `Infinity`, `NaN`, underscores, `.5` and `5.` are `invalid_type`, and so is a value too large for a double (`1e400`), since it is not finite. SDKs MUST parse floats independently of the process locale: `0,5` is `invalid_type`.
+- `duration`, by `encoding`:
+  - `go`: Go's `time.ParseDuration` grammar: an optional sign, then either `0` or one or more decimal numbers each followed by a unit. A number is digits with an optional fraction (`1.5`, `.5`, `1.`); a unit is `ns`, `us`, `µs` (U+00B5), `μs` (U+03BC), `ms`, `s`, `m` or `h`, in lower case, and units may repeat in any order (`1m30s`, `1.5h`, `-5s`, `+5s`). The result is truncated to whole nanoseconds, and a value beyond ±2^63-1 nanoseconds is `invalid_type`. A bare number other than `0` (`5`), upper-case units (`5S`), days (`1d`) and spaces (`1m 30s`) are `invalid_type`.
+  - `iso8601`: `P[nD][T[nH][nM][nS]]` with at least one component and at least one after a `T`, where `n` is digits with an optional fraction after `.` or `,` (`PT1,5S`). Upper case only, no sign, and no years, months or weeks, which have no fixed length.
+  - `seconds`: `^[0-9]+(\.[0-9]+)?$`: unsigned, no exponent.
+  - `timespan`: `[d.]hh:mm:ss[.f]`, where `d` is any number of digits, `hh` one or two digits below 24, `mm` and `ss` two digits below 60, and `f` one to seven digits. Unsigned.
+- `url` and `enum`: as is; an `enum` matches one of `values` exactly, case-sensitively.
+- `list` and `keySet` items: split on every occurrence of `separator` in `csv`, without trimming, so `a, b` is `a` and ` b`, and `a,,b` has an empty middle item; each item then follows its own type's rule (an empty or space-padded `int` item is `invalid_type`). In `json`, the value is one JSON array whose items are JSON strings (string items and keys) or JSON integers (`int` items). In `indexed`, each `NAME__<n>` value is one item, as is.
+- `json`: one JSON value (RFC 8259), with nothing before or after it but JSON whitespace. Whitespace inside the value counts toward `maxLength` (section 4.3).
 
 ## 6. Secrets
 
@@ -536,29 +563,27 @@ A source's value can change while the app runs: a rotated API key or database pa
 
 **Dual-lifecycle keys.** Some keys must be rotated without a moment when the old one is already gone and the new one not yet in use: webhook signing keys, service-to-service API keys, token signing keys. During the overlap two keys are valid. The two sides of such a key differ:
 
-- A **verifier** (the side that checks a signature or an incoming key) accepts any key in a set. It declares the set as a secret `list` of strings in `csv` encoding, with `minItems: 1` and `maxItems: 2`, and item length limits, so an empty key (a trailing comma) or a truncated one fails at boot (`out_of_range`) instead of locking callers out:
+- A **verifier** (the side that checks a signature or an incoming key) accepts any key in a set. It declares a `keySet` (section 4.3), preferably:
 
   ```cue
   WEBHOOK_KEYS: {
-  	type:          "list"
-  	description:   "Keys that verify the signature on incoming webhooks"
-  	secret:        true
-  	items:         "string"
-  	encoding:      "csv"
-  	minItems:      1
-  	maxItems:      2
-  	itemMinLength: 32
-  	itemMaxLength: 256
+  	type:         "keySet"
+  	secret:       true
+  	description:  "Keys that verify the signature on incoming payment webhooks"
+  	minKeys:      1   // the default
+  	maxKeys:      2   // the default
+  	keyMinLength: 32
+  	keyMaxLength: 256
   }
   ```
 
-  The platform supplies it like any secret, as one Secret key holding `old,new` during the overlap. A rotation takes three steps:
+  The platform supplies it like any secret, as one Secret key holding `old,new` during the overlap. An empty key (a trailing comma) or a truncated one fails at boot (`out_of_range`) instead of locking callers out. A rotation takes three steps, which the generated docs print for every key set (section 14), so an app need not repeat them in `details`:
 
-  1. add the new key as the second item, and roll out;
-  2. switch the callers (or the signer) to the new key;
+  1. add the new key, and roll out;
+  2. switch the sender (the caller, or the signer) to the new key;
   3. remove the old key, and roll out.
 
-  A host whose secret type cannot be a list may declare two variables instead, a required key and an optional previous one, with the same length limits, and accept either:
+  A host that cannot offer a key set may declare two variables instead, a required key and an optional previous one, with the same length limits, and accept either:
 
   ```cue
   API_KEY: {
@@ -579,9 +604,13 @@ A source's value can change while the app runs: a rotated API key or database pa
   ```
 
   Rotation is the same three steps: set `API_KEY_PREVIOUS` to the old key and `API_KEY` to the new one, roll out; switch the callers; unset `API_KEY_PREVIOUS`, roll out.
+
+  Earlier drafts recommended a secret `list` of strings in `csv` encoding, with `minItems: 1`, `maxItems: 2` and item length limits. That convention stays valid, with the same wire format, but is no longer the recommendation: a `keySet` says what the list is for, rejects an empty key without a length limit, and gets its rotation steps in the docs. Changing a variable from such a list to a `keySet` changes its `type` (section 9).
 - A **caller** (the side that presents or signs with a key) uses one key at a time. It declares a single secret, and rotates in step 2 above by updating its Secret, which reaches it on its next restart or redeploy like any other variable.
 
-The SDK enforces the list's constraints at boot like any other list's (section 11.2, item 5); the conformance suite covers a key set in `conformance/load/key_set.yaml`. Accepting any key in the set is the app's own code: docuconf delivers the keys and checks their shape, never the keys themselves.
+The SDK enforces a key set's constraints at boot (section 11.2, item 5); the conformance suite covers the type in `conformance/load/key_set_type.yaml`, and the list convention in `key_set.yaml`. SDKs SHOULD give the verifier a constant-time `contains` and a helper that tries every key (section 4.3), but accepting a key is the app's own code: docuconf delivers the keys and checks their shape, never the keys themselves.
+
+**What the platform cannot check.** A rotation is only safe if every rollout keeps one key in common with the one before it: step 1 adds a key and keeps the old one, step 3 removes the old one only after step 2. The platform never sees secret values, since it supplies a reference, so neither `#Validate` nor `docuconf vet` can check this; following the steps in order is the operator's job. A controller with read access to the Secrets could compare consecutive versions, but that is out of scope for docuconf.
 
 ## 7. Platform validation
 
@@ -592,7 +621,8 @@ The meta-schema provides two definitions, both exercised by `cue/test.sh`:
 - every `required` variable must be set by the platform or by the selected profile (section 4.4), and any that are not are listed in `missingRequired`,
 - every value must satisfy its variable's type and constraints (`checks.<NAME>`), and every file source must pass the checks in section 4.6.1 (`fileChecks.<name>`),
 - every required file input must have a source,
-- any value or file source not declared in the contract is rejected. A typo like `DATABSE_URL` is the most common environment bug, so this check is on by default,
+- any value or file source not declared in the contract is rejected. A typo like `DATABSE_URL` is the most common environment bug, so this check is always on; an input on its way out is marked `deprecated` instead (section 4.2),
+- every deprecated input the platform still sets, as a value, an overlay value or a file source, is listed in `deprecatedSet` with its `deprecated` notice. These are **warnings**: they never make the values invalid. `docuconf vet` prints one line per warning with its message, and exits 0 when there are only warnings,
 - the pod annotations and labels of injected sources, and the values document's shared ones, are valid after placeholder expansion and do not set one key to two values (`podChecks`, section 4.5.2).
 
 **`#Render`**: produces the container's `env` entries (in each variable's wire encoding, plus every `pathEnv`), the `volumes` and `volumeMounts` for file inputs and overlays, the ConfigMaps for inline content and overlays (section 4.7), the `restartTriggers` (section 4.6.2), and the `podAnnotations` and `podLabels` that injected sources ask for, for the pod template's metadata (section 4.5.2).
@@ -629,11 +659,13 @@ A contract describes a specific build of an application. It MUST travel with the
 | Change | Class | Why |
 |---|---|---|
 | Add an optional variable | compatible | |
+| Mark an input `deprecated` | compatible | Reported as notable: the platform should stop setting it. Values that still set it pass, with a warning (section 7). |
 | Add a required variable | **breaking** | Existing values no longer validate. |
-| Remove a variable | **breaking for the platform** | Values that still set it fail the unknown-variable check. Deprecate it first. |
+| Remove a variable | **breaking for the platform** | Values that still set it fail the unknown-variable check. Deprecate it first. Removing an input that the old contract already marked `deprecated` is still breaking for the platform, but `diff` says it was deprecated, so a platform that heeded the warning is unaffected. |
 | Optional → required | **breaking** | |
 | Required → optional | compatible | |
 | Change `type` or `secret` | **breaking** | The value's shape changes. |
+| Secret `list` of strings → `keySet` (section 6.1) | **breaking** for the contract | `type` changes, so a strict diff and the SDK's declaration change; the wire format is identical, so the Secret that holds the keys, and the values document, need no change. |
 | Tighten a constraint (narrower range, fewer enum values, new pattern) | **breaking** | |
 | Loosen a constraint | compatible | |
 | Change `description`, `details`, `group`, `examples` or `default` | compatible | `default` changes alter behaviour, so diff reports them as notable. `description` and `details` are docs only. |
@@ -693,7 +725,7 @@ Where the host library's behaviour conflicts with a MUST in this spec (for examp
 
 **Build-time variables are not part of the runtime contract.** Some frameworks inline variables into the bundle at build time: Next.js `NEXT_PUBLIC_*`, Vite `import.meta.env`, T3 Env's `client` section. Setting them on a pod does nothing, so SDKs MUST NOT export them as runtime variables. T3 Env's `shared` section (such as `NODE_ENV`) is also left out: it is read in both bundles and is a framework concern, covered by the well-known fragments proposed in section 13.
 
-**Local file roots.** For development and tests, SDKs MUST support `DOCUCONF_FILE_ROOT`, a directory prepended to every absolute file input path, including a path read from a `pathEnv` variable.
+**Local file roots.** For development and tests, SDKs MUST support `DOCUCONF_FILE_ROOT`, a directory prepended to every absolute file input path, including a path read from a `pathEnv` variable, and to every overlay's `path`. The conformance suite writes its files under one.
 
 ### 11.2 Conformance requirements
 
@@ -701,16 +733,16 @@ A conforming SDK MUST:
 
 1. Offer an idiomatic declaration API covering every type and field in section 4.
 2. Validate the declaration itself at definition time: name format, description length, `details` not blank and at most 4000 characters, default against constraints, required without default, RE2-only patterns. Every input MUST have a `description`, and export MUST fail when one is missing or shorter than 5 characters. It comes from the language's natural doc location (section 14.7) or an explicit annotation, so that the documentation lives beside the code that reads the input.
-3. Export a contract that matches the conformance golden file for the fixture declaration, compared as data (`cue export` to JSON), so formatting does not matter. Fields equal to their meta-schema default (`required: false`, `reload: "restart"`, `minCertificates: 1`) MAY be omitted; the comparison is made after unifying with the meta-schema. Durations are written in canonical form: units in the order `h`, `m`, `s`, `ms`, `us`, `ns`, each at most once, zero units omitted, and `0s` for zero (`1h30m`, not `90m`, `1.5h` or Go's `1h30m0s`). `metadata.generator` and the `encoding` fields are set by the SDK, so they are excluded from the comparison. Output MUST be deterministic: variables and file inputs sorted by name.
+3. Export a contract that matches the conformance golden file for the fixture declaration (`conformance/export/golden.cue`, declared as `conformance/export/fixture.yaml` describes), compared as data by `docuconf conformance export`, so formatting does not matter. Fields equal to their meta-schema default (`required: false`, `reload: "restart"`, `minCertificates: 1`) MAY be omitted; the comparison is made after unifying with the meta-schema. Durations are written in canonical form: units in the order `h`, `m`, `s`, `ms`, `us`, `ns`, each at most once, zero units omitted, and `0s` for zero (`1h30m`, not `90m`, `1.5h` or Go's `1h30m0s`). `metadata.generator`, the `encoding` fields and `configKey` (the host's own binding key) are set by the SDK, so they are excluded from the comparison. Output MUST be deterministic: variables and file inputs sorted by name.
 4. Load from the **process environment**, as it is when the process starts, by default. That is after any injection (section 4.5.1), so injected values are validated exactly like any other, and the SDK never resolves secret references itself. Configuration is never read at build time. Reading a `.env` file is an opt-in for development, and real environment variables override it.
-5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_unreadable`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed. Length limits (`minLength`, `maxLength`, `itemMinLength`, `itemMaxLength`, on variables and text files), and `itemMin`/`itemMax` on list items, use `out_of_range`. A too-long secret reports its length, never its value. An expired or not-yet-valid certificate, a disallowed key algorithm or a broken chain is `certificate_invalid`; a CA bundle with too few certificates is `file_malformed`.
+5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_unreadable`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed. Length limits (`minLength`, `maxLength`, `itemMinLength`, `itemMaxLength`, `keyMinLength`, `keyMaxLength`, on variables and text files), `itemMin`/`itemMax` on list items, and an empty key in a `keySet`, use `out_of_range`; the number of a key set's keys uses `too_few_items` and `too_many_items`. An empty key's message is exactly `key N is empty`, and an empty list item's, where the SDK reports one, `item N is empty`, with `N` 1-based (section 4.3); conformance compares only codes, but this wording is required. A too-long secret reports its length, never its value. An expired or not-yet-valid certificate, a disallowed key algorithm, a broken chain or a PEM certificate that does not parse is `certificate_invalid`; a `tls.crt`, `tls.key` or CA bundle that holds no PEM certificate or key at all, and a CA bundle with too few certificates, is `file_malformed`.
 6. Expose typed values: a struct, a class, or an inferred TypeScript type. Not a string map.
 7. Check every file input at boot, covering what the platform could not see:
    - the path exists and is readable, within `maxSize`;
    - `config` files parse in their `format` and bind to the app's type, which is the type their `schema` came from;
    - `tls`: the certificate and key parse and match, the certificate is currently valid with at least `minRemaining` left, covers every name in `dnsNames`, uses an allowed key algorithm, and chains to `ca.crt` when `requireCA` is set;
    - `caBundle` holds at least `minCertificates` parseable certificates; `keystore` opens with its password variable (an empty password when that optional variable is unset; where the host has no keystore parser, the SDK MUST at least verify the keystore's integrity MAC or, failing that, its format, and document the gap); `text` matches its constraints.
-8. Honour `reload: watch` for every file input that declares it, typically by watching (or polling) the mount directory, since Kubernetes updates projected files by swapping a symlink. An SDK that cannot reload an input type MUST reject `watch` for it at declaration time rather than export a promise it does not keep.
+8. Honour `reload: watch` for every file input that declares it, typically by watching (or polling) the mount directory, since Kubernetes updates projected files by swapping a symlink, and detecting a change as section 4.6.2 describes. An SDK that cannot reload an input type MUST reject `watch` for it at declaration time rather than export a promise it does not keep. The SDK MUST let the app read the current value at each use, and SHOULD offer an on-change hook and a reload status (`generation`, the time of the last accepted reload, the last rejected change as time, input and codes), as section 4.6.2 describes. A keystore reload reuses the password read at boot. Contract-first mode (item 11) MUST either reload the watched inputs it loads, or reject a contract that declares `reload: watch` for an input it cannot reload, at load, naming the input; it never records `watch` and reads the input once.
 9. Load declared config-file overlays (section 4.7) between the profile file and the environment, reloading them when declared `watch`; reject `overlays` at declaration time where the host cannot layer files, and reject an overlay `path` whose directory holds files the app ships with.
 10. Ignore environment variables not in the declaration. A real process has many (`HOSTNAME`, `KUBERNETES_*`), so the unknown-variable check is only applied to platform values.
 11. Offer a **contract-first** mode: validate an environment against a `contract.json` (the contract exported as JSON) with no in-language declaration, parsing every encoding in section 5 and returning typed values. The conformance runner uses this mode, and so can teams that want to author CUE by hand and export it with `cue export`. It MAY be an internal API, used only by the runner, while the SDK has no public use for it.
@@ -719,6 +751,8 @@ A conforming SDK MUST:
 An SDK SHOULD also:
 
 - Export `details` for every input whose documentation has more than its description, from the same doc location (section 14.7). Documentation is generated by `docuconf docs` from the contract (section 14); an SDK does not need a generator of its own.
+- Log a warning at boot for each deprecated input (section 4.2) that is set, naming the input and its `deprecated` message, never the value. It is not a violation: the input still loads and is still checked.
+- Offer a `keySet`'s helpers: a constant-time `contains(candidate)` and a helper that tries every key with a check the caller supplies (section 4.3).
 - Report `invalid_type` when a secret variable still holds an unresolved injector reference (a value starting with `vault:`, `op://` or `ref+`), because the injector did not run. The message names the variable and the reference scheme, never the value.
 - Integrate with the framework around the host library: a Railtie, `ValidateOnStart` in .NET, a Next.js or NestJS adapter for T3 Env.
 
@@ -726,37 +760,31 @@ An SDK SHOULD also:
 
 The `conformance/` directory of docuconf-go is the shared suite. Cases are language-neutral, so every SDK runs the same ones and a disagreement between two SDKs is a bug in one of them.
 
-- `load/*.yaml` holds the cases, written by hand. Each file declares variables and a list of cases. A case gives either `values` (typed platform values, which must pass `#Validate`) or `env` (raw strings, for input the platform would never send, such as malformed or out-of-range values), and, for `env`, either the expected typed result (`expect`) or the expected errors (`errors`, a list of variable and code).
-- `cases.json` is generated from `load/` by `docuconf conformance`, and checked in. For each case it holds the full contract, unified with the meta-schema so defaults are explicit; the exact process environment the SDK sees; and either the typed value of every variable (`null` when absent) or the errors. A `values` case is rendered with `#Render` once per list and duration encoding the case leaves open, so one case tests every encoding, with `$` already reduced as Kubernetes does.
-- A case may list `requires` tags: `int64` (the host holds every 64-bit integer) and `json-schema` (the SDK validates `json` values against their JSON Schema in contract-first mode). An SDK lacking a capability skips those cases and documents the gap. No other case may be skipped.
+- `load/*.yaml` holds the cases, written by hand. Each file declares a contract's inputs (`vars`, and optionally `files`, `profiles` and `overlays`, as in a contract) and a list of cases. A case gives either `values` (typed platform values, which must pass `#Validate`) or `env` (raw strings, for input the platform would never send, such as malformed or out-of-range values), and, for `env`, either the expected typed result (`expect`) or the expected errors (`errors`, a list of input and code). An `env` case may also give `files`: the content of each file the app finds, by absolute path, for file inputs and overlays alike. A profile case needs nothing more: the contract carries the profile files' values (section 4.4), and `env` sets the selector.
+- `cases.json` is generated from `load/` by `docuconf conformance`, and checked in. For each case it holds the full contract, unified with the meta-schema so defaults are explicit; the exact process environment the SDK sees; the files, each as `{"text": ...}` or, when it is not UTF-8, `{"base64": ...}`; and either the typed value of every input (`null` when absent) or the errors. A `values` case is rendered with `#Render` once per list and duration encoding the case leaves open, so one case tests every encoding, with `$` already reduced as Kubernetes does.
+- Certificates, keys and keystores come from `conformance/fixtures`, written deterministically by the Go program in `conformance/gen`. Certificates meant to be valid run for 50 years; the expired and not-yet-valid ones have fixed dates in 2000 and 2200. A test fails 60 days before any valid one expires. Keystores are PKCS#12 (AES-256-CBC with PBKDF2 and a SHA-256 MAC); JKS is not in the suite, since only Java hosts read it.
+- A case may list `requires` tags: `int64` (the host holds every 64-bit integer) and `json-schema` (the SDK validates `json` values against their JSON Schema in contract-first mode). An SDK lacking a capability skips those cases and documents the gap. No other case may be skipped. A `load/*.yaml` file may also list `requires` for all its cases.
+- The other tags are **transitional**: `key-set` (the `keySet` type, section 4.3), `deprecated` (deprecated inputs, section 4.2), `strict-parsing` (the exact parsing rules of section 5, in `load/strict.yaml`: the forms a lenient host accepts and must not, such as `1` for a `bool`, `0x10` for an `int` or a hex float, and the accepted ones, such as `TRUE` and `False`), `files` (file inputs, section 4.6: config files in every format, TLS key pairs, CA bundles, keystores and text files), `profiles` (section 4.4) and `overlays` (section 4.7, with the layer order base, profile, overlay, environment). They let SDKs written before these features keep a green suite while they catch up. They are not capabilities a host may lack: every SDK MUST support all of them, and run their cases, by `v1beta1`, when the tags are dropped from the suite. `int64` and `json-schema` stay.
+- A runner skips a case only when it holds a tag the SDK lacks. A runner that does not know a tag at all MUST skip the case, not run it, so that a new transitional tag never breaks an SDK that predates it.
 
-A conformance runner, one per SDK, runs every case in `cases.json` through the SDK's contract-first mode (section 11.2, item 11), with the case's `env` as the whole environment:
+A conformance runner, one per SDK, runs every case in `cases.json` through the SDK's contract-first mode (section 11.2, item 11). For each case it makes a new empty directory, writes each file under it at its path, and loads with the case's `env`, plus `DOCUCONF_FILE_ROOT` set to that directory, as the whole environment:
 
-- For `expect`, loading succeeds and each variable's typed value, written as JSON, equals the expected one: durations in canonical form (section 11.2, item 3), integers exactly, floats numerically, lists as arrays.
-- For `errors`, loading fails with exactly the listed variable and code pairs, in any order, and no error output contains the raw value of a secret variable.
+- For `expect`, loading succeeds and each input's typed value, written as JSON, equals the expected one: durations in canonical form (section 11.2, item 3), integers exactly, floats numerically, lists as arrays; a `config` file is its data, a `text` file its text, and any other file input `true` when present.
+- For `errors`, loading fails with exactly the listed input and code pairs, in any order, and no error output contains the raw value of a secret variable. An input is a variable, a file input, or an overlay (for an overlay file that does not parse).
 
-The suite covers variables in v1. File inputs, profiles and overlays are tested by each SDK for now; cases for them are planned. Contract export is checked separately: each SDK writes a fixture declaration in its own language and vets the exported contract against the meta-schema (section 11.2, item 3).
+**Export** is checked with a shared fixture too. `conformance/export/fixture.yaml` describes a declaration that uses every variable type and field and every file type and field, without a language; `conformance/export/golden.cue` is the contract it exports to. An SDK declares the fixture in its own language, exports it, and runs `docuconf conformance export --golden conformance/export/golden.cue exported.cue`, which unifies both with the meta-schema (so fields left at their defaults compare equal to fields written out) and compares them as data. It ignores `metadata.generator`, every `encoding` and `configKey`, and a `separator` unless both contracts use `csv`; numbers compare by value, and a JSON Schema compares without its annotations (`title`, `$schema`, `$id`, `$comment`, `examples`) and with `required` as a set. Everything else, including durations in canonical form and the order of lists, must match. Profiles and overlays are not in the export fixture yet, since not every host reads config files.
 
 ## 13. Open questions
 
-1. Should optional variables with no default be allowed at all, or should every variable be required or defaulted?
-2. Should `#Validate` support a non-strict mode where unknown variables are warnings, to ease removals?
-3. Should the spec cover build-time variables (section 11.1) with a separate `buildVars` section, so a CI build can be validated the same way?
-4. Spring can activate several profiles at once (`SPRING_PROFILES_ACTIVE=prod,eu`). Should `profiles` support an ordered list, with later profiles winning?
-5. Proposals arising from [`docs/EDGE_CASES.md`](../docs/EDGE_CASES.md):
-   - **roles**, for one image running several processes;
-   - **`requiredIf`**, for conditional requirements;
-   - **well-known fragments**, for variables read by frameworks and libraries;
-   - **platform-authored contracts**, for third-party images.
-6. Should service-to-service sharing (the current Go library's `AddShared`) be a contract feature, through importable fragments, or stay an SDK-level convenience?
-7. Should a file input be able to take a whole directory of arbitrary files (for example, every `*.crt` in a trust directory), rather than one file or a TLS key pair?
-8. Should file inputs support profiles, so a baked-in `routes.yaml` can be the default for some environments, as `appsettings.{Environment}.json` is for variables?
-9. Pod annotations for injectors live only in the platform's documents (section 4.5.2), because the injector is a fact about the cluster. Should SDKs additionally let an app author declare a *default* injector hint in the contract (for example "this file is usually written by the Vault Agent injector from `database/creds/<app>`"), which a platform could adopt or ignore? It would save each platform team from rediscovering the annotations, but it would put a cluster detail into the image's contract and invite drift between clusters.
-10. Should `description` and `details` be translatable (a map by language tag), so generated docs can be published in more than one language?
-11. Should the docs model turn a `json` variable's or config file's JSON Schema into a field table (name, type, required, description), rather than carry the schema for each renderer to show?
-12. Should a key set (section 6.1) be a first-class type, such as `type: "keySet"` with `maxKeys`, rather than a secret `list` with conventional constraints? A dedicated type could let SDKs return a verifier helper and docs explain the rotation steps, and could let a platform check that a rollout keeps one key in common with the last; it would also be one more type every SDK must implement, for a pattern that a list already expresses.
+1. Proposals arising from [`docs/EDGE_CASES.md`](../docs/EDGE_CASES.md), each tracked in an issue:
+   - **roles**, for one image running several processes ([#22](https://github.com/Docuconf/docuconf-go/issues/22));
+   - **`requiredIf`**, for conditional requirements ([#23](https://github.com/Docuconf/docuconf-go/issues/23));
+   - **well-known fragments**, for variables read by frameworks and libraries, and for sharing declarations between services ([#24](https://github.com/Docuconf/docuconf-go/issues/24));
+   - **platform-authored contracts**, for third-party images ([#25](https://github.com/Docuconf/docuconf-go/issues/25)).
 
-Resolved in this draft: generated docs come from one generator, `docuconf docs` in the CLI, through a versioned docs model that any renderer can read, and SDKs export an optional `details` beside the required `description` instead of generating docs themselves (section 14); per-item bounds for `int` lists (`itemMin`, `itemMax`, section 4.3); length limits for fixed-width hosts: `maxLength` on `url` and `json` values, and `itemMinLength`/`itemMaxLength` on `string` lists, counted in characters (section 4.3); config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1), with the pod annotations and labels that enable them (section 4.5.2); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
+Resolved in this draft: optional variables with no default are allowed (section 4.2), and docuconf does not prescribe how systems are set up; the unknown-variable check stays strict, and inputs are removed in stages by marking them `deprecated`, which the platform sees as a warning (sections 4.2, 7 and 9); build-time variables are not covered: contracts are runtime only, and build-time variables belong to Docker and compilers (section 11.1); sharing variables between services is not a contract feature of its own (the Go library's `AddShared` no longer exists), since well-known fragments would cover it (question 1); an app does not declare injector hints, because the injector is a platform concern: platform engineers add pod annotations, webhooks or other options in their own documents (section 4.5.2); the docs model turns a `json` variable's or config file's JSON Schema into a field table, keeping the raw schema for what the table cannot express (section 14.3); a key set is a first-class type, `keySet`, which SDKs give verifier helpers and the docs give rotation steps (sections 4.3 and 6.1); generated docs come from one generator, `docuconf docs` in the CLI, through a versioned docs model that any renderer can read, and SDKs export an optional `details` beside the required `description` instead of generating docs themselves (section 14); per-item bounds for `int` lists (`itemMin`, `itemMax`, section 4.3); length limits for fixed-width hosts: `maxLength` on `url` and `json` values, and `itemMinLength`/`itemMaxLength` on `string` lists, counted in characters (section 4.3); config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1), with the pod annotations and labels that enable them (section 4.5.2); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
+
+Planned after beta, without changing anything in v1alpha1: several profiles at once through an optional `profiles.separator`, later profiles winning, while a single profile name keeps its meaning (section 4.4); profiles for file inputs, so a baked-in file can be the default for some environments; and translatable `description` and `details`. Deferred: file inputs that take a whole directory of arbitrary files ([#26](https://github.com/Docuconf/docuconf-go/issues/26)).
 
 ## 14. Generated docs
 
@@ -828,12 +856,14 @@ The model is versioned like the contract (section 9): `v1alpha1` may change, `v1
 | `service` | The contract's `metadata`: name, `appVersion` when set, and the generator. |
 | `profiles`, `overlays` | Present when the contract has them (sections 4.4 and 4.7): the selector, the default profile and the profile names; each overlay's format, path, key separator and reload. |
 | `groups` | Every input, by `group`. Inputs with no group, or `group: ""`, form the group with `name: ""` and `title: "General"`, which comes first; the named groups follow in code point order, titled with their name. Within a group, variables come first, then files, each sorted by name. A group always has at least one input. |
-| `groups[].inputs[]` | One input. `kind` is `var` or `file`; `type` is the contract type and `typeLabel` a phrase for it ("list of integers", "YAML config file"). `required`, `secret`, `group`, `description`, `details`, `deprecated` (`message`, `replacedBy`) and, for variables, `configKey` and `examples` are copied from the contract. |
+| `groups[].inputs[]` | One input. `kind` is `var` or `file`; `type` is the contract type and `typeLabel` a phrase for it ("list of integers", "key set", "YAML config file"). `required`, `secret`, `group`, `description`, `details`, `deprecated` (`message`, `replacedBy`) and, for variables, `configKey` and `examples` are copied from the contract. |
 | `default`, `defaultEnv` | Variables only. The contract's default as a typed platform value, and as the process environment holds it, in the wire format: one entry, or one per item for an `indexed` list. |
 | `profileSelector`, `profileDefaults` | Variables only. Whether the variable selects the profile, and its default in each profile file, by profile name. |
-| `wire` | Variables only. `encoding` and `separator` for lists and durations; `text`, how the value is written in the process environment; `platform`, how it is written in a values file. |
+| `wire` | Variables only. `encoding` and `separator` for lists, key sets and durations; `text`, how the value is written in the process environment; `platform`, how it is written in a values file. |
+| `rotation` | Key sets only (section 6.1): `text`, which introduces the rotation, and `steps`, the three steps in order. It is the same for every key set, so an app's `details` need not repeat it. |
 | `file` | Files only. `path`, `pathEnv`, `format` (config and keystore), `reload`, `maxSize`, and `contents` and `reloadText`, what the file holds and what a change to its source does, in plain words. |
 | `constraints` | Each constraint as data and as a phrase (section 14.3). |
+| `fields` | A `json` variable or `config` file with a `schema`: the schema as a field table (section 14.3). The raw schema stays in the `schema` constraint. |
 | `sources` | Where the platform may get the input (sections 4.5, 4.6.1, 4.7, 6): `kind`, `text`, the same for every input of that kind, and `note`, what is particular to this input (an overlay's key, an indexed list's `injected` without `ref`). |
 | `errors` | The boot error codes (section 11.2, item 5) the SDK may report for the input, in the order of that item. Empty for an optional, unconstrained string. |
 | `errors` (top level) | For each code any input may report: what it means and how to fix it. |
@@ -856,6 +886,8 @@ Each constraint is `{rule, params, text}`. `params` holds the contract fields it
 | `itemCount` | `minItems`, `maxItems` | `list` | `between 1 and 5 items`, `at least 1 item` |
 | `itemRange` | `itemMin`, `itemMax` | `list` | `each item between 0 and 1023` |
 | `itemLength` | `itemMinLength`, `itemMaxLength` | `list` | `each item between 1 and 64 characters (Unicode code points)` |
+| `keyCount` | `minKeys`, `maxKeys` | `keySet` | `between 1 and 2 keys` |
+| `keyLength` | `keyMinLength`, `keyMaxLength` | `keySet` | `each key between 32 and 256 characters (Unicode code points)` |
 | `schema` | `schema` | `json`, `config` files | `matches the JSON Schema in the contract` (the schema is in `params`) |
 | `maxSize` | `maxSize` | files | `at most 64 KiB (65536 bytes)` |
 | `dnsNames` | `dnsNames` | `tls` | ``the certificate covers `a.example.com` and `b.example.com` `` |
@@ -866,6 +898,19 @@ Each constraint is `{rule, params, text}`. `params` holds the contract fields it
 | `passwordVar` | `passwordVar` | `keystore` | ``opens with the password in `KS_PASSWORD` `` |
 
 Constraints appear in this order. A pair of bounds is one constraint, phrased `between`, `at least`, `at most` or `exactly`. In the CLI the table is data: a new bound is one row.
+
+**Field tables.** A JSON Schema is hard to read, and each renderer would show it differently, so the model also turns the `schema` of a `json` variable or a `config` file into `fields`, one row per property:
+
+| Row field | Content |
+|---|---|
+| `path` | Dotted for nested objects (`database.host`), with `[]` for the items of a list (`routes[].match`; `tags[]` for the items of a list of scalars, when they say more than their type). Empty for a schema that is not an object, which is one row. Rows are in path order, properties sorted by name, each object before its properties. |
+| `type` | `string`, `integer`, `number`, `boolean`, `object`, `list of strings`, `list of objects` ..., `string or null` for a list of types, or `see schema`. |
+| `required` | Whether the property is in its parent's `required`. |
+| `default`, `description`, `enum` | From the schema; `const` is an `enum` of one. A secret input's rows have no `default`. |
+| `constraints` | `{rule, params, text}` as above, with `params` under their JSON Schema keywords: `range` (`minimum`, `maximum`), `exclusiveRange` (`exclusiveMinimum`, `exclusiveMaximum`: `above 0`, `below 1`), `length` (`minLength`, `maxLength`), `pattern`, `format` (``format `email` ``), `itemCount` (`minItems`, `maxItems`) and `uniqueItems` (`no two items equal`). |
+| `schema` | Only on a `see schema` row: the raw schema of that subtree. |
+
+A subtree that uses `anyOf`, `oneOf`, `allOf`, `not`, `$ref`, `patternProperties`, an `additionalProperties` schema (a map), tuple `items`, or any keyword the table does not show, is one row of type `see schema`, carrying its subtree; annotations (`title`, `examples`, `$comment`, `$defs`, ...) change nothing. Renderers show the table, then the raw schema of each `see schema` row. The model is still `v1alpha1`: `fields` and `rotation` are additions.
 
 ### 14.4 Text and Markdown
 
@@ -880,15 +925,17 @@ Constraints appear in this order. A pair of bounds is one constraint, phrased `b
 
 1. `<!-- Generated by docuconf. Do not edit. -->`, the title, where the file comes from, and a count of the inputs.
 2. A table of contents, by group, with each input's description and whether it is required, secret or deprecated.
-3. "Environment variables", then "Files": a heading per group (when any input has a group), and a section per input with its description, a deprecation notice that links to the replacement, a table (type, required, secret, default, profile defaults, constraints, wire format, values-file form, config key, path, contents, reload, sources, boot errors), its JSON Schema in a collapsed block, its examples and its details.
+3. "Environment variables", then "Files": a heading per group (when any input has a group), and a section per input with its description, a deprecation notice with its message that links to the replacement, a table (type, required, secret, default, profile defaults, constraints, wire format, values-file form, config key, path, contents, reload, sources, boot errors), a key set's rotation steps, a watched keystore's password note (below), its field table followed by the raw JSON Schema of any `see schema` row in a collapsed block, its examples and its details.
 4. "Profiles" and "Config-file overlays", when the contract has them; "Sources", what each source kind means; "Boot errors", each code's meaning and fix.
 
 `--format agents` writes one file for AI agents, both coding agents working in the app's repository and agents that set deployment values. It can be included in an `AGENTS.md` or served as an `llms.txt`-style file:
 
-1. **Hard rules** first: never put a secret value in code, a `.env` file, a values file, a ConfigMap or an annotation, and supply secrets only as `secretKeyRef`, secret files or `injected` (the secret inputs are listed); use each input's wire format for raw environment values and typed values in values files; validate with `docuconf vet` (platform values) or `docuconf check` (a running environment) before proposing a change; do not invent inputs that are not in the contract; set the required inputs that have no default; do not add uses of deprecated inputs.
+1. **Hard rules** first: never put a secret value in code, a `.env` file, a values file, a ConfigMap or an annotation, and supply secrets only as `secretKeyRef`, secret files or `injected` (the secret inputs are listed); use each input's wire format for raw environment values and typed values in values files; validate with `docuconf vet` (platform values) or `docuconf check` (a running environment) before proposing a change; do not invent inputs that are not in the contract; set the required inputs that have no default; do not add or use deprecated inputs, in code or in values (the deprecated inputs are listed).
 2. **Using this config in code**, in terms that hold for every SDK: the declaration is the source of truth, values are read through the SDK's typed configuration, and `config key` says where a setting lives in the app's own configuration.
-3. **Setting values**: one block per input, where every fact is a `key: value` line (kind, type, group, required, secret, deprecated, path, path variable, format, contents, reload, default, default in the environment, profile defaults, constraints, wire format, values-file form, config key, examples, schema, allowed sources, boot errors), then the description and the details. Then the source kinds, profiles and overlays.
+3. **Setting values**: one block per input, where every fact is a `key: value` line (kind, type, group, required, secret, deprecated, path, path variable, format, contents, reload, default, default in the environment, profile defaults, constraints, wire format, values-file form, rotation, reload note, config key, examples, one `field` line per field table row, with the raw schema on `see schema` rows, allowed sources, boot errors), then the description and the details. Then the source kinds, profiles and overlays.
 4. **Boot errors**: what each applicable code means and how to fix it.
+
+For a `keystore` with `reload: watch`, both renderers print one line, as a paragraph after the table in Markdown and as `reload note` in the agents file: "Rotating this keystore's password needs a rollout; a reload keeps the password read at boot." (section 4.6.2). It needs nothing beyond the input's `type` and `file.reload`, which the model already holds.
 
 Both renderers are deterministic: the same model always gives the same bytes.
 

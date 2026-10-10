@@ -54,7 +54,7 @@ func Agents(m *Model) []byte {
 		rules = append(rules, "Set every required input that has no default: "+join(required, "and")+".")
 	}
 	if len(deprecated) > 0 {
-		rules = append(rules, "Do not add new uses of deprecated inputs: "+strings.Join(deprecated, ", ")+".")
+		rules = append(rules, "Do not add or use deprecated inputs: do not read them in new code, and do not set them in values or files; set their replacement instead. Deprecated: "+strings.Join(deprecated, ", ")+".")
 	}
 	for i, r := range rules {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, r)
@@ -145,6 +145,9 @@ func agentInput(b *strings.Builder, m *Model, in Input) {
 		}
 		line("contents", f.Contents)
 		line("reload", code(f.Reload)+": "+f.ReloadText)
+		if n := reloadNote(in); n != "" {
+			line("reload note", n)
+		}
 	}
 	if len(in.Default) > 0 {
 		line("default", jsonValue(in.Default))
@@ -165,13 +168,24 @@ func agentInput(b *strings.Builder, m *Model, in Input) {
 		line("wire format", w.Text)
 		line("in a values file", w.Platform)
 	}
+	if r := in.Rotation; r != nil {
+		steps := make([]string, len(r.Steps))
+		for i, s := range r.Steps {
+			steps[i] = fmt.Sprintf("(%d) %s", i+1, s)
+		}
+		line("rotation", r.Text+" "+strings.Join(steps, " "))
+	}
 	if in.ConfigKey != "" {
 		line("config key", code(in.ConfigKey))
 	}
 	for _, e := range in.Examples {
 		line("example", exampleCode(e))
 	}
-	if schema := schemaOf(in); schema != nil {
+	if len(in.Fields) > 0 {
+		for _, f := range in.Fields {
+			line("field "+agentFieldPath(f.Path), agentField(f))
+		}
+	} else if schema := schemaOf(in); schema != nil {
 		line("schema", code(compact(schema)))
 	}
 	line("allowed sources", sourceList(in.Sources))
@@ -181,6 +195,51 @@ func agentInput(b *strings.Builder, m *Model, in Input) {
 		md, _ := demote(in.Details, 4)
 		b.WriteString(md + "\n\n")
 	}
+}
+
+// agentFieldPath names a field, or the whole value.
+func agentFieldPath(p string) string {
+	if p == "" {
+		return "(the whole value)"
+	}
+	return code(p)
+}
+
+// agentField writes a field table row on one line: its type, whether it
+// is required, its default and constraints, then its description; or the
+// raw schema of a subtree the table cannot express.
+func agentField(f Field) string {
+	if f.Schema != nil {
+		s := "see schema " + code(compact(f.Schema))
+		if f.Required {
+			s = "required; " + s
+		}
+		return s
+	}
+	parts := []string{f.Type}
+	if f.Required {
+		parts = append(parts, "required")
+	} else {
+		parts = append(parts, "optional")
+	}
+	if len(f.Default) > 0 {
+		parts = append(parts, "default "+jsonValue(f.Default))
+	}
+	if len(f.Enum) > 0 {
+		vals := make([]string, len(f.Enum))
+		for i, e := range f.Enum {
+			vals[i] = jsonValue(e)
+		}
+		parts = append(parts, "one of "+joinPlain(vals, "or"))
+	}
+	for _, c := range f.Constraints {
+		parts = append(parts, c.Text)
+	}
+	s := strings.Join(parts, ", ")
+	if f.Description != "" {
+		s += ". " + sentence(f.Description)
+	}
+	return s
 }
 
 // exampleCode keeps an example on one line: as is when it can be, else
