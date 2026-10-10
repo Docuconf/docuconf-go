@@ -18,6 +18,11 @@ name: release
 #                        attaches the chart .tgz to the GitHub Release.
 #
 # Everything uses the workflow's own GITHUB_TOKEN: no accounts, no secrets.
+#
+# Signing is keyless cosign: each signing job gets a short-lived certificate
+# from Sigstore's Fulcio for the job's GitHub OIDC identity (hence
+# `id-token: write`), and the signature is logged in Rekor. RELEASING.md
+# shows how to verify. Every archive and the image also get an SPDX SBOM.
 on:
   push:
     tags: ["cmd/docuconf/v*", "chart-v*"]
@@ -34,8 +39,8 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.25"
       - run: go install cuelang.org/go/cmd/cue@v0.17.1
@@ -54,6 +59,7 @@ jobs:
       - name: CLI
         working-directory: cmd/docuconf
         run: |
+          # shellcheck disable=SC2046 # one argument per file
           test -z "$(gofmt -l $(git ls-files '*.go'))"
           go build ./...
           go vet ./...
@@ -65,17 +71,23 @@ jobs:
     permissions:
       contents: write # create the GitHub Release and upload its assets
       packages: write
+      id-token: write # keyless cosign signature of SHA256SUMS
     env:
       VERSION: ${{ needs.cli-test.outputs.version }}
       PRERELEASE: ${{ needs.cli-test.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.25"
           cache-dependency-path: cmd/docuconf/go.sum
+      - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        id: syft
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Build
         working-directory: cmd/docuconf
+        env:
+          SYFT: ${{ steps.syft.outputs.cmd }}
         run: |
           out="$GITHUB_WORKSPACE/dist"
           mkdir -p "$out"
@@ -88,6 +100,10 @@ jobs:
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
               go build -trimpath -ldflags="-s -w" -o "$out/$name/$exe" .
             cp "$GITHUB_WORKSPACE/LICENSE" "$out/$name/"
+            # An SPDX SBOM of what goes into the archive: the Go modules
+            # compiled into the binary, read from its build info.
+            "$SYFT" scan "dir:$out/$name" --source-name "$name" --source-version "$VERSION" \
+              -o "spdx-json=$out/$name.spdx.json"
             if [ "$os" = windows ]; then
               (cd "$out" && zip -qr "$name.zip" "$name")
             else
@@ -95,7 +111,11 @@ jobs:
             fi
             rm -rf "${out:?}/$name"
           done
+          # SHA256SUMS covers the archives and their SBOMs.
           cd "$out" && sha256sum docuconf_* > SHA256SUMS && cat SHA256SUMS
+      - name: Sign SHA256SUMS
+        working-directory: dist
+        run: cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
       - name: Attach the binaries to the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -103,6 +123,7 @@ jobs:
           if ! gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
             flags=()
             if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+            # shellcheck disable=SC2016 # the backticks are Markdown
             notes=$(printf 'docuconf CLI %s.\n\nInstall with `go install github.com/docuconf/docuconf-go/cmd/docuconf@v%s`, download a binary below (checked against `SHA256SUMS`), or use the image `ghcr.io/docuconf/docuconf:%s`.\n' "$VERSION" "$VERSION" "$VERSION")
             gh release create "$GITHUB_REF_NAME" --verify-tag --title "docuconf CLI $VERSION" --notes "$notes" "${flags[@]}"
           fi
@@ -113,19 +134,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write # push to ghcr.io
+      packages: write # push to ghcr.io, and the image's signature and SBOM attestation
+      id-token: write # keyless cosign signing
     env:
       VERSION: ${{ needs.cli-test.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         id: meta
         with:
           images: ghcr.io/docuconf/docuconf
@@ -140,13 +162,36 @@ jobs:
             org.opencontainers.image.source=https://github.com/docuconf/docuconf-go
             org.opencontainers.image.licenses=MIT
             org.opencontainers.image.version=${{ env.VERSION }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        id: build
         with:
           context: cmd/docuconf
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      # Signed by digest, so the signature covers the multi-arch index and
+      # every tag that points at it.
+      - name: Sign the image
+        env:
+          IMAGE: ghcr.io/docuconf/docuconf@${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE"
+      # The SBOM is read from the linux/amd64 image; both platforms hold the
+      # same static binary built from the same modules.
+      - uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          image: ghcr.io/docuconf/docuconf@${{ steps.build.outputs.digest }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          format: spdx-json
+          output-file: image.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Attest the image SBOM
+        env:
+          IMAGE: ghcr.io/docuconf/docuconf@${{ steps.build.outputs.digest }}
+        run: cosign attest --yes --type spdxjson --predicate image.spdx.json "$IMAGE"
 
   # The Helm library chart. Gated by the checks from helm.yml.
   chart:
@@ -154,14 +199,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the GitHub Release and upload its assets
-      packages: write # push to oci://ghcr.io/docuconf/charts
+      packages: write # push to oci://ghcr.io/docuconf/charts, and the chart's signature
+      id-token: write # keyless cosign signing
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: stable
       - run: go install cuelang.org/go/cmd/cue@v0.17.1
       - run: go install helm.sh/helm/v3/cmd/helm@latest
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Check the tag matches Chart.yaml
         run: |
           version=$(sed -n 's/^version: *//p' helm/docuconf/Chart.yaml)
@@ -183,7 +230,21 @@ jobs:
           mkdir -p dist
           helm package helm/docuconf --destination dist
           echo "$GITHUB_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          helm push "dist/docuconf-$VERSION.tgz" oci://ghcr.io/docuconf/charts
+          set -o pipefail
+          helm push "dist/docuconf-$VERSION.tgz" oci://ghcr.io/docuconf/charts 2>&1 | tee dist/push.log
+          digest=$(sed -n 's/^Digest: *//p' dist/push.log)
+          rm dist/push.log
+          if ! [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Could not read the chart digest from helm push" >&2
+            exit 1
+          fi
+          echo "CHART_DIGEST=$digest" >> "$GITHUB_ENV"
+      - name: Sign the chart
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GITHUB_TOKEN" | cosign login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          cosign sign --yes "ghcr.io/docuconf/charts/docuconf@$CHART_DIGEST"
       - name: Attach the chart to the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -191,6 +252,7 @@ jobs:
           if ! gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
             flags=()
             case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
+            # shellcheck disable=SC2016 # the backticks are Markdown
             notes=$(printf 'docuconf Helm library chart %s.\n\n```yaml\ndependencies:\n  - name: docuconf\n    version: %s\n    repository: oci://ghcr.io/docuconf/charts\n```\n' "$VERSION" "$VERSION")
             gh release create "$GITHUB_REF_NAME" --verify-tag --latest=false --title "docuconf Helm chart $VERSION" --notes "$notes" "${flags[@]}"
           fi

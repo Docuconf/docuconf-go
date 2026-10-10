@@ -645,6 +645,8 @@ A contract describes a specific build of an application. It MUST travel with the
 
 The contract format itself is versioned by `apiVersion`: `v1alpha1` (fields may change), then `v1beta1` (additive only), then `v1`.
 
+The versioning and deprecation policy, including the migration from `v1alpha1` to `v1beta1`, is in [docs/VERSIONING.md](../docs/VERSIONING.md).
+
 ## 10. Feature flags are not environment configuration
 
 They look similar, since both are often booleans, but they differ in every way that matters:

@@ -32,12 +32,12 @@ Everything this repository publishes goes to GitHub:
 | Tag | Job | Result |
 |---|---|---|
 | `cmd/docuconf/v*` | `cli-test` | The CLI's `gofmt`, build, vet and tests, as in `go.yml`. Both jobs below need it. |
-| `cmd/docuconf/v*` | `cli-binaries` | A GitHub Release with `docuconf_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows) for linux, darwin and windows on amd64 and arm64, static (`CGO_ENABLED=0`), plus `SHA256SUMS`. |
-| `cmd/docuconf/v*` | `cli-image` | `ghcr.io/docuconf/docuconf:<version>` and `:latest`, for linux/amd64 and linux/arm64, built with buildx from `cmd/docuconf/Dockerfile` (a static binary on `gcr.io/distroless/static-debian12:nonroot`, at `/docuconf`). |
-| `chart-v*` | `chart` | After the checks from `helm.yml`, `helm package` and `helm push` to `oci://ghcr.io/docuconf/charts` (so `oci://ghcr.io/docuconf/charts/docuconf`), and a GitHub Release with the chart `.tgz` and its `.sha256`. |
+| `cmd/docuconf/v*` | `cli-binaries` | A GitHub Release with `docuconf_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows) for linux, darwin and windows on amd64 and arm64, static (`CGO_ENABLED=0`), each with an SPDX SBOM (`<archive name>.spdx.json`), plus `SHA256SUMS` over all of them and its cosign signature `SHA256SUMS.sigstore.json`. |
+| `cmd/docuconf/v*` | `cli-image` | `ghcr.io/docuconf/docuconf:<version>` and `:latest`, for linux/amd64 and linux/arm64, built with buildx from `cmd/docuconf/Dockerfile` (a static binary on `gcr.io/distroless/static-debian12:nonroot`, at `/docuconf`). The image is signed with cosign, and its SPDX SBOM is attached as a signed cosign attestation. |
+| `chart-v*` | `chart` | After the checks from `helm.yml`, `helm package` and `helm push` to `oci://ghcr.io/docuconf/charts` (so `oci://ghcr.io/docuconf/charts/docuconf`), and a GitHub Release with the chart `.tgz` and its `.sha256`. The OCI chart is signed with cosign. |
 
-All of it uses only the workflow's own `GITHUB_TOKEN` (`contents: write`, `packages: write`): no accounts and no
-secrets. The only requirement is that the `Docuconf` organization lets `GITHUB_TOKEN` write packages, which it does
+All of it uses only the workflow's own `GITHUB_TOKEN` (`contents: write`, `packages: write`) and the job's GitHub OIDC
+token (`id-token: write`, for signing): no accounts and no secrets. The only requirement is that the `Docuconf` organization lets `GITHUB_TOKEN` write packages, which it does
 unless package creation has been restricted under Organization settings > Packages.
 
 One step after the very first push of each: container images and OCI charts start out **private** on ghcr.io. Open
@@ -75,5 +75,53 @@ No token is needed for anything public on ghcr.io or on a GitHub Release.
   ```
   then `helm dependency update`. To fetch it alone: `helm pull oci://ghcr.io/docuconf/charts/docuconf --version
   0.1.0`.
+
+### Verifying a release
+
+Releases are signed with [cosign](https://docs.sigstore.dev/cosign/) keyless signing. There is no key to download:
+each signing job gets a short-lived certificate from Sigstore's Fulcio for its GitHub Actions OIDC identity, and the
+signature is recorded in the public Rekor transparency log. To verify, you check that the certificate was issued to
+this repository's release workflow, running for a release tag:
+
+| | |
+|---|---|
+| OIDC issuer (`--certificate-oidc-issuer`) | `https://token.actions.githubusercontent.com` |
+| Identity of a CLI release (`--certificate-identity-regexp`) | `^https://github\.com/[Dd]ocuconf/docuconf-go/\.github/workflows/release\.yml@refs/tags/cmd/docuconf/v` |
+| Identity of a chart release (`--certificate-identity-regexp`) | `^https://github\.com/[Dd]ocuconf/docuconf-go/\.github/workflows/release\.yml@refs/tags/chart-v` |
+
+The identity is the workflow file and the ref that ran it, so a signature made by any other workflow, fork or branch
+does not match. To pin one release exactly, use `--certificate-identity` with the full value, such as
+`https://github.com/Docuconf/docuconf-go/.github/workflows/release.yml@refs/tags/cmd/docuconf/v0.1.0`. The examples
+need cosign v3 or later (the release workflow signs with v3, which writes Sigstore bundles).
+
+- **Binaries:** verify the signature on `SHA256SUMS`, then check the archives against it, as above:
+  ```sh
+  gh release download cmd/docuconf/v0.1.0 -R docuconf/docuconf-go \
+    -p 'docuconf_0.1.0_linux_amd64.*' -p 'SHA256SUMS*'
+  cosign verify-blob SHA256SUMS \
+    --bundle SHA256SUMS.sigstore.json \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-identity-regexp '^https://github\.com/[Dd]ocuconf/docuconf-go/\.github/workflows/release\.yml@refs/tags/cmd/docuconf/v'
+  sha256sum --ignore-missing -c SHA256SUMS
+  ```
+  `SHA256SUMS` also covers the SBOMs, `docuconf_<version>_<os>_<arch>.spdx.json`.
+- **Container image:**
+  ```sh
+  cosign verify ghcr.io/docuconf/docuconf:0.1.0 \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-identity-regexp '^https://github\.com/[Dd]ocuconf/docuconf-go/\.github/workflows/release\.yml@refs/tags/cmd/docuconf/v'
+  ```
+  The signature is on the multi-arch index digest, so it covers both platforms. For the SBOM attestation, run the same
+  command as `cosign verify-attestation --type spdxjson`; it prints the signed in-toto statement, whose `predicate` is
+  the SPDX document. Pin the image by the digest you verified (`ghcr.io/docuconf/docuconf@sha256:...`).
+- **Helm chart:**
+  ```sh
+  cosign verify ghcr.io/docuconf/charts/docuconf:0.1.0 \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-identity-regexp '^https://github\.com/[Dd]ocuconf/docuconf-go/\.github/workflows/release\.yml@refs/tags/chart-v'
+  ```
+  The chart `.tgz` on the GitHub Release is the same file; compare it with the OCI digest or with its `.sha256`.
+
+Releases before this signing was added are not signed.
 
 The SDK itself is not on GitHub Packages: Go modules come straight from the repository through the module proxy.
