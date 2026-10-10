@@ -1,0 +1,178 @@
+description: >
+  Strict wire parsing (SPEC §5): one parsing rule per type, with no host
+  leniency. Every form here that a host library might accept beyond the
+  rule must fail with invalid_type, and the accepted forms must parse to
+  exactly these values.
+requires: [strict-parsing]
+vars:
+  FLAG:
+    type: bool
+    description: A switch with no default
+  COUNT:
+    type: int
+    description: A signed integer with no bounds
+  RATIO:
+    type: float
+    description: A float with no bounds
+  WAIT:
+    type: duration
+    description: A duration in Go syntax
+    encoding: go
+  WAIT_ISO:
+    type: duration
+    description: A duration in ISO 8601 form
+    encoding: iso8601
+  WAIT_SECONDS:
+    type: duration
+    description: A duration in seconds
+    encoding: seconds
+  WAIT_TIMESPAN:
+    type: duration
+    description: A duration as a .NET TimeSpan
+    encoding: timespan
+  NAMES:
+    type: list
+    description: Names in csv
+    items: string
+    encoding: csv
+  IDS:
+    type: list
+    description: Integers in csv
+    items: int
+    encoding: csv
+cases:
+  # bool: true or false, in any case, and nothing else.
+  - name: bool TRUE in upper case
+    env: {FLAG: "TRUE"}
+    expect: {FLAG: true}
+  - name: bool False in mixed case
+    env: {FLAG: "False"}
+    expect: {FLAG: false}
+  - name: bool tRuE
+    env: {FLAG: "tRuE"}
+    expect: {FLAG: true}
+  - {name: bool 1 is not a bool, env: {FLAG: "1"}, errors: [{var: FLAG, code: invalid_type}]}
+  - {name: bool 0 is not a bool, env: {FLAG: "0"}, errors: [{var: FLAG, code: invalid_type}]}
+  - {name: bool t is not a bool, env: {FLAG: "t"}, errors: [{var: FLAG, code: invalid_type}]}
+  - {name: bool f is not a bool, env: {FLAG: "f"}, errors: [{var: FLAG, code: invalid_type}]}
+  - {name: bool T is not a bool, env: {FLAG: "T"}, errors: [{var: FLAG, code: invalid_type}]}
+  - {name: bool F is not a bool, env: {FLAG: "F"}, errors: [{var: FLAG, code: invalid_type}]}
+  - {name: bool yes is not a bool, env: {FLAG: "yes"}, errors: [{var: FLAG, code: invalid_type}]}
+  - {name: bool no is not a bool, env: {FLAG: "no"}, errors: [{var: FLAG, code: invalid_type}]}
+  - {name: bool on is not a bool, env: {FLAG: "on"}, errors: [{var: FLAG, code: invalid_type}]}
+  - {name: bool off is not a bool, env: {FLAG: "off"}, errors: [{var: FLAG, code: invalid_type}]}
+  - {name: bool with a leading space, env: {FLAG: " true"}, errors: [{var: FLAG, code: invalid_type}]}
+  - {name: bool with a trailing space, env: {FLAG: "false "}, errors: [{var: FLAG, code: invalid_type}]}
+  - {name: bool with a trailing newline, env: {FLAG: "true\n"}, errors: [{var: FLAG, code: invalid_type}]}
+
+  # int: decimal ASCII digits with an optional sign; leading zeros are decimal.
+  - name: int with a plus sign
+    env: {COUNT: "+5"}
+    expect: {COUNT: 5}
+  - name: int with leading zeros is decimal, not octal
+    env: {COUNT: "007"}
+    expect: {COUNT: 7}
+  - name: int 010 is ten
+    env: {COUNT: "010"}
+    expect: {COUNT: 10}
+  - name: int minus zero
+    env: {COUNT: "-0"}
+    expect: {COUNT: 0}
+  - {name: int in hex, env: {COUNT: "0x10"}, errors: [{var: COUNT, code: invalid_type}]}
+  - {name: int in octal with 0o, env: {COUNT: "0o17"}, errors: [{var: COUNT, code: invalid_type}]}
+  - {name: int in binary, env: {COUNT: "0b101"}, errors: [{var: COUNT, code: invalid_type}]}
+  - {name: int with underscores, env: {COUNT: "1_000"}, errors: [{var: COUNT, code: invalid_type}]}
+  - {name: int with an exponent, env: {COUNT: "1e3"}, errors: [{var: COUNT, code: invalid_type}]}
+  - {name: int with a decimal point, env: {COUNT: "5.0"}, errors: [{var: COUNT, code: invalid_type}]}
+  - {name: int with a leading space, env: {COUNT: " 5"}, errors: [{var: COUNT, code: invalid_type}]}
+  - {name: int with a trailing newline, env: {COUNT: "5\n"}, errors: [{var: COUNT, code: invalid_type}]}
+  - {name: int with a sign and nothing else, env: {COUNT: "-"}, errors: [{var: COUNT, code: invalid_type}]}
+  - {name: int with two signs, env: {COUNT: "+-5"}, errors: [{var: COUNT, code: invalid_type}]}
+  - {name: int in non-ASCII digits, env: {COUNT: "١٢"}, errors: [{var: COUNT, code: invalid_type}]}
+  - {name: int below the 64-bit range, env: {COUNT: "-9223372036854775809"}, errors: [{var: COUNT, code: out_of_range}]}
+
+  # float: decimal, digits on both sides of an optional point, optional exponent.
+  - name: float with a plus sign
+    env: {RATIO: "+1.5"}
+    expect: {RATIO: 1.5}
+  - name: float with an upper-case exponent
+    env: {RATIO: "1E3"}
+    expect: {RATIO: 1000}
+  - name: float with a negative exponent
+    env: {RATIO: "25e-2"}
+    expect: {RATIO: 0.25}
+  - name: float with leading zeros
+    env: {RATIO: "007.5"}
+    expect: {RATIO: 7.5}
+  - {name: float in hex, env: {RATIO: "0x1p4"}, errors: [{var: RATIO, code: invalid_type}]}
+  - {name: float inf, env: {RATIO: "inf"}, errors: [{var: RATIO, code: invalid_type}]}
+  - {name: float Infinity, env: {RATIO: "Infinity"}, errors: [{var: RATIO, code: invalid_type}]}
+  - {name: float minus inf, env: {RATIO: "-inf"}, errors: [{var: RATIO, code: invalid_type}]}
+  - {name: float nan, env: {RATIO: "nan"}, errors: [{var: RATIO, code: invalid_type}]}
+  - {name: float with no digit before the point, env: {RATIO: ".5"}, errors: [{var: RATIO, code: invalid_type}]}
+  - {name: float with no digit after the point, env: {RATIO: "5."}, errors: [{var: RATIO, code: invalid_type}]}
+  - {name: float with underscores, env: {RATIO: "1_000.5"}, errors: [{var: RATIO, code: invalid_type}]}
+  - {name: float with a leading space, env: {RATIO: " 1.5"}, errors: [{var: RATIO, code: invalid_type}]}
+  - {name: float with a trailing newline, env: {RATIO: "1.5\n"}, errors: [{var: RATIO, code: invalid_type}]}
+  - {name: float with an empty exponent, env: {RATIO: "1e"}, errors: [{var: RATIO, code: invalid_type}]}
+  - {name: float beyond the 64-bit range, env: {RATIO: "1e400"}, errors: [{var: RATIO, code: invalid_type}]}
+
+  # duration, go encoding: Go's time.ParseDuration grammar, exactly.
+  - name: go duration with a fraction
+    env: {WAIT: "1.5h"}
+    expect: {WAIT: "1h30m"}
+  - name: go duration with a plus sign
+    env: {WAIT: "+5s"}
+    expect: {WAIT: "5s"}
+  - name: go duration negative
+    env: {WAIT: "-1m30s"}
+    expect: {WAIT: "-1m30s"}
+  - name: go duration bare zero
+    env: {WAIT: "0"}
+    expect: {WAIT: "0s"}
+  - name: go duration in microseconds
+    env: {WAIT: "1500us"}
+    expect: {WAIT: "1ms500us"}
+  - {name: go duration with no unit, env: {WAIT: "5"}, errors: [{var: WAIT, code: invalid_type}]}
+  - {name: go duration with an upper-case unit, env: {WAIT: "5S"}, errors: [{var: WAIT, code: invalid_type}]}
+  - {name: go duration in days, env: {WAIT: "1d"}, errors: [{var: WAIT, code: invalid_type}]}
+  - {name: go duration with a space between units, env: {WAIT: "1m 30s"}, errors: [{var: WAIT, code: invalid_type}]}
+  - {name: go duration with a trailing newline, env: {WAIT: "5s\n"}, errors: [{var: WAIT, code: invalid_type}]}
+
+  # duration, iso8601: P[nD][T[nH][nM][nS]], upper case, unsigned.
+  - name: iso8601 duration with a decimal comma
+    env: {WAIT_ISO: "PT1,5S"}
+    expect: {WAIT_ISO: "1s500ms"}
+  - name: iso8601 duration in days and hours
+    env: {WAIT_ISO: "P1DT2H"}
+    expect: {WAIT_ISO: "26h"}
+  - {name: iso8601 duration in lower case, env: {WAIT_ISO: "pt90s"}, errors: [{var: WAIT_ISO, code: invalid_type}]}
+  - {name: iso8601 duration with T and nothing after it, env: {WAIT_ISO: "PT"}, errors: [{var: WAIT_ISO, code: invalid_type}]}
+  - {name: iso8601 duration in weeks, env: {WAIT_ISO: "P1W"}, errors: [{var: WAIT_ISO, code: invalid_type}]}
+  - {name: iso8601 duration in months, env: {WAIT_ISO: "P1M"}, errors: [{var: WAIT_ISO, code: invalid_type}]}
+  - {name: iso8601 duration negative, env: {WAIT_ISO: "-PT5S"}, errors: [{var: WAIT_ISO, code: invalid_type}]}
+
+  # duration, seconds: unsigned decimal, digits on both sides of an optional point.
+  - {name: seconds negative, env: {WAIT_SECONDS: "-5"}, errors: [{var: WAIT_SECONDS, code: invalid_type}]}
+  - {name: seconds with a plus sign, env: {WAIT_SECONDS: "+5"}, errors: [{var: WAIT_SECONDS, code: invalid_type}]}
+  - {name: seconds with an exponent, env: {WAIT_SECONDS: "5e1"}, errors: [{var: WAIT_SECONDS, code: invalid_type}]}
+  - {name: seconds with no digit before the point, env: {WAIT_SECONDS: ".5"}, errors: [{var: WAIT_SECONDS, code: invalid_type}]}
+
+  # duration, timespan: [d.]hh:mm:ss[.fffffff], unsigned.
+  - {name: timespan without seconds, env: {WAIT_TIMESPAN: "01:30"}, errors: [{var: WAIT_TIMESPAN, code: invalid_type}]}
+  - {name: timespan with 24 hours, env: {WAIT_TIMESPAN: "24:00:00"}, errors: [{var: WAIT_TIMESPAN, code: invalid_type}]}
+  - {name: timespan negative, env: {WAIT_TIMESPAN: "-00:00:05"}, errors: [{var: WAIT_TIMESPAN, code: invalid_type}]}
+
+  # csv: items are never trimmed.
+  - name: csv items keep their surrounding spaces
+    env: {NAMES: "a, b ,c"}
+    expect: {NAMES: ["a", " b ", "c"]}
+  - name: csv keeps an empty item
+    env: {NAMES: "a,,b"}
+    expect: {NAMES: ["a", "", "b"]}
+  - name: csv int items take a sign and leading zeros
+    env: {IDS: "+1,007,-0"}
+    expect: {IDS: [1, 7, 0]}
+  - {name: csv int item with a space, env: {IDS: "1, 2"}, errors: [{var: IDS, code: invalid_type}]}
+  - {name: csv int item that is empty, env: {IDS: "1,,2"}, errors: [{var: IDS, code: invalid_type}]}
+  - {name: csv int item in hex, env: {IDS: "1,0x10"}, errors: [{var: IDS, code: invalid_type}]}

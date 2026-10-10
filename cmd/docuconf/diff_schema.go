@@ -63,8 +63,8 @@ func at(ptr string) string {
 	return ptr
 }
 
-// schemaAnnotations never affect what validates.
-var schemaAnnotations = map[string]bool{
+// diffAnnotations are JSON Schema keywords that never affect what validates.
+var diffAnnotations = map[string]bool{
 	"title": true, "description": true, "examples": true, "default": true, "$comment": true,
 	"deprecated": true, "readOnly": true, "writeOnly": true, "$schema": true, "$id": true,
 	"$anchor": true, "markdownDescription": true,
@@ -141,7 +141,7 @@ func (s *schemaDiffer) diff(o, n any, ptr, oref, nref string) {
 			continue
 		}
 		switch {
-		case schemaAnnotations[k]:
+		case diffAnnotations[k]:
 			s.docs = true
 		case k == "$defs" || k == "definitions" || k == "$ref":
 			// Compared where they are referenced.
@@ -328,7 +328,7 @@ func (s *schemaDiffer) resolve(v any, root any) (any, bool) {
 			return v, true
 		}
 		for k := range m {
-			if k != "$ref" && k != "$defs" && k != "definitions" && !schemaAnnotations[k] {
+			if k != "$ref" && k != "$defs" && k != "definitions" && !diffAnnotations[k] {
 				return v, false
 			}
 		}
@@ -358,7 +358,7 @@ func boolSchema(v any) (value, ok bool) {
 			return true, true
 		}
 		for k := range t {
-			if !schemaAnnotations[k] {
+			if !diffAnnotations[k] {
 				return false, false
 			}
 		}

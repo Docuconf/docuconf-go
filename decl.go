@@ -77,6 +77,7 @@ type varDecl struct {
 	group      string
 	examples   []string
 	deprecated string
+	replacedBy string // deprecated.replacedBy
 	configKey  string
 
 	// keySet variables keep their bounds in minItems, maxItems,
@@ -141,6 +142,7 @@ type fileDecl struct {
 	desc       string
 	group      string
 	deprecated string
+	replacedBy string // deprecated.replacedBy
 
 	format string // config: json|yaml; keystore: pkcs12
 
@@ -365,6 +367,7 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 	v.group = tag.Get("group")
 	v.configKey = tag.Get("configKey")
 	v.deprecated = tag.Get("deprecated")
+	v.replacedBy = tag.Get("replacedBy")
 	if ex, ok := tag.Lookup("examples"); ok {
 		v.examples = strings.Split(ex, "|")
 	}
@@ -408,6 +411,14 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 			problem("a required variable cannot be deprecated: deprecating it asks the platform to stop setting it")
 		}
 		checkDeprecated(v.deprecated, problem)
+	}
+	if _, ok := tag.Lookup("replacedBy"); ok {
+		switch {
+		case v.deprecated == "":
+			problem("replacedBy needs a deprecated tag")
+		case !envNameRe.MatchString(v.replacedBy):
+			problem("replacedBy must be a variable name matching %s", envNameRe)
+		}
 	}
 	if v.hasDef && v.def != "" && !v.loadFile {
 		for _, viol := range v.check(v.def) {

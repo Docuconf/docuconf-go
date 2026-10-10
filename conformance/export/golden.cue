@@ -1,0 +1,284 @@
+// The golden contract of the shared export fixture (SPEC §11.2 item 3,
+// §12). An SDK declares the inputs in fixture.yaml in its own language,
+// exports them, and checks the result with
+//
+//	docuconf conformance export --golden golden.cue exported.cue
+//
+// which compares the two as data. Edit this file and fixture.yaml together.
+package docuconf_fixture
+
+import "docuconf.dev/contract"
+
+contract.#Contract & {
+	apiVersion: "docuconf.dev/v1alpha1"
+	kind:       "ConfigContract"
+	metadata: {
+		name:       "docuconf-fixture"
+		appVersion: "1.0.0"
+		// Ignored by the comparison: each SDK writes its own.
+		generator: {
+			language: "go"
+			sdk:      "docuconf-fixture"
+			version:  "1"
+		}
+	}
+	vars: {
+		ALLOWED_ORIGINS: {
+			type:          "list"
+			description:   "CORS origins allowed to call the API"
+			items:         "string"
+			encoding:      "csv"
+			separator:     ";"
+			minItems:      1
+			maxItems:      5
+			itemMinLength: 1
+			itemMaxLength: 255
+		}
+		APP_NAME: {
+			type:        "string"
+			description: "Service name, used in logs and metrics"
+			details:     "Lower case, as a DNS label allows."
+			default:     "orders"
+			group:       "general"
+			examples: ["orders", "billing"]
+			configKey: "App:Name"
+			minLength: 2
+			maxLength: 40
+			pattern:   "^[a-z][a-z0-9-]*$"
+		}
+		DATABASE_URL: {
+			type:        "url"
+			description: "Primary Postgres connection string"
+			required:    true
+			secret:      true
+			group:       "database"
+			schemes: ["postgres", "postgresql"]
+			maxLength: 2048
+		}
+		DEBUG: {
+			type:        "bool"
+			description: "Serve the debug endpoints"
+			default:     false
+		}
+		LOG_LEVEL: {
+			type:        "enum"
+			description: "Minimum log level"
+			default:     "info"
+			values: ["debug", "info", "warn", "error"]
+		}
+		OLD_PORT: {
+			type:        "int"
+			description: "Port the service used to listen on"
+			deprecated: {
+				message:    "Use PORT instead"
+				replacedBy: "PORT"
+			}
+		}
+		PARTNER_PASSWORD: {
+			type:        "string"
+			description: "Password of the partner keystore"
+			secret:      true
+		}
+		PORT: {
+			type:        "int"
+			description: "HTTP listen port"
+			default:     8080
+			min:         1
+			max:         65535
+		}
+		RATE_LIMITS: {
+			type:        "json"
+			description: "Per-client rate limits"
+			default: {
+				perMinute: 60
+			}
+			maxLength: 1024
+			schema: {
+				type: "object"
+				required: ["perMinute"]
+				additionalProperties: false
+				properties: {
+					perMinute: {
+						type:    "integer"
+						minimum: 1
+					}
+					burst: {
+						type:    "integer"
+						minimum: 0
+					}
+				}
+			}
+		}
+		REQUEST_TIMEOUT: {
+			type:        "duration"
+			description: "Upstream request timeout"
+			default:     "1m30s"
+			min:         "1s"
+			max:         "5m"
+			encoding:    "go"
+		}
+		SHARDS: {
+			type:        "list"
+			description: "Shards this instance owns"
+			items:       "int"
+			encoding:    "csv"
+			separator:   ","
+			itemMin:     0
+			itemMax:     1023
+		}
+		TRACE_RATIO: {
+			type:        "float"
+			description: "Fraction of requests traced"
+			default:     0.25
+			min:         0
+			max:         1
+		}
+		WEBHOOK_KEYS: {
+			type:         "keySet"
+			description:  "Keys that verify webhook signatures"
+			secret:       true
+			encoding:     "csv"
+			separator:    ","
+			minKeys:      1
+			maxKeys:      2
+			keyMinLength: 32
+			keyMaxLength: 256
+		}
+	}
+	files: {
+		flags: {
+			type:        "config"
+			format:      "toml"
+			description: "Feature defaults"
+			path:        "/etc/app/flags/flags.toml"
+			schema: {
+				type: "object"
+				required: ["name", "replicas"]
+				additionalProperties: false
+				properties: {
+					name: {
+						type:      "string"
+						minLength: 1
+					}
+					replicas: {
+						type:    "integer"
+						minimum: 1
+					}
+					tags: {
+						type: "array"
+						items: {
+							type: "string"
+						}
+					}
+				}
+			}
+		}
+		"geo-db": {
+			type:        "binary"
+			description: "City-level location database"
+			path:        "/data/geo-db/geo.mmdb"
+		}
+		geoip: {
+			type:        "binary"
+			description: "GeoIP database"
+			path:        "/data/geoip/geoip.mmdb"
+			maxSize:     134217728
+			deprecated: {
+				message:    "Use geo-db instead"
+				replacedBy: "geo-db"
+			}
+		}
+		licence: {
+			type:        "text"
+			description: "Licence key"
+			path:        "/etc/app/licence/licence.key"
+			pattern:     "^[A-Z0-9-]+\\n?$"
+			minLength:   8
+			maxLength:   64
+		}
+		partner: {
+			type:        "keystore"
+			format:      "pkcs12"
+			description: "Client certificate for the partner API"
+			secret:      true
+			path:        "/etc/app/partner/keystore.p12"
+			passwordVar: "PARTNER_PASSWORD"
+		}
+		rules: {
+			type:        "config"
+			format:      "yaml"
+			description: "Routing rules"
+			path:        "/etc/app/rules/rules.yaml"
+			schema: {
+				type: "object"
+				required: ["name", "replicas"]
+				additionalProperties: false
+				properties: {
+					name: {
+						type:      "string"
+						minLength: 1
+					}
+					replicas: {
+						type:    "integer"
+						minimum: 1
+					}
+					tags: {
+						type: "array"
+						items: {
+							type: "string"
+						}
+					}
+				}
+			}
+		}
+		"serving-tls": {
+			type:        "tls"
+			description: "Certificate the service serves HTTPS with"
+			secret:      true
+			path:        "/etc/app/tls"
+			reload:      "watch"
+			dnsNames: ["app.example.test", "api.example.test"]
+			keyAlgorithms: ["ECDSA", "Ed25519"]
+			minRemaining: "720h"
+			requireCA:    true
+		}
+		settings: {
+			type:        "config"
+			format:      "json"
+			description: "Application settings"
+			required:    true
+			path:        "/etc/app/settings/settings.json"
+			pathEnv:     "SETTINGS_FILE"
+			reload:      "watch"
+			maxSize:     65536
+			group:       "general"
+			schema: {
+				type: "object"
+				required: ["name", "replicas"]
+				additionalProperties: false
+				properties: {
+					name: {
+						type:      "string"
+						minLength: 1
+					}
+					replicas: {
+						type:    "integer"
+						minimum: 1
+					}
+					tags: {
+						type: "array"
+						items: {
+							type: "string"
+						}
+					}
+				}
+			}
+		}
+		trust: {
+			type:            "caBundle"
+			description:     "CAs the service trusts"
+			path:            "/etc/app/trust/bundle.pem"
+			minCertificates: 2
+		}
+	}
+}
