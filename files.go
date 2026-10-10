@@ -190,6 +190,29 @@ func (k TLSKeyPair) CAPool() *x509.CertPool {
 	return k.s.r.get().ca
 }
 
+// OnChange registers fn, which is called with the new certificate after
+// a reload of a watched key pair is accepted, never after a rejected
+// one. While a hook is registered the files are checked in the
+// background every WatchInterval, so fn runs without a read. Hooks run
+// one at a time, in the order they were registered; a hook that panics
+// is logged and the others still run. The returned function unregisters
+// fn. Use it to rebuild what was made from the certificate; a
+// tls.Config that uses GetCertificate needs no hook.
+func (k TLSKeyPair) OnChange(fn func(*tls.Certificate)) (cancel func()) {
+	if !k.Present() {
+		return nopCancel
+	}
+	return k.s.r.onChange(func(m *tlsMaterial) { fn(m.cert) })
+}
+
+// ReloadStatus returns the key pair's reload status.
+func (k TLSKeyPair) ReloadStatus() ReloadStatus {
+	if !k.Present() {
+		return ReloadStatus{}
+	}
+	return k.s.r.reloadStatus()
+}
+
 // ---------------------------------------------------------------------------
 // CABundle
 
@@ -251,6 +274,25 @@ func (c CABundle) Load() (*x509.CertPool, error) {
 		pool.AddCert(cert)
 	}
 	return pool, nil
+}
+
+// OnChange registers fn, which is called with the new certificates after
+// a reload of a watched bundle is accepted. It works as
+// TLSKeyPair.OnChange does: rebuild a pool or client made from the
+// bundle in fn.
+func (c CABundle) OnChange(fn func([]*x509.Certificate)) (cancel func()) {
+	if !c.Present() {
+		return nopCancel
+	}
+	return c.s.r.onChange(fn)
+}
+
+// ReloadStatus returns the bundle's reload status.
+func (c CABundle) ReloadStatus() ReloadStatus {
+	if !c.Present() {
+		return ReloadStatus{}
+	}
+	return c.s.r.reloadStatus()
 }
 
 // ---------------------------------------------------------------------------
@@ -321,6 +363,29 @@ func (k Keystore) CACertificates() []*x509.Certificate {
 	return k.s.r.get().cas
 }
 
+// OnChange registers fn, which is called with the new key and
+// certificate chain after a reload of a watched keystore is accepted. It
+// works as TLSKeyPair.OnChange does.
+//
+// A reload opens the new keystore with the password read at boot, since
+// a process's environment does not change: rotating the password needs
+// a rollout. A keystore that does not open with it is rejected as
+// keystore_unreadable, and the previous content stays current.
+func (k Keystore) OnChange(fn func(tls.Certificate)) (cancel func()) {
+	if !k.Present() {
+		return nopCancel
+	}
+	return k.s.r.onChange(func(c *keystoreContent) { fn(c.cert) })
+}
+
+// ReloadStatus returns the keystore's reload status.
+func (k Keystore) ReloadStatus() ReloadStatus {
+	if !k.Present() {
+		return ReloadStatus{}
+	}
+	return k.s.r.reloadStatus()
+}
+
 // ---------------------------------------------------------------------------
 // TextFile
 
@@ -370,6 +435,24 @@ func (t TextFile) Content() string {
 		return ""
 	}
 	return t.s.r.get()
+}
+
+// OnChange registers fn, which is called with the new text after a
+// reload of a watched file is accepted. It works as TLSKeyPair.OnChange
+// does.
+func (t TextFile) OnChange(fn func(string)) (cancel func()) {
+	if !t.Present() {
+		return nopCancel
+	}
+	return t.s.r.onChange(fn)
+}
+
+// ReloadStatus returns the file's reload status.
+func (t TextFile) ReloadStatus() ReloadStatus {
+	if !t.Present() {
+		return ReloadStatus{}
+	}
+	return t.s.r.reloadStatus()
 }
 
 // ---------------------------------------------------------------------------
@@ -489,4 +572,22 @@ func (c ConfigFile[T]) Value() T {
 		return zero
 	}
 	return c.s.r.get()
+}
+
+// OnChange registers fn, which is called with the new value after a
+// reload of a watched file is accepted. It works as TLSKeyPair.OnChange
+// does.
+func (c ConfigFile[T]) OnChange(fn func(T)) (cancel func()) {
+	if !c.Present() {
+		return nopCancel
+	}
+	return c.s.r.onChange(fn)
+}
+
+// ReloadStatus returns the file's reload status.
+func (c ConfigFile[T]) ReloadStatus() ReloadStatus {
+	if !c.Present() {
+		return ReloadStatus{}
+	}
+	return c.s.r.reloadStatus()
 }

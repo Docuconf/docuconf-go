@@ -266,6 +266,52 @@ echo 'codes: {WELCOME10: 10}' > dev/etc/orders/discounts/discounts.yaml
 
 Then run with `DOCUCONF_FILE_ROOT=./dev`. `.env` files are read only when listed in `Options.DotEnv`. Set `Options.DotEnvRequired` to make a missing one an error.
 
+### Using a watched value
+
+With `reload:"watch"`, docuconf swaps in a changed file once it passes the checks it passed at boot; a change that fails them is logged and not used, and the previous value stays current. Changes are found by each file's identity, size and modification time, following symlinks, so the kubelet's swap of a projected volume is seen. Files are checked at most once per `Options.WatchInterval` (10s by default): when the app reads the value, and in the background while an on-change hook is registered.
+
+An app that copies a watched value once, into a TLS server context, an HTTP client or a pool, keeps the old value until the certificate expires. Read the value on each use, or rebuild what you made from it in an `OnChange` hook. A TLS server reads the certificate on every handshake with `GetCertificate`; the hook here only logs:
+
+```go
+	if cfg.TLS.Present() {
+		// GetCertificate reads the current certificate on every handshake,
+		// so a renewed one is served without a restart.
+		srv.TLSConfig = &tls.Config{GetCertificate: cfg.TLS.GetCertificate}
+		cfg.TLS.OnChange(func(cert *tls.Certificate) {
+			slog.Info("serving a renewed certificate", "notAfter", cert.Leaf.NotAfter)
+		})
+```
+
+An HTTP client copies its CA pool when it is built, so build a new one when a `CABundle` changes:
+
+```go
+	build := func(certs []*x509.Certificate) {
+		pool := x509.NewCertPool()
+		for _, cert := range certs {
+			pool.AddCert(cert)
+		}
+		next := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}}
+		if old := c.cur.Swap(next); old != nil {
+			old.CloseIdleConnections()
+		}
+	}
+	build(ca.Certificates())
+	c.cancel = ca.OnChange(build)
+```
+
+`TLSKeyPair`, `CABundle`, `Keystore`, `TextFile` and `ConfigFile[T]` each have `OnChange(fn)`, which returns a function that unregisters `fn`. A hook is called with the new value after a reload is accepted, never after a rejected one. Hooks run one at a time; one that panics is logged by input name and panic type, and the others still run. `BinaryFile` has no hook: the app opens the file itself, so it always reads the current one.
+
+`ReloadStatus()` returns the input's `Generation` (1 after boot, plus one per accepted reload), `LastReload` (the time of the last accepted reload) and `LastRejected` (the last rejected change: its time, input and violation codes, never the content; cleared by the next accepted reload). It encodes as JSON for a health check:
+
+```go
+	mux.HandleFunc("GET /reloadz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]docuconf.ReloadStatus{"serving-tls": cfg.TLS.ReloadStatus()})
+	})
+```
+
+A `Keystore` reload opens the new keystore with the password read at boot, since a process's environment does not change. Rotating a keystore's password needs a rollout; a changed keystore that does not open with the boot password is rejected as `keystore_unreadable`, and the previous one stays current.
+
 ### Tags
 
 A doc comment's first paragraph is the description (a `desc` tag is the fallback), and the rest is details. docuconf's tags: `secret`, `min`/`max`, `minLength`/`maxLength` (in characters; `maxLength` also bounds a url or a `JSON[T]` value), `pattern` (RE2), `values` (enum), `schemes` (url), `minItems`/`maxItems`, `itemMin`/`itemMax` on integer lists, `itemMinLength`/`itemMaxLength` on string lists (`` Shards []int `env:"SHARDS" itemMin:"0" itemMax:"1023"` ``), `minKeys`/`maxKeys` and `keyMinLength`/`keyMaxLength` on a `KeySet`, and `deprecated` (`` OldPort int `env:"OLD_PORT" deprecated:"Use PORT"` ``), which marks an input for removal: `docuconf vet` warns while the platform still sets it, and the SDK logs a warning at boot, never with the value. A required input cannot be deprecated. Integer bounds always include the range caarlos0/env parses the Go type with: an `int` exports `min: -2147483648, max: 2147483647` because caarlos0/env parses it as 32 bits, and a `[]uint16` exports `itemMin: 0, itemMax: 65535`. `JSON[T]` holds a structured variable. The full tag reference is in the [package docs](doc.go).
@@ -290,7 +336,7 @@ To validate an environment against a contract with no Go struct, for example one
 	timeout := vals["REQUEST_TIMEOUT"].(time.Duration) // int is int64, list is []string or []int64
 ```
 
-File inputs are loaded too, with the same checks as the Go file types, and returned by input name as those types (`TLSKeyPair`, `CABundle`, `Keystore`, `TextFile`, `BinaryFile`, or `ConfigFile[any]` checked against the contract's schema). Config files may be `json`, `yaml` or `toml`; a `jks` keystore is rejected, since the Go SDK reads `pkcs12` only. A contract's `profiles` and `overlays` are layered as a host with config files would (SPEC §4.4, §4.7): a variable's default, then the selected profile's default, then an overlay (read from under `DOCUCONF_FILE_ROOT`), then the environment.
+File inputs are loaded too, with the same checks as the Go file types, and returned by input name as those types (`TLSKeyPair`, `CABundle`, `Keystore`, `TextFile`, `BinaryFile`, or `ConfigFile[any]` checked against the contract's schema). Config files may be `json`, `yaml` or `toml`; a `jks` keystore is rejected, since the Go SDK reads `pkcs12` only. A watched file input reloads exactly as in a struct, with `OnChange` and `ReloadStatus`. A contract's `profiles` and `overlays` are layered as a host with config files would (SPEC §4.4, §4.7): a variable's default, then the selected profile's default, then an overlay (read from under `DOCUCONF_FILE_ROOT`), then the environment. `LoadContract` returns values read once, so an overlay declared `reload: watch` is a `*DeclarationError`; `docuconf check` and `exec` check such an overlay once, at boot.
 
 A generator for another language that builds the contract itself can format it with `docuconf.ContractCUE(contractJSON, pkg)`, which checks it as `LoadContract` does and writes the same `contract.cue` layout as `Export`: header, package, import, variables and files sorted by name. The COBOL SDK's `docuconf-cobol generate` uses it.
 

@@ -334,6 +334,21 @@ func fileContents(typ string, f fields) string {
 	return "opaque bytes"
 }
 
+// keystoreReloadNote is printed for a keystore with reload "watch" (SPEC
+// §4.6.2, §14.5): a reload opens the new keystore with the password the
+// app read at boot.
+const keystoreReloadNote = "Rotating this keystore's password needs a rollout; a reload keeps the password read at boot."
+
+// reloadNote is what the renderers print about reloading an input beyond
+// its reload row, or "". It depends on the type and reload the model
+// already holds.
+func reloadNote(in Input) string {
+	if in.Kind == KindFile && in.Type == "keystore" && in.File != nil && in.File.Reload == "watch" {
+		return keystoreReloadNote
+	}
+	return ""
+}
+
 func reloadText(reload string) string {
 	if reload == "watch" {
 		return "the app reloads the file when it changes"

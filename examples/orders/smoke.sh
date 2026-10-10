@@ -68,7 +68,7 @@ code=$?
 set -e
 cat >"$tmp/want.txt" <<'WANT'
 docuconf: 1 configuration problem:
-  WEBHOOK_KEYS: key 1 is empty (out_of_range)
+  WEBHOOK_KEYS: key 2 is empty (out_of_range)
 WANT
 if [ "$code" != 1 ] || ! diff -u "$tmp/want.txt" "$tmp/bad.txt" || grep -q webhook-key "$tmp/bad.txt"; then
   echo "want exit 1 for an empty webhook key, got $code:" >&2; cat "$tmp/bad.txt" >&2; exit 1
@@ -92,6 +92,9 @@ pid=$!
 wait_for "https://127.0.0.1:$port/discounts"
 [ "$(cat "$tmp/body")" = '{"WELCOME10":10}' ] || { echo "GET /discounts: $(cat "$tmp/body")" >&2; exit 1; }
 echo "dev files: HTTPS up, /discounts $(cat "$tmp/body")"
+wait_for "https://127.0.0.1:$port/reloadz"
+[ "$(cat "$tmp/body")" = '{"serving-tls":{"generation":1}}' ] || { echo "GET /reloadz: $(cat "$tmp/body")" >&2; exit 1; }
+echo "dev files: /reloadz $(cat "$tmp/body")"
 kill "$pid"; wait "$pid" 2>/dev/null || true; pid=""
 
 # 4. Mid-rotation, a webhook signed with either key is accepted, and one

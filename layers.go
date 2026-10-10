@@ -34,7 +34,20 @@ type profilesDecl struct {
 
 // overlayDecl is one entry of a contract's overlays.
 type overlayDecl struct {
-	name, format, path, keySeparator string
+	name, format, path, keySeparator, reload string
+}
+
+// watchedOverlays returns a problem for each overlay declared reload
+// "watch". LoadContract returns the values it read, once, so it cannot
+// keep a promise to reload an overlay (SPEC §11.2, item 8).
+func watchedOverlays(overlays []*overlayDecl) []string {
+	var problems []string
+	for _, ov := range overlays {
+		if ov.reload == "watch" {
+			problems = append(problems, fmt.Sprintf("overlay %s: reload watch is not supported in contract-first mode, which reads an overlay once; declare reload restart, or load the overlay with the host that reloads it", ov.name))
+		}
+	}
+	return problems
 }
 
 // layer is a variable's value from below the environment: a profile
@@ -141,8 +154,12 @@ func contractOverlays(x any, problemf func(string, ...any)) []*overlayDecl {
 		if ov.keySeparator != ":" && ov.keySeparator != "." {
 			fail(`keySeparator must be ":" or "."`)
 		}
-		if r, ok := m["reload"]; ok && r != "restart" && r != "watch" {
-			fail("reload must be restart or watch")
+		ov.reload = "restart"
+		if r, ok := m["reload"]; ok {
+			if r != "restart" && r != "watch" {
+				fail("reload must be restart or watch")
+			}
+			ov.reload, _ = r.(string)
 		}
 		out = append(out, ov)
 	}
