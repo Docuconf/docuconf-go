@@ -1,0 +1,19 @@
+exit 1
+-- old --
+files: licence: {type: "text", description: "Licence key file", path: "/etc/app/licence/key.txt", maxLength: 4096}
+files: "partner-ca": {type: "caBundle", description: "Partner CA bundle", path: "/etc/app/ca/partner.pem"}
+files: geoip: {type: "binary", description: "GeoIP database", path: "/data/geo/geo.mmdb", maxSize: 100000000}
+files: "client-tls": {type: "tls", description: "Client certificate", path: "/etc/app/client-tls"}
+-- new --
+files: licence: {type: "text", description: "Licence key file", path: "/etc/app/licence/key.txt", maxLength: 1024, pattern: "^LIC-"}
+files: "partner-ca": {type: "caBundle", description: "Partner CA bundle", path: "/etc/app/ca/partner.pem", minCertificates: 2}
+files: geoip: {type: "binary", description: "GeoIP database", path: "/data/geo/geo.mmdb", maxSize: 200000000}
+files: "client-tls": {type: "tls", description: "Client certificate", path: "/etc/app/client-tls", requireCA: true, dnsNames: ["client.internal"]}
+-- want --
+BREAKING  client-tls: dnsNames added: "client.internal"; the existing certificate may not cover them [dnsNames-tightened]
+BREAKING  client-tls: requireCA set: the source must now carry ca.crt [requireCA-tightened]
+ok        geoip: maxSize raised from 100000000 to 200000000 [maxSize-loosened]
+BREAKING  licence: maxLength lowered from 4096 to 1024 [maxLength-tightened]
+BREAKING  licence: pattern "^LIC-" added [pattern-added]
+BREAKING  partner-ca: minCertificates raised from 1 to 2 [minCertificates-tightened]
+svc: 5 breaking, 0 notable, 1 compatible

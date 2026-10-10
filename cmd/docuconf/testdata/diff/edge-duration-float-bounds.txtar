@@ -1,0 +1,12 @@
+exit 1
+-- old --
+vars: TIMEOUT: {type: "duration", description: "Request timeout", min: "500ms", max: "2m"}
+vars: RATIO: {type: "float", description: "Sample ratio", min: 0, max: 1}
+-- new --
+vars: TIMEOUT: {type: "duration", description: "Request timeout", min: "1s", max: "90s"}
+vars: RATIO: {type: "float", description: "Sample ratio", min: 0.0, max: 0.5}
+-- want --
+BREAKING  RATIO: max lowered from 1 to 0.5 [max-tightened]
+BREAKING  TIMEOUT: min raised from "500ms" to "1s" [min-tightened]
+BREAKING  TIMEOUT: max lowered from "2m" to "90s" [max-tightened]
+svc: 3 breaking, 0 notable, 0 compatible

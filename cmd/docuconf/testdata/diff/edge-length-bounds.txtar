@@ -1,0 +1,23 @@
+exit 1
+-- old --
+vars: NAME: {type: "string", description: "Display name", minLength: 1, maxLength: 64}
+vars: HOSTS: {type: "list", items: "string", description: "Upstream hosts", minItems: 1, maxItems: 8, itemMaxLength: 253}
+vars: SHARDS: {type: "list", items: "int", description: "Shard numbers", itemMin: 0, itemMax: 63}
+vars: KEYS: {type: "keySet", description: "Signing keys", secret: true, keyMinLength: 32}
+-- new --
+vars: NAME: {type: "string", description: "Display name", minLength: 3, maxLength: 128}
+vars: HOSTS: {type: "list", items: "string", description: "Upstream hosts", minItems: 2, maxItems: 4, itemMinLength: 1, itemMaxLength: 253}
+vars: SHARDS: {type: "list", items: "int", description: "Shard numbers", itemMin: 1, itemMax: 127}
+vars: KEYS: {type: "keySet", description: "Signing keys", secret: true, keyMinLength: 16, keyMaxLength: 256, maxKeys: 3}
+-- want --
+BREAKING  HOSTS: itemMinLength 1 added [itemMinLength-tightened]
+BREAKING  HOSTS: minItems raised from 1 to 2 [minItems-tightened]
+BREAKING  HOSTS: maxItems lowered from 8 to 4 [maxItems-tightened]
+ok        KEYS: keyMinLength lowered from 32 to 16 [keyMinLength-loosened]
+ok        KEYS: maxKeys raised from 2 to 3 [maxKeys-loosened]
+BREAKING  KEYS: keyMaxLength 256 added [keyMaxLength-tightened]
+BREAKING  NAME: minLength raised from 1 to 3 [minLength-tightened]
+ok        NAME: maxLength raised from 64 to 128 [maxLength-loosened]
+BREAKING  SHARDS: itemMin raised from 0 to 1 [itemMin-tightened]
+ok        SHARDS: itemMax raised from 63 to 127 [itemMax-loosened]
+svc: 6 breaking, 0 notable, 4 compatible

@@ -1,0 +1,16 @@
+exit 1
+-- old --
+vars: PAGE_SIZE: {type: "int", description: "Page size", configKey: "Catalog:PageSize"}
+overlays: platform: {format: "json", path: "/app/config/appsettings.Production.json", keySeparator: ":"}
+overlays: extra: {format: "yaml", path: "/srv/extra/extra.yaml", keySeparator: "."}
+-- new --
+vars: PAGE_SIZE: {type: "int", description: "Page size"}
+overlays: platform: {format: "json", path: "/app/overlay/appsettings.Production.json", keySeparator: ":", reload: "watch"}
+overlays: more: {format: "yaml", path: "/srv/more/more.yaml", keySeparator: "."}
+-- want --
+BREAKING  PAGE_SIZE: configKey removed: an overlay can no longer carry it [configKey-removed, platform only]
+BREAKING  overlays.extra: overlay removed: values supplied through it are rejected [overlay-removed, platform only]
+ok        overlays.more: overlay added: the platform may supply values through it [overlay-added]
+NOTABLE   overlays.platform: path changed from "/app/config/appsettings.Production.json" to "/app/overlay/appsettings.Production.json": breaking for the app image only; the platform re-renders the overlay [path-changed]
+ok        overlays.platform: reload: restart → watch: the app reloads it itself [reload-changed]
+svc: 2 breaking, 1 notable, 2 compatible

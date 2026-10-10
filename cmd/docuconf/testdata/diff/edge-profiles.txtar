@@ -1,0 +1,23 @@
+exit 1
+-- old --
+vars: DOTNET_ENVIRONMENT: {type: "string", description: "Selected profile", default: "Production"}
+vars: API_URL: {type: "url", description: "Warehouse API", required: true}
+vars: PAGE_SIZE: {type: "int", description: "Page size"}
+profiles: {selector: "DOTNET_ENVIRONMENT", default: "Production", defaults: {
+	Production: {API_URL: "https://warehouse.internal", PAGE_SIZE: 50}
+	Staging: {API_URL: "https://warehouse.staging.internal"}
+}}
+-- new --
+vars: DOTNET_ENVIRONMENT: {type: "string", description: "Selected profile", default: "Production"}
+vars: API_URL: {type: "url", description: "Warehouse API", required: true}
+vars: PAGE_SIZE: {type: "int", description: "Page size"}
+profiles: {selector: "DOTNET_ENVIRONMENT", default: "Staging", defaults: {
+	Production: {PAGE_SIZE: 100}
+	Staging: {API_URL: "https://warehouse.staging.internal", PAGE_SIZE: 20}
+}}
+-- want --
+BREAKING  API_URL: profile Production no longer sets this required variable: the platform must now supply it when Production is selected [profile-default-removed]
+NOTABLE   PAGE_SIZE: profile Production value changed from 50 to 100 [profile-default-changed]
+NOTABLE   PAGE_SIZE: profile Staging now sets it to 20 [profile-default-added]
+NOTABLE   profiles: default profile changed from "Production" to "Staging": an unset selector now picks different baked-in values [default-profile-changed]
+svc: 1 breaking, 3 notable, 0 compatible

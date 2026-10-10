@@ -1,0 +1,9 @@
+exit 0
+-- old --
+vars: PORT: {type: "int", description: "HTTP listen port", default: 8080, min: 1, max: 65535}
+-- new --
+vars: PORT: {type: "int", description: "HTTP listen port", default: 8080, min: 1, max: 65535}
+vars: LOG_FORMAT: {type: "string", description: "Log output format"}
+-- want --
+ok        LOG_FORMAT: optional variable added [var-added]
+svc: 0 breaking, 0 notable, 1 compatible

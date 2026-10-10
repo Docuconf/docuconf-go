@@ -649,8 +649,35 @@ Raw CUE errors for a failed disjunction are noisy, for example "8 errors in empt
 A contract describes a specific build of an application. It MUST travel with the image it was exported from, so the platform can never validate image B against contract A.
 
 - **Preferred:** push the contract as an OCI artifact that references the image's digest, using the OCI 1.1 referrers API. Artifact type: `application/vnd.docuconf.contract.v1alpha1+cue`. It can be signed with cosign like the image.
-- **Fallback:** an image label `dev.docuconf.contract` holding the contract, base64-encoded, for registries without referrers support. This only works for small contracts, because of label size limits.
+- **Fallback:** an image label `dev.docuconf.contract` holding the contract, base64-encoded. This only works for small contracts, because of label size limits, and is only needed where a registry cannot store the artifact at all: registries without the referrers API still hold it under the referrers tag schema (below).
 - **Local and GitOps:** commit `contract.cue` beside the claim. This is fine for getting started but invites version skew.
+
+### 8.1 The artifact
+
+| Field | Value |
+|---|---|
+| Manifest | An OCI image manifest (`application/vnd.oci.image.manifest.v1+json`), as OCI 1.1 packs artifacts. |
+| `artifactType` | `application/vnd.docuconf.contract.v1alpha1+cue`. The version follows the contract's `apiVersion`, so the format freeze changes it to `v1beta1`. |
+| `config` | The empty descriptor (`application/vnd.oci.empty.v1+json`). |
+| `layers` | One layer with the same media type as `artifactType`, holding `contract.cue` exactly as the SDK exported it, with the annotation `org.opencontainers.image.title: contract.cue`. |
+| `subject` | The image's manifest or index, by digest. |
+| Annotations | `org.opencontainers.image.created` (RFC 3339) and `dev.docuconf.contract.name` (`metadata.name`). |
+
+On a registry with the referrers API, the registry indexes the artifact by its `subject`. On one without it, the client keeps the index itself under the **referrers tag schema** of the OCI distribution spec: an image index tagged `sha256-<hex of the image digest>` that lists every artifact referring to the image. Clients that read referrers (oras, cosign, `docuconf pull`) try the API and fall back to the tag.
+
+### 8.2 `docuconf push` and `docuconf pull`
+
+```
+docuconf push --image registry/repo@sha256:<digest> [--plain-http] contract.cue
+docuconf pull --image registry/repo@sha256:<digest> | registry/repo:<tag> [-o contract.cue] [--plain-http]
+```
+
+- `push` validates the contract, then pushes the artifact above with the image as its subject, using the referrers API or the referrers tag schema. The image MUST be given by digest, so the contract is tied to one build; a tag is refused. Pushing a contract that is already there (the same `contract.cue` bytes for the same image) pushes nothing and reports the existing artifact.
+- `push` prints the artifact's reference, `registry/repo@sha256:<artifact digest>`, on standard output, and nothing else, so CI can sign it: `cosign sign $(docuconf push --image ... contract.cue)`. The CLI does not sign; verify with `cosign verify` on the same reference, or with cosign's policy for referrers of the image.
+- `pull` resolves a tag to a digest first, then lists the image's referrers of the contract artifact type. When several contracts refer to one image, the newest by `org.opencontainers.image.created` wins, and `pull` says so on standard error. When none does, it reads the `dev.docuconf.contract` label of the image's config (an image manifest only, since each platform of an index has its own config). The contract is checked against the meta-schema before it is written to `-o` or standard output.
+- `pull` exits 1 when the image has no contract, and 2 on any other error (an unknown image, a registry or credentials error, an invalid contract).
+- Both read credentials as `docker login` and oras do: from `$DOCKER_CONFIG/config.json`, or `~/.docker/config.json`, and the credential helpers it names. `--plain-http` talks to a registry over HTTP, for a local test registry.
+- A platform that validates by image digest runs `docuconf pull --image <image@digest> -o contract.cue`, then `docuconf vet -contract contract.cue ...`, so it can never validate image B against contract A.
 
 ## 9. Compatibility
 
@@ -676,6 +703,76 @@ A contract describes a specific build of an application. It MUST travel with the
 | `reload: restart` → `watch` | compatible | |
 
 The contract format itself is versioned by `apiVersion`: `v1alpha1` (fields may change), then `v1beta1` (additive only), then `v1`.
+
+### 9.1 `docuconf diff`
+
+```
+docuconf diff <old.cue | old.json | -> <new.cue | new.json | -> [--format text|json] [--allow-breaking] [--ack file]
+```
+
+Both contracts are unified with the meta-schema first, so defaults (`required: false`, `reload: restart`, a list's `encoding`, a key set's `minKeys`) are explicit on both sides and a default written out is not a change. Either side, not both, may be `-` for standard input; JSON is recognised by a leading `{`.
+
+Every change gets a **change id** and one of four classes:
+
+| Class | Text label | Meaning |
+|---|---|---|
+| `compatible` | `ok` | Nothing the platform supplies stops working. |
+| `notable` | `NOTABLE` | Behaviour changes, or the app image changes in a way the platform re-renders (the rows above marked "reported as notable" or "breaking for the app image only"). |
+| `breaking-platform` | `BREAKING` (`platform only` after the change id) | Values or sources that still set something the contract dropped fail: removed inputs and overlays. |
+| `breaking` | `BREAKING` | Existing values or sources may no longer validate. |
+
+Constraints are compared field by field, as bounds: a lower bound (`min`, `minLength`, `minItems`, `itemMin`, `itemMinLength`, `minKeys`, `keyMinLength`, `minCertificates`, `minRemaining`) tightens when it is added or raised, and an upper bound (`max`, `maxLength`, `maxItems`, `itemMax`, `itemMaxLength`, `maxKeys`, `keyMaxLength`, `maxSize`) when it is added or lowered. Durations compare as durations. A list of allowed values (`values`, `schemes`, `keyAlgorithms`) tightens when a value is removed, or when the list appears where any value was allowed; `dnsNames`, a list of required names, tightens when a name is added. Changes the table does not list are classified conservatively:
+
+| Change | Class |
+|---|---|
+| `pattern` added or changed (diff cannot compare regular expressions) | breaking |
+| `pattern` removed | compatible |
+| List `items` changed | breaking |
+| `encoding` or `separator` changed | notable (the platform re-renders the wire value) |
+| `encoding` changed to `indexed` | breaking for the platform: an `injected` reference can no longer supply it (section 4.5) |
+| `default` added or removed | notable |
+| `deprecated` removed or its message changed | compatible |
+| `configKey` changed | notable; removed while the contract has overlays: breaking for the platform |
+| File input made `secret` | breaking (inline and `configMap` sources no longer validate) |
+| File `pathEnv` changed | notable |
+| `requireCA` set | breaking |
+| `reload: watch` → `restart` | notable: the platform must now roll the pods |
+| Overlay added | compatible |
+| Overlay removed | breaking for the platform |
+| Overlay `path`, `format` or `keySeparator` changed | notable, breaking for the app image only |
+| Profile value added or changed, `profiles.selector` or `profiles.default` changed | notable |
+| Profile value removed for a required variable | breaking: the platform must now supply it when that profile is selected |
+| `metadata.name` or `apiVersion` changed | notable (`appVersion` and `generator` are ignored) |
+| `schema` added | breaking |
+| Any field diff does not know | breaking, "changed in a way diff cannot classify" |
+
+`injected` sources live in the platform's values, not the contract, so only their one contract-side rule shows up (`indexed`). An injected value is checked at boot, against the new contract's constraints like any other.
+
+**JSON Schemas** (`schema` on `json` variables and config files) are compared structurally, keyword by keyword, following local `$ref`s into `$defs` and `definitions`: `type` (as a set; `integer` is within `number`), `required`, `properties`, `additionalProperties` and `items` (absent means `true`), `enum`, `const`, `pattern`, `format`, `uniqueItems`, and the numeric and length bounds. A property only one side declares is compared with what the other side's `additionalProperties` allowed for that key; a new property on an open object is notable, since values may already set that key in another shape. Annotations (`description`, `title`, `examples`, `default` and the like) are compatible. Any other keyword that differs, such as `oneOf`, `allOf` or a remote `$ref`, is reported as breaking with the reason "schema changed in a way diff cannot classify".
+
+**Output.** By default, one line per change, then a summary line:
+
+```
+BREAKING  WORKER_COUNT: max lowered from 64 to 32 [max-tightened]
+BREAKING  LEGACY_MODE: variable removed; it was deprecated (...) [var-removed, platform only]
+NOTABLE   PORT: default changed from 8080 to 9090 [default-changed]
+ok        LOG_LEVEL: description changed (docs only) [description-changed]
+orders-api: 2 breaking, 1 notable, 1 compatible
+```
+
+`--format json` prints a list of `{"input", "change", "class", "reason"}` objects, with `"acknowledged": true` on acknowledged changes, and `[]` when nothing changed. Variables and file inputs are named as in the contract, overlays as `overlays.<name>`, and profile settings by `profiles` or the variable they set.
+
+**Exit status:** 0 when no change is breaking, 1 when one is (in either breaking class), 2 on a usage or parse error. `--allow-breaking` prints the same and exits 0.
+
+**Acknowledging a change.** CI blocks unacknowledged breaking changes. `--ack file` names accepted ones, one per line as `<input> <change-id>`, with `#` comments:
+
+```
+# the platform stopped setting it in platform PR #142
+LEGACY_MODE var-removed
+WORKER_COUNT max-tightened
+```
+
+An acknowledged change is still printed, marked `acknowledged`, and does not fail the run. An acknowledgment that matches no breaking change is reported on standard error, so stale lines can be cleaned up. Keep the file in the app's repository and empty it after the release that carried the change.
 
 ## 10. Feature flags are not environment configuration
 

@@ -1,0 +1,11 @@
+exit 1
+-- old --
+vars: REGION: {type: "string", description: "Cloud region", pattern: "^[a-z]+$"}
+vars: ZONE: {type: "string", description: "Cloud zone", pattern: "^[a-z]$"}
+-- new --
+vars: REGION: {type: "string", description: "Cloud region", pattern: "^[a-z-]+$"}
+vars: ZONE: {type: "string", description: "Cloud zone"}
+-- want --
+BREAKING  REGION: pattern changed from "^[a-z]+$" to "^[a-z-]+$" [pattern-changed]
+ok        ZONE: pattern "^[a-z]$" removed [pattern-removed]
+svc: 1 breaking, 0 notable, 1 compatible

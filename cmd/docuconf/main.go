@@ -9,6 +9,17 @@
 //	docuconf check  -contract contract.cue
 //	docuconf exec   -contract contract.cue -- program [args...]
 //	docuconf docs   contract.cue [--format model|markdown|agents] [-o file | --check file]
+//	docuconf diff   old.cue new.cue [--format text|json] [--allow-breaking] [--ack file]
+//	docuconf push   --image registry/repo@sha256:... contract.cue
+//	docuconf pull   --image registry/repo@sha256:... [-o contract.cue]
+//
+// diff classifies every change between two contracts as compatible,
+// notable or breaking (spec section 9), and exits 1 on a breaking change
+// that is not acknowledged.
+//
+// push and pull move a contract to and from a registry as an OCI artifact
+// that refers to the image by digest (spec section 8). pull exits 1 when
+// the image has no contract.
 //
 // docs generates documentation from a contract: a docs model (a
 // versioned JSON document, spec section 14), and from the model Markdown
@@ -52,6 +63,9 @@ Usage:
   docuconf check  -contract <contract.cue> [-env-file .env]
   docuconf exec   -contract <contract.cue> [-env-file .env] [-no-defaults] -- <program> [args...]
   docuconf docs   <contract.cue | docs.json> [--format model|markdown|agents] [-o file | --check file]
+  docuconf diff   <old.cue | -> <new.cue | -> [--format text|json] [--allow-breaking] [--ack file]
+  docuconf push   --image <registry/repo@sha256:...> <contract.cue>
+  docuconf pull   --image <registry/repo@sha256:... | registry/repo:tag> [-o contract.cue]
 
 Run "docuconf <command> -h" for a command's flags.
 `
@@ -64,8 +78,9 @@ func main() {
 }
 
 // run executes a command and returns the exit code: 0 on success, 1 when
-// the configuration has problems, 2 on usage or I/O errors, 127 when exec
-// cannot start its program.
+// the configuration has problems (or diff finds a breaking change, or pull
+// no contract), 2 on
+// usage or I/O errors, 127 when exec cannot start its program.
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
@@ -87,6 +102,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runExec(args[1:], stdout, stderr)
 	case "docs":
 		err = runDocs(args[1:], stdout, stderr)
+	case "diff":
+		err = runDiff(args[1:], stdout, stderr)
+	case "push":
+		err = runPush(args[1:], stdout, stderr)
+	case "pull":
+		err = runPull(args[1:], stdout, stderr)
 	case "conformance":
 		err = runConformance(args[1:], stdout, stderr)
 	case "help", "-h", "-help", "--help":
@@ -99,7 +120,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch {
 	case err == nil:
 		return 0
-	case errors.Is(err, errProblems), errors.Is(err, errStale):
+	case errors.Is(err, errProblems), errors.Is(err, errStale), errors.Is(err, errBreaking), errors.Is(err, errNoContract):
 		return 1
 	case errors.Is(err, errExec):
 		return 127

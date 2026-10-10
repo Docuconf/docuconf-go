@@ -1,0 +1,10 @@
+exit 1
+-- old --
+files: "serving-tls": {type: "tls", description: "Serving certificate", path: "/etc/gw/tls", dnsNames: ["gw.internal"], minRemaining: "168h", keyAlgorithms: ["ECDSA", "RSA"]}
+-- new --
+files: "serving-tls": {type: "tls", description: "Serving certificate", path: "/etc/gw/tls", dnsNames: ["gw.internal", "api.example.com"], minRemaining: "720h", keyAlgorithms: ["ECDSA"]}
+-- want --
+BREAKING  serving-tls: minRemaining raised from "168h" to "720h" [minRemaining-tightened]
+BREAKING  serving-tls: dnsNames added: "api.example.com"; the existing certificate may not cover them [dnsNames-tightened]
+BREAKING  serving-tls: keyAlgorithms removed: "RSA" [keyAlgorithms-tightened]
+svc: 3 breaking, 0 notable, 0 compatible

@@ -1,0 +1,8 @@
+exit 1
+-- old --
+vars: WEBHOOK_KEYS: {type: "list", items: "string", description: "Webhook signing keys", secret: true}
+-- new --
+vars: WEBHOOK_KEYS: {type: "keySet", description: "Webhook signing keys", secret: true}
+-- want --
+BREAKING  WEBHOOK_KEYS: secret list of strings → keySet: the contract and the SDK declaration change; the wire format is identical, so the Secret that holds the keys and the values document need no change [list-to-keySet]
+svc: 1 breaking, 0 notable, 0 compatible

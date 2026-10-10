@@ -1,0 +1,8 @@
+exit 1
+-- old --
+vars: API_TOKEN: {type: "string", description: "Partner API token", secret: true}
+-- new --
+vars: API_TOKEN: {type: "string", description: "Partner API token", secret: true, required: true}
+-- want --
+BREAKING  API_TOKEN: optional → required: existing values or sources that leave it unset no longer validate [made-required]
+svc: 1 breaking, 0 notable, 0 compatible

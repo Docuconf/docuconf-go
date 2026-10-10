@@ -1,0 +1,15 @@
+exit 0
+-- old --
+files: closed: {type: "config", format: "json", description: "Closed config", path: "/etc/a/closed.json"
+	schema: {type: "object", additionalProperties: false, properties: {a: {type: "string"}}}}
+files: open: {type: "config", format: "json", description: "Open config", path: "/etc/b/open.json"
+	schema: {type: "object", properties: {a: {type: "string"}}}}
+-- new --
+files: closed: {type: "config", format: "json", description: "Closed config", path: "/etc/a/closed.json"
+	schema: {type: "object", additionalProperties: false, properties: {a: {type: "string"}, b: {type: "integer"}}}}
+files: open: {type: "config", format: "json", description: "Open config", path: "/etc/b/open.json"
+	schema: {type: "object", properties: {a: {type: "string"}, b: {type: "integer"}}}}
+-- want --
+ok        closed: schema /properties/b: now accepts some values [schema-loosened]
+NOTABLE   open: schema /properties/b: property "b" added; values that already set it must now match its schema [schema-changed]
+svc: 0 breaking, 1 notable, 1 compatible

@@ -1,0 +1,11 @@
+exit 1
+-- old --
+files: routes: {type: "config", format: "yaml", description: "Routing table", path: "/etc/gw/routes/routes.yaml"
+	schema: {type: "object", properties: {prefix: {type: "string"}, weight: {type: "number"}}}}
+-- new --
+files: routes: {type: "config", format: "yaml", description: "Routing table", path: "/etc/gw/routes/routes.yaml"
+	schema: {type: "object", required: ["prefix"], properties: {prefix: {type: "string"}, weight: {type: "integer"}}}}
+-- want --
+BREAKING  routes: schema /properties/weight: type narrowed from "number" to "integer" [schema-tightened]
+BREAKING  routes: schema /: required property "prefix" added [schema-tightened]
+svc: 2 breaking, 0 notable, 0 compatible

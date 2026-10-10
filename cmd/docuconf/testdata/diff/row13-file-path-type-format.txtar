@@ -1,0 +1,12 @@
+exit 0
+-- old --
+files: routes: {type: "config", format: "yaml", description: "Routing table", path: "/etc/gw/routes/routes.yaml"}
+files: licence: {type: "text", description: "Licence key file", path: "/etc/gw/licence/key.txt"}
+-- new --
+files: routes: {type: "config", format: "json", description: "Routing table", path: "/etc/gw/config/routes.json"}
+files: licence: {type: "binary", description: "Licence key file", path: "/etc/gw/licence/key.txt"}
+-- want --
+NOTABLE   licence: type changed from "text" to "binary": breaking for the app image only; the platform re-renders the mount and nothing in the values changes [type-changed]
+NOTABLE   routes: path changed from "/etc/gw/routes/routes.yaml" to "/etc/gw/config/routes.json": breaking for the app image only; the platform re-renders the mount and nothing in the values changes [path-changed]
+NOTABLE   routes: format changed from "yaml" to "json": breaking for the app image only; the platform re-renders the mount and nothing in the values changes [format-changed]
+svc: 0 breaking, 3 notable, 0 compatible

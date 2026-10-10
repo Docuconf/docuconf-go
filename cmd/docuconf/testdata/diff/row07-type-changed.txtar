@@ -1,0 +1,8 @@
+exit 1
+-- old --
+vars: TIMEOUT: {type: "int", description: "Timeout in seconds", min: 1}
+-- new --
+vars: TIMEOUT: {type: "duration", description: "Timeout in seconds", min: "1s"}
+-- want --
+BREAKING  TIMEOUT: type changed from "int" to "duration": the value's shape changes [type-changed]
+svc: 1 breaking, 0 notable, 0 compatible

@@ -1,0 +1,8 @@
+exit 1
+-- old --
+vars: LIMITS: {type: "json", description: "Rate limits"}
+-- new --
+vars: LIMITS: {type: "json", description: "Rate limits", schema: {type: "object"}}
+-- want --
+BREAKING  LIMITS: schema added: existing content may not validate [schema-added]
+svc: 1 breaking, 0 notable, 0 compatible

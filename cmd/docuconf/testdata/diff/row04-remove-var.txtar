@@ -1,0 +1,9 @@
+exit 1
+-- old --
+vars: PORT: {type: "int", description: "HTTP listen port", default: 8080, min: 1, max: 65535}
+vars: LEGACY_MODE: {type: "bool", description: "Old behaviour switch"}
+-- new --
+vars: PORT: {type: "int", description: "HTTP listen port", default: 8080, min: 1, max: 65535}
+-- want --
+BREAKING  LEGACY_MODE: variable removed without being deprecated first; values or sources that still set it fail the unknown-input check [var-removed, platform only]
+svc: 1 breaking, 0 notable, 0 compatible

@@ -1,0 +1,8 @@
+exit 1
+-- old --
+vars: {}
+-- new --
+files: routes: {type: "config", format: "yaml", description: "Routing table", path: "/etc/gw/routes/routes.yaml", required: true}
+-- want --
+BREAKING  routes: required file input added: existing sources do not supply it [file-added-required]
+svc: 1 breaking, 0 notable, 0 compatible

@@ -1,0 +1,261 @@
+name: docuconf
+description: Install the docuconf CLI, then vet platform values, diff two contracts, or check generated docs.
+author: docuconf
+
+inputs:
+  command:
+    description: >
+      What to run: "vet", "diff", "docs-check", or "none" to only install the CLI.
+    required: true
+  version:
+    description: >
+      CLI version, such as "0.2.0", or "latest" for the newest cmd/docuconf release. When no matching release
+      exists, the action falls back to "go install". "source" builds the CLI from this action's own commit, so a
+      workflow that uses the action at a commit SHA runs the CLI from that same commit.
+    default: latest
+  contract:
+    description: >
+      The contract. vet: the contract to check against (or use "image"). diff: the new contract, compared with
+      "old" or with the same path on "base-ref". docs-check: the contract the docs are generated from.
+    default: contract.cue
+  values:
+    description: vet only. Variable values (YAML, JSON or CUE).
+    default: ""
+  files:
+    description: vet only. File input sources (YAML, JSON or CUE).
+    default: ""
+  overlays:
+    description: vet only. Config-file overlay values (YAML, JSON or CUE).
+    default: ""
+  policy:
+    description: vet only. Environment policy (CUE).
+    default: ""
+  image:
+    description: >
+      vet only. An image, as registry/repo@sha256:... (or a tag), whose contract is pulled (docuconf pull) and used
+      instead of "contract". Log in to the registry first, for example with docker/login-action.
+    default: ""
+  old:
+    description: diff only. The old contract. Leave empty to take it from "base-ref".
+    default: ""
+  base-ref:
+    description: >
+      diff only. A branch or commit holding the old contract at the same path as "contract", such as
+      github.base_ref in a pull_request workflow. If the contract does not exist there, diff is skipped.
+    default: ""
+  ack:
+    description: diff only. A file of acknowledged breaking changes, one "<input> <change-id>" per line.
+    default: ""
+  allow-breaking:
+    description: diff only. "true" reports breaking changes without failing.
+    default: "false"
+  docs:
+    description: docs-check only. The committed docs file, such as CONFIG.md.
+    default: CONFIG.md
+  docs-format:
+    description: docs-check only. markdown, agents or model.
+    default: markdown
+  working-directory:
+    description: Directory the paths are relative to.
+    default: .
+  repository:
+    description: The GitHub repository the CLI is released from.
+    default: docuconf/docuconf-go
+  token:
+    description: Token for the GitHub API, to find the latest release without hitting the anonymous rate limit.
+    default: ${{ github.token }}
+
+outputs:
+  version:
+    description: The CLI version installed, or "source" / "go install".
+    value: ${{ steps.install.outputs.version }}
+  exit-code:
+    description: The command's exit status (0 when command is "none" or diff was skipped).
+    value: ${{ steps.run.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install docuconf
+      id: install
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        REPOSITORY: ${{ inputs.repository }}
+        GH_TOKEN: ${{ inputs.token }}
+        ACTION_PATH: ${{ github.action_path }}
+        RUNNER_OS_NAME: ${{ runner.os }}
+        RUNNER_ARCH_NAME: ${{ runner.arch }}
+      run: |
+        set -euo pipefail
+        bin="$RUNNER_TEMP/docuconf-bin"
+        mkdir -p "$bin"
+        echo "$bin" >> "$GITHUB_PATH"
+        exe=docuconf
+        case "$RUNNER_OS_NAME" in
+          Linux) os=linux ;;
+          macOS) os=darwin ;;
+          Windows) os=windows; exe=docuconf.exe ;;
+          *) echo "::error::unsupported runner OS $RUNNER_OS_NAME"; exit 1 ;;
+        esac
+        case "$RUNNER_ARCH_NAME" in
+          X64) arch=amd64 ;;
+          ARM64) arch=arm64 ;;
+          *) echo "::error::unsupported runner architecture $RUNNER_ARCH_NAME"; exit 1 ;;
+        esac
+
+        go_install() {
+          # The CLI module needs a recent Go; GOTOOLCHAIN=auto fetches it.
+          export GOTOOLCHAIN=auto GOBIN="$bin"
+          if [ "$1" = source ]; then
+            (cd "$ACTION_PATH/../../cmd/docuconf" && go build -trimpath -o "$bin/$exe" .)
+          else
+            go install "github.com/docuconf/docuconf-go/cmd/docuconf@$1"
+          fi
+        }
+
+        if [ "$VERSION" = source ]; then
+          go_install source
+          echo "version=source" >> "$GITHUB_OUTPUT"
+          "$bin/$exe" help > /dev/null
+          exit 0
+        fi
+
+        version="${VERSION#v}"
+        if [ "$version" = latest ]; then
+          auth=()
+          if [ -n "$GH_TOKEN" ]; then auth=(-H "Authorization: Bearer $GH_TOKEN"); fi
+          tag=$(curl -fsSL "${auth[@]}" "https://api.github.com/repos/$REPOSITORY/releases?per_page=100" 2>/dev/null |
+            jq -r '[.[] | select(.tag_name | startswith("cmd/docuconf/v")) | select(.prerelease | not)][0].tag_name // empty' || true)
+          version="${tag#cmd/docuconf/v}"
+        fi
+
+        if [ -n "$version" ]; then
+          tmp="$RUNNER_TEMP/docuconf-download"
+          rm -rf "$tmp" && mkdir -p "$tmp"
+          name="docuconf_${version}_${os}_${arch}"
+          archive="$name.tar.gz"
+          if [ "$os" = windows ]; then archive="$name.zip"; fi
+          base="https://github.com/$REPOSITORY/releases/download/cmd%2Fdocuconf%2Fv$version"
+          if curl -fsSL -o "$tmp/$archive" "$base/$archive" && curl -fsSL -o "$tmp/SHA256SUMS" "$base/SHA256SUMS"; then
+            # A binary that does not match SHA256SUMS is never installed.
+            line=$(grep " \*\?$archive\$" "$tmp/SHA256SUMS" || true)
+            if [ -z "$line" ]; then
+              echo "::error::$archive is not listed in SHA256SUMS"
+              exit 1
+            fi
+            if command -v sha256sum > /dev/null; then
+              (cd "$tmp" && echo "$line" | sha256sum -c -)
+            else
+              (cd "$tmp" && echo "$line" | shasum -a 256 -c -)
+            fi
+            if [ "$os" = windows ]; then
+              (cd "$tmp" && unzip -q "$archive")
+            else
+              tar -xzf "$tmp/$archive" -C "$tmp"
+            fi
+            mv "$tmp/$name/$exe" "$bin/$exe"
+            chmod +x "$bin/$exe"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "Installed docuconf $version from the $REPOSITORY release"
+            exit 0
+          fi
+          echo "::warning::No docuconf $version release binary for $os/$arch; falling back to go install"
+          go_install "v$version"
+        else
+          echo "::notice::No docuconf CLI release yet; installing with go install @latest"
+          go_install latest
+        fi
+        echo "version=go install" >> "$GITHUB_OUTPUT"
+
+    - name: Run docuconf ${{ inputs.command }}
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        COMMAND: ${{ inputs.command }}
+        CONTRACT: ${{ inputs.contract }}
+        VALUES: ${{ inputs.values }}
+        FILES: ${{ inputs.files }}
+        OVERLAYS: ${{ inputs.overlays }}
+        POLICY: ${{ inputs.policy }}
+        IMAGE: ${{ inputs.image }}
+        OLD: ${{ inputs.old }}
+        BASE_REF: ${{ inputs.base-ref }}
+        ACK: ${{ inputs.ack }}
+        ALLOW_BREAKING: ${{ inputs.allow-breaking }}
+        DOCS: ${{ inputs.docs }}
+        DOCS_FORMAT: ${{ inputs.docs-format }}
+      run: |
+        set -uo pipefail
+        summary() { if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then cat >> "$GITHUB_STEP_SUMMARY"; else cat > /dev/null; fi; }
+        code=0
+        case "$COMMAND" in
+          none)
+            ;;
+          vet)
+            contract="$CONTRACT"
+            if [ -n "$IMAGE" ]; then
+              contract="$RUNNER_TEMP/docuconf-pulled-contract.cue"
+              docuconf pull --image "$IMAGE" -o "$contract" || { code=$?; echo "exit-code=$code" >> "$GITHUB_OUTPUT"; exit "$code"; }
+            fi
+            args=(vet -contract "$contract")
+            [ -n "$VALUES" ] && args+=(-values "$VALUES")
+            [ -n "$FILES" ] && args+=(-files "$FILES")
+            [ -n "$OVERLAYS" ] && args+=(-overlays "$OVERLAYS")
+            [ -n "$POLICY" ] && args+=(-policy "$POLICY")
+            out=$(docuconf "${args[@]}"); code=$?
+            echo "$out"
+            { echo "### docuconf vet"; echo; echo '```'; echo "$out"; echo '```'; } | summary
+            ;;
+          diff)
+            old="$OLD"
+            if [ -z "$old" ]; then
+              if [ -z "$BASE_REF" ]; then
+                echo "::error::diff needs \"old\" or \"base-ref\""
+                echo "exit-code=2" >> "$GITHUB_OUTPUT"
+                exit 2
+              fi
+              # The contract's path from the repository root, so git show
+              # finds it from any working directory.
+              path="$(git rev-parse --show-prefix)$CONTRACT"
+              git fetch --no-tags --quiet --depth=1 origin "$BASE_REF" || git fetch --no-tags --quiet origin "$BASE_REF"
+              # Keep the extension: diff reads .json as JSON and the rest as CUE.
+              old="$RUNNER_TEMP/docuconf-base-contract.${CONTRACT##*.}"
+              if ! git show "FETCH_HEAD:$path" > "$old" 2>/dev/null; then
+                echo "::notice::$path does not exist on $BASE_REF; nothing to diff"
+                echo "exit-code=0" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
+            args=(diff "$old" "$CONTRACT")
+            [ -n "$ACK" ] && args+=(--ack "$ACK")
+            [ "$ALLOW_BREAKING" = true ] && args+=(--allow-breaking)
+            out=$(docuconf "${args[@]}"); code=$?
+            echo "$out"
+            while IFS= read -r line; do
+              case "$line" in
+                BREAKING*acknowledged\]) echo "::notice title=docuconf diff::$line" ;;
+                BREAKING*) echo "::error title=docuconf diff::$line" ;;
+                NOTABLE*) echo "::warning title=docuconf diff::$line" ;;
+              esac
+            done <<< "$out"
+            { echo "### docuconf diff"; echo; echo '```'; echo "$out"; echo '```'; } | summary
+            ;;
+          docs-check)
+            docuconf docs "$CONTRACT" --format "$DOCS_FORMAT" --check "$DOCS"; code=$?
+            if [ "$code" = 1 ]; then
+              echo "::error file=$DOCS::$DOCS is out of date; regenerate it with: docuconf docs $CONTRACT --format $DOCS_FORMAT -o $DOCS"
+            fi
+            ;;
+          *)
+            echo "::error::unknown command \"$COMMAND\": want vet, diff, docs-check or none"
+            code=2
+            ;;
+        esac
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        exit "$code"
+
+branding:
+  icon: check-square
+  color: blue

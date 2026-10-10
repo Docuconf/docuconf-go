@@ -1,0 +1,11 @@
+exit 1
+-- old --
+vars: HOSTS: {type: "list", items: "string", description: "Upstream hosts"}
+vars: PORTS: {type: "list", items: "int", description: "Ports to open"}
+-- new --
+vars: HOSTS: {type: "list", items: "string", description: "Upstream hosts", encoding: "indexed"}
+vars: PORTS: {type: "list", items: "int", description: "Ports to open", encoding: "json"}
+-- want --
+BREAKING  HOSTS: encoding changed from "csv" to "indexed": an injected reference can no longer supply it (SPEC §4.5) [encoding-changed, platform only]
+NOTABLE   PORTS: encoding changed from "csv" to "json": breaking for the app image only; the platform re-renders the wire value [encoding-changed]
+svc: 1 breaking, 1 notable, 0 compatible

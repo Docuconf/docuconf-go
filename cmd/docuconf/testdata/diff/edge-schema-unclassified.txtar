@@ -1,0 +1,11 @@
+exit 1
+-- old --
+files: routes: {type: "config", format: "yaml", description: "Routing table", path: "/etc/gw/routes/routes.yaml"
+	schema: {type: "object", properties: {prefix: {type: "string"}, weight: {type: "number"}}}}
+-- new --
+files: routes: {type: "config", format: "yaml", description: "Routing table", path: "/etc/gw/routes/routes.yaml"
+	schema: {type: "object", properties: {prefix: {type: "string"}, weight: {oneOf: [{type: "integer"}, {type: "string"}]}}}}
+-- want --
+BREAKING  routes: schema /properties/weight: oneOf changed; schema changed in a way diff cannot classify [schema-unclassified]
+ok        routes: schema /properties/weight: type widened from "number" to any [schema-loosened]
+svc: 1 breaking, 0 notable, 1 compatible
