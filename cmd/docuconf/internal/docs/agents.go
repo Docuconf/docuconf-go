@@ -145,6 +145,9 @@ func agentInput(b *strings.Builder, m *Model, in Input) {
 		}
 		line("contents", f.Contents)
 		line("reload", code(f.Reload)+": "+f.ReloadText)
+		if n := reloadNote(in); n != "" {
+			line("reload note", n)
+		}
 	}
 	if len(in.Default) > 0 {
 		line("default", jsonValue(in.Default))

@@ -389,3 +389,28 @@ func TestModelRoundTrip(t *testing.T) {
 		t.Error("Decode accepted an unknown field")
 	}
 }
+
+// TestKeystoreReloadNote: a watched keystore's docs say that rotating its
+// password needs a rollout (SPEC §4.6.2); a keystore read at startup, and
+// any other watched file, say nothing more.
+func TestKeystoreReloadNote(t *testing.T) {
+	const note = "Rotating this keystore's password needs a rollout; a reload keeps the password read at boot."
+	vars := `"KS_PASSWORD": {"type": "string", "description": "Keystore password", "secret": true}`
+	for _, c := range []struct {
+		files string
+		want  bool
+	}{
+		{`"ks": {"type": "keystore", "description": "Partner keystore", "path": "/etc/app/ks/ks.p12", "format": "pkcs12", "passwordVar": "KS_PASSWORD", "reload": "watch"}`, true},
+		{`"ks": {"type": "keystore", "description": "Partner keystore", "path": "/etc/app/ks/ks.p12", "format": "pkcs12", "passwordVar": "KS_PASSWORD"}`, false},
+		{`"lic": {"type": "text", "description": "Licence key", "path": "/etc/app/lic/key.txt", "reload": "watch"}`, false},
+	} {
+		m := build(t, vars, c.files)
+		md, agents := string(Markdown(m)), string(Agents(m))
+		if got := strings.Count(md, note); got != map[bool]int{true: 1}[c.want] {
+			t.Errorf("%s: markdown has the note %d times:\n%s", c.files, got, md)
+		}
+		if got := strings.Contains(agents, "- reload note: "+note+"\n"); got != c.want {
+			t.Errorf("%s: agents note %v:\n%s", c.files, got, agents)
+		}
+	}
+}

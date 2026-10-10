@@ -58,10 +58,15 @@ import (
 // Config files may be json, yaml or toml. A jks keystore is a
 // *DeclarationError: the Go SDK reads pkcs12 only.
 //
+// A file input declared reload "watch" is reloaded exactly as in a
+// declared struct: its value's reading methods, OnChange and
+// ReloadStatus behave the same.
+//
 // Profiles and overlays (SPEC §4.4, §4.7) are layered as a host with
 // config files layers them: a variable's default, then the selected
 // profile's default, then an overlay, read from its path under the file
-// root, then the environment.
+// root, then the environment. The returned values are read once, so an
+// overlay declared reload "watch" is a *DeclarationError.
 //
 // Options.Environment, DotEnv, FileRoot, TerminationLog, Now,
 // WatchInterval and Logger apply; Prefix and FuncMap concern declared
@@ -74,6 +79,9 @@ func LoadContract(contractJSON []byte, opts Options) (map[string]any, error) {
 	c, err := declareContract(contractJSON)
 	if err != nil {
 		return nil, err
+	}
+	if problems := watchedOverlays(c.overlays); len(problems) > 0 {
+		return nil, &DeclarationError{Problems: problems}
 	}
 	vars, files := c.vars, c.files
 	logger := opts.Logger

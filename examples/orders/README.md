@@ -73,7 +73,16 @@ $ echo 'codes: {WELCOME10: 10}' > dev/etc/orders/discounts/discounts.yaml
 $ DATABASE_URL=postgres://orders:pw@localhost:5432/orders DOCUCONF_FILE_ROOT=./dev go run .
 $ curl -k https://localhost:8080/discounts
 {"WELCOME10":10}
+$ curl -k https://localhost:8080/reloadz
+{"serving-tls":{"generation":1}}
 ```
+
+The certificate is watched: replace `tls.crt` and `tls.key` and, within
+10 seconds, the next handshake gets the new certificate, the service
+logs it, and `/reloadz` shows generation 2. A replacement that fails the
+checks is not used; `/reloadz` then shows it under `lastRejected`, with
+its codes. [`internal/upstream`](internal/upstream/upstream.go) shows an
+HTTP client that rebuilds itself when a watched CA bundle changes.
 
 [`smoke.sh`](smoke.sh) checks all three runs, and the webhook key set below; CI runs it on every push.
 
@@ -101,7 +110,7 @@ locking out the sender:
 $ DATABASE_URL=postgres://orders:pw@localhost:5432/orders \
     WEBHOOK_KEYS=old-webhook-key-0123456789abcdef0123, go run .
 docuconf: 1 configuration problem:
-  WEBHOOK_KEYS: key 1 is empty (out_of_range)
+  WEBHOOK_KEYS: key 2 is empty (out_of_range)
 exit status 1
 ```
 

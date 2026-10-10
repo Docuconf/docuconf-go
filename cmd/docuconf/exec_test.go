@@ -258,3 +258,18 @@ contract.#Contract & {
 		t.Fatalf("exit %d\n%s\nwant suffix:\n%s", code, out, want)
 	}
 }
+
+// A watched overlay is the program's host's to reload; boot checks it
+// once, so it drops reload before the SDK's contract-first loader, which
+// rejects reload "watch" on an overlay. Numbers keep their exact value.
+func TestBootDropsOverlayReload(t *testing.T) {
+	in := `{"vars":{"N":{"type":"int","max":9007199254740993}},"overlays":{"platform":{"format":"json","path":"/app/p.json","keySeparator":":","reload":"watch"}}}`
+	out, err := withoutOverlayReload([]byte(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"overlays":{"platform":{"format":"json","keySeparator":":","path":"/app/p.json"}},"vars":{"N":{"max":9007199254740993,"type":"int"}}}`
+	if string(out) != want {
+		t.Fatalf("got  %s\nwant %s", out, want)
+	}
+}

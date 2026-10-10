@@ -306,17 +306,18 @@ func (v *varDecl) parseItems(items []string) (any, []Violation) {
 
 // parseKeys checks a key set's keys (SPEC §4.3): their number, and the
 // length of each, which is never zero. Keys are secret, so no message
-// holds one.
+// holds one; a message names a key by its 1-based position, as in
+// "key 2 is empty" for "old,".
 func (v *varDecl) parseKeys(keys []string) (any, []Violation) {
 	for i, key := range keys {
 		n := utf8.RuneCountInString(key)
 		switch {
 		case n == 0:
-			return nil, v.violation(CodeOutOfRange, "key %d is empty", i)
+			return nil, v.violation(CodeOutOfRange, "key %d is empty", i+1)
 		case v.itemMinLength != nil && n < *v.itemMinLength:
-			return nil, v.violation(CodeOutOfRange, "key %d is %d characters, below keyMinLength %d", i, n, *v.itemMinLength)
+			return nil, v.violation(CodeOutOfRange, "key %d is %d characters, below keyMinLength %d", i+1, n, *v.itemMinLength)
 		case v.itemMaxLength != nil && n > *v.itemMaxLength:
-			return nil, v.violation(CodeOutOfRange, "key %d is %d characters, above keyMaxLength %d", i, n, *v.itemMaxLength)
+			return nil, v.violation(CodeOutOfRange, "key %d is %d characters, above keyMaxLength %d", i+1, n, *v.itemMaxLength)
 		}
 	}
 	if v.minItems != nil && len(keys) < *v.minItems {

@@ -110,6 +110,16 @@
 // take the constraint tags above, which become schema keywords, and T may
 // implement Validate() error.
 //
+// # Reloading
+//
+// A file input with reload "watch" swaps in changed content that passes
+// its boot checks, at most once per Options.WatchInterval; content that
+// fails them is logged and not used. Read the value at each use
+// (TLSKeyPair.GetCertificate, ConfigFile.Value, ...), or rebuild what was
+// made from it in an OnChange hook. ReloadStatus gives the generation and
+// the last accepted and rejected reloads. A keystore reload keeps the
+// password read at boot, so rotating that password needs a rollout.
+//
 // # Boot checks
 //
 // Parse runs caarlos0/env, then checks every variable and file and
