@@ -3,6 +3,7 @@ package docuconf_test
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -109,17 +110,30 @@ func TestLoadContractInvalidContract(t *testing.T) {
 
 	_, err = docuconf.LoadContract([]byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract", "vars": {},
 		"overlays": {"app": {"format": "json", "path": "/etc/app/overlay.json"}}}`), docuconf.Options{})
-	require.ErrorContains(t, err, "contract's overlays are not supported")
+	require.ErrorContains(t, err, `overlay app: keySeparator must be ":" or "."`)
+
+	_, err = docuconf.LoadContract([]byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract",
+		"vars": {"PORT": {"type": "int", "description": "Listen port", "max": 9000}, "KEY": {"type": "string", "description": "A secret key", "secret": true}},
+		"profiles": {"selector": "APP_ENV", "default": "Production",
+			"defaults": {"Production": {"PORT": 9999, "KEY": "x", "NOPE": 1}}}}`), docuconf.Options{})
+	for _, want := range []string{
+		`profiles.selector "APP_ENV" must be a declared variable`,
+		"profiles.defaults.Production: PORT 9999 is above max 9000",
+		"profiles.defaults.Production: KEY is secret",
+		"profiles.defaults.Production: NOPE is not a declared variable",
+	} {
+		require.ErrorContains(t, err, want)
+	}
 
 	_, err = docuconf.LoadContract(contractWithFiles(``, `
-		"settings": {"type": "config", "description": "App settings", "path": "/etc/app/settings.toml", "format": "toml"},
+		"settings": {"type": "config", "description": "App settings", "path": "/etc/app/settings.ini", "format": "ini"},
 		"jks": {"type": "keystore", "description": "Java keystore", "path": "/etc/app/ks.jks", "format": "jks"},
 		"Bad_Name": {"type": "text", "description": "Bad name", "path": "/etc/x"},
 		"rel": {"type": "text", "description": "Relative path", "path": "etc/x"},
 		"odd": {"type": "binary", "description": "A binary file", "path": "/etc/odd", "pattern": "x"}`), docuconf.Options{})
 	require.True(t, errors.As(err, &de), "%v", err)
 	for _, want := range []string{
-		`file input settings: format "toml" is not supported`,
+		`file input settings: format "ini" is not a config file format`,
 		`file input jks: format "jks" is not supported`,
 		"file input Bad_Name: input name must be a DNS label",
 		`file input rel: path "etc/x" must be absolute and normalised`,
@@ -198,4 +212,18 @@ func TestLoadContractFiles(t *testing.T) {
 	_, err = docuconf.LoadContract(c, docuconf.Options{Environment: map[string]string{}, FileRoot: root, TerminationLog: "-"})
 	require.True(t, errors.As(err, &verr), "%v", err)
 	require.Equal(t, filepath.Join(root, "var/orders.txt")+" does not exist (mount it there, or set ORDERS_FILE)", verr.Violations[0].Message)
+}
+
+func TestContractCUEWithProfilesAndOverlays(t *testing.T) {
+	out, err := docuconf.ContractCUE([]byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "ConfigContract",
+		"metadata": {"name": "svc", "generator": {"language": "go", "sdk": "x", "version": "1"}},
+		"vars": {"APP_ENV": {"type": "string", "description": "Selected profile", "default": "Production"},
+			"PAGE_SIZE": {"type": "int", "description": "Items per page", "configKey": "Catalog:PageSize"}},
+		"profiles": {"selector": "APP_ENV", "default": "Production", "defaults": {"Production": {"PAGE_SIZE": 50}}},
+		"overlays": {"platform": {"format": "json", "path": "/app/config/platform.json", "keySeparator": ":"}}}`), "")
+	require.NoError(t, err)
+	s := string(out)
+	require.Contains(t, s, "overlays: {\n\t\tplatform: {")
+	require.Contains(t, s, "profiles: {\n\t\tselector: \"APP_ENV\"")
+	require.Less(t, strings.Index(s, "overlays:"), strings.Index(s, "profiles:"))
 }

@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
 	"software.sslmate.com/src/go-pkcs12"
 )
@@ -52,7 +53,7 @@ func loadTLS(b *fileBinding, boot bool) (*tlsMaterial, bool, []Violation) {
 		chain = append(chain, c)
 	}
 	if len(chain) == 0 {
-		return nil, false, []Violation{b.violation(CodeCertificateInvalid, "tls.crt holds no PEM certificate")}
+		return nil, false, []Violation{b.violation(CodeFileMalformed, "tls.crt holds no PEM certificate")}
 	}
 	pair, err := tls.X509KeyPair(crtPEM, keyPEM)
 	if err != nil {
@@ -190,13 +191,13 @@ func loadKeystore(b *fileBinding) (*keystoreContent, bool, []Violation) {
 	if absent || len(viols) > 0 {
 		return nil, absent, viols
 	}
+	// An unset password variable is an empty password (SPEC §11.2, item
+	// 7): a keystore may be written without one.
 	password := ""
 	if b.decl.passwordVar != "" {
-		p, ok := b.password()
-		if !ok {
-			return nil, false, []Violation{b.violation(CodeKeystoreUnreadable, "cannot open: its password variable %s is not set", b.decl.passwordVar)}
+		if p, ok := b.password(); ok {
+			password = p
 		}
-		password = p
 	}
 	key, leaf, cas, err := pkcs12.DecodeChain(data, password)
 	if err != nil {
@@ -264,17 +265,10 @@ func loadConfig[T any](b *fileBinding) (T, bool, []Violation) {
 		return ": " + err.Error()
 	}
 
-	// Normalise to JSON, so YAML and JSON are checked the same way.
-	if d.format == "yaml" {
-		var v any
-		if err := yaml.Unmarshal(data, &v); err != nil {
-			return zero, false, []Violation{b.violation(CodeFileMalformed, "is not valid YAML%s", reason(err))}
-		}
-		j, err := json.Marshal(v)
-		if err != nil {
-			return zero, false, []Violation{b.violation(CodeFileMalformed, "cannot be represented as JSON%s", reason(err))}
-		}
-		data = j
+	// Normalise to JSON, so every format is checked the same way.
+	data, ferr := structuredToJSON(d.format, data)
+	if ferr != nil {
+		return zero, false, []Violation{b.violation(CodeFileMalformed, "%s%s", ferr.Error(), reason(ferr.Unwrap()))}
 	}
 	doc, err := decodeJSON(data)
 	if err != nil {
@@ -305,3 +299,38 @@ func loadConfig[T any](b *fileBinding) (T, bool, []Violation) {
 }
 
 func reflectTypeName[T any]() string { return fmt.Sprintf("%T", *new(T)) }
+
+// formatError is a structured file that does not parse in its format.
+// Error says which format; Unwrap is the parser's error, which may quote
+// the file and so is left out for secrets.
+type formatError struct {
+	msg string
+	err error
+}
+
+func (e *formatError) Error() string { return e.msg }
+func (e *formatError) Unwrap() error { return e.err }
+
+// structuredToJSON converts a json, yaml or toml document to JSON, so
+// that config files and overlays in every format are checked the same
+// way. A json document is returned as it is.
+func structuredToJSON(format string, data []byte) ([]byte, *formatError) {
+	var v any
+	switch format {
+	case "yaml":
+		if err := yaml.Unmarshal(data, &v); err != nil {
+			return nil, &formatError{"is not valid YAML", err}
+		}
+	case "toml":
+		if err := toml.Unmarshal(data, &v); err != nil {
+			return nil, &formatError{"is not valid TOML", err}
+		}
+	default:
+		return data, nil
+	}
+	j, err := json.Marshal(v)
+	if err != nil {
+		return nil, &formatError{"cannot be represented as JSON", err}
+	}
+	return j, nil
+}

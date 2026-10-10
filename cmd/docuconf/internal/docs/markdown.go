@@ -269,6 +269,10 @@ func (r *mdRenderer) input(b *strings.Builder, in Input, level int) {
 	row("Boot errors", codeList(in.Errors))
 	b.WriteString("\n")
 
+	if n := reloadNote(in); n != "" {
+		fmt.Fprintf(b, "%s\n\n", n)
+	}
+
 	if r := in.Rotation; r != nil {
 		fmt.Fprintf(b, "**Rotation.** %s\n\n", r.Text)
 		for i, s := range r.Steps {

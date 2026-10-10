@@ -61,9 +61,11 @@ func TestKeySetViolations(t *testing.T) {
 	}{
 		{"unset", map[string]string{}, docuconf.CodeMissingRequired, "is required but not set"},
 		{"empty is unset", map[string]string{"WEBHOOK_KEYS": ""}, docuconf.CodeMissingRequired, "is required but not set"},
-		{"trailing separator", map[string]string{"WEBHOOK_KEYS": oldKey + ","}, docuconf.CodeOutOfRange, "key 1 is empty"},
-		{"short key", map[string]string{"WEBHOOK_KEYS": oldKey + ",short"}, docuconf.CodeOutOfRange, "key 1 is 5 characters, below keyMinLength 8"},
-		{"long key", map[string]string{"WEBHOOK_KEYS": strings.Repeat("ü", 17)}, docuconf.CodeOutOfRange, "key 0 is 17 characters, above keyMaxLength 16"},
+		// Keys are named by their 1-based position (SPEC §4.3).
+		{"trailing separator", map[string]string{"WEBHOOK_KEYS": oldKey + ","}, docuconf.CodeOutOfRange, "key 2 is empty"},
+		{"leading separator", map[string]string{"WEBHOOK_KEYS": "," + newKey}, docuconf.CodeOutOfRange, "key 1 is empty"},
+		{"short key", map[string]string{"WEBHOOK_KEYS": oldKey + ",short"}, docuconf.CodeOutOfRange, "key 2 is 5 characters, below keyMinLength 8"},
+		{"long key", map[string]string{"WEBHOOK_KEYS": strings.Repeat("ü", 17)}, docuconf.CodeOutOfRange, "key 1 is 17 characters, above keyMaxLength 16"},
 		{"three keys", map[string]string{"WEBHOOK_KEYS": oldKey + "," + newKey + "," + oldKey}, docuconf.CodeTooManyItems, "has 3 keys, above maxKeys 2"},
 	}
 	for _, c := range cases {
@@ -187,7 +189,17 @@ func TestKeySetContractFirst(t *testing.T) {
 	_, err := load("json", map[string]string{"KEYS": `["aaaa",""]`})
 	var verr *docuconf.ValidationError
 	require.True(t, errors.As(err, &verr), "%v", err)
-	requireViolation(t, verr, "KEYS", docuconf.CodeOutOfRange, "key 1 is empty")
+	requireViolation(t, verr, "KEYS", docuconf.CodeOutOfRange, "key 2 is empty")
+
+	// The message is exactly "key N is empty", N 1-based, in contract-first
+	// mode too, and never holds a key.
+	for raw, want := range map[string]string{"aaaa,": "key 2 is empty", ",bbbb": "key 1 is empty", "aaaa,,bbbb": "key 2 is empty"} {
+		_, err := load("csv", map[string]string{"KEYS": raw})
+		require.True(t, errors.As(err, &verr), "%v", err)
+		require.Len(t, verr.Violations, 1, raw)
+		require.Equal(t, docuconf.CodeOutOfRange, verr.Violations[0].Code, raw)
+		require.Equal(t, want, verr.Violations[0].Message, raw)
+	}
 
 	notSecret := strings.Replace(fmt.Sprintf(contract, "csv"), `"secret": true`, `"secret": false`, 1)
 	_, err = docuconf.LoadContract([]byte(notSecret), docuconf.Options{Environment: map[string]string{}})

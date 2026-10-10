@@ -1,0 +1,230 @@
+description: >
+  Config-file overlays (SPEC §4.7). Layers apply in a fixed order: the
+  variable's default (the base file), then the selected profile, then the
+  overlay, then the environment. Each overlay value sits at its
+  variable's configKey, split on keySeparator, in native types, and is
+  checked exactly like an env value. A missing overlay is not an error;
+  one that does not parse is file_malformed, reported for the overlay.
+requires: [overlays, profiles]
+vars:
+  APP_ENV:
+    type: string
+    description: Which profile file the app loads
+    default: Production
+  CATALOG__PAGESIZE:
+    type: int
+    description: Items per catalog page
+    configKey: "Catalog:PageSize"
+    min: 1
+    max: 500
+    default: 10
+  CATALOG__CACHETTL:
+    type: duration
+    description: How long to cache the catalog
+    configKey: "Catalog:CacheTtl"
+    encoding: go
+    default: 1m
+  CATALOG__RETRYAFTER:
+    type: duration
+    description: Retry delay, in seconds
+    configKey: "Catalog:RetryAfter"
+    encoding: seconds
+  CATALOG__CATEGORIES:
+    type: list
+    description: Featured categories
+    configKey: "Catalog:Categories"
+    items: string
+    encoding: csv
+  CATALOG__SHARDS:
+    type: list
+    description: Shards to read
+    configKey: "Catalog:Shards"
+    items: int
+    encoding: csv
+  CATALOG__DEBUG:
+    type: bool
+    description: Log catalog queries
+    configKey: "Catalog:Debug"
+    default: false
+  SEARCH__URL:
+    type: url
+    description: Search service base URL
+    configKey: "Search:Url"
+    required: true
+profiles:
+  selector: APP_ENV
+  default: Production
+  defaults:
+    Production:
+      CATALOG__PAGESIZE: 20
+      SEARCH__URL: https://search.internal
+overlays:
+  platform:
+    format: json
+    path: /app/config/platform.json
+    keySeparator: ":"
+  platform-yaml:
+    format: yaml
+    path: /app/config-yaml/platform.yaml
+    keySeparator: ":"
+  platform-toml:
+    format: toml
+    path: /app/config-toml/platform.toml
+    keySeparator: ":"
+cases:
+  # Layer order: base, then profile, then overlay, then env.
+  - name: the base default, with no profile file and no overlay
+    env: {APP_ENV: Development, SEARCH__URL: "https://search.dev"}
+    expect: {APP_ENV: Development, SEARCH__URL: "https://search.dev", CATALOG__PAGESIZE: 10}
+
+  - name: the profile beats the base default
+    env: {}
+    expect: {CATALOG__PAGESIZE: 20, SEARCH__URL: https://search.internal}
+
+  - name: the overlay beats the profile
+    env: {}
+    files:
+      /app/config/platform.json: '{"Catalog": {"PageSize": 30}}'
+    expect: {CATALOG__PAGESIZE: 30, SEARCH__URL: https://search.internal}
+
+  - name: the environment beats the overlay
+    env: {CATALOG__PAGESIZE: "40"}
+    files:
+      /app/config/platform.json: '{"Catalog": {"PageSize": 30}}'
+    expect: {CATALOG__PAGESIZE: 40, SEARCH__URL: https://search.internal}
+
+  - name: an overlay satisfies a required variable
+    env: {APP_ENV: Development}
+    files:
+      /app/config/platform.json: '{"Search": {"Url": "https://search.overlay"}}'
+    expect: {APP_ENV: Development, SEARCH__URL: "https://search.overlay", CATALOG__PAGESIZE: 10}
+
+  - name: no overlay file is not an error
+    env: {}
+    expect: {CATALOG__PAGESIZE: 20, SEARCH__URL: https://search.internal}
+
+  # Native types, converted to the wire string and checked like env values.
+  - name: native values in a json overlay
+    env: {}
+    files:
+      /app/config/platform.json: |
+        {"Catalog": {"PageSize": 25, "CacheTtl": "90s", "RetryAfter": 1.5, "Categories": ["books", "games"],
+                     "Shards": [1, 2], "Debug": true},
+         "Search": {"Url": "https://search.overlay"}}
+    expect:
+      CATALOG__PAGESIZE: 25
+      CATALOG__CACHETTL: 1m30s
+      CATALOG__RETRYAFTER: 1s500ms
+      CATALOG__CATEGORIES: [books, games]
+      CATALOG__SHARDS: [1, 2]
+      CATALOG__DEBUG: true
+      SEARCH__URL: "https://search.overlay"
+
+  - name: native values in a yaml overlay
+    env: {}
+    files:
+      /app/config-yaml/platform.yaml: |
+        Catalog:
+          PageSize: 25
+          CacheTtl: 90s
+          RetryAfter: 90
+          Categories: [books, games]
+          Debug: true
+    expect:
+      CATALOG__PAGESIZE: 25
+      CATALOG__CACHETTL: 1m30s
+      CATALOG__RETRYAFTER: 1m30s
+      CATALOG__CATEGORIES: [books, games]
+      CATALOG__DEBUG: true
+      SEARCH__URL: https://search.internal
+
+  - name: native values in a toml overlay
+    env: {}
+    files:
+      /app/config-toml/platform.toml: |
+        [Catalog]
+        PageSize = 25
+        CacheTtl = "90s"
+        RetryAfter = 0.25
+        Categories = ["books", "games"]
+        Debug = true
+    expect:
+      CATALOG__PAGESIZE: 25
+      CATALOG__CACHETTL: 1m30s
+      CATALOG__RETRYAFTER: 250ms
+      CATALOG__CATEGORIES: [books, games]
+      CATALOG__DEBUG: true
+      SEARCH__URL: https://search.internal
+
+  - name: an integral number is an integer
+    env: {}
+    files:
+      /app/config/platform.json: '{"Catalog": {"PageSize": 25.0}}'
+    expect: {CATALOG__PAGESIZE: 25, SEARCH__URL: https://search.internal}
+
+  - name: a null overlay value is unset
+    env: {}
+    files:
+      /app/config/platform.json: '{"Catalog": {"PageSize": null}}'
+    expect: {CATALOG__PAGESIZE: 20, SEARCH__URL: https://search.internal}
+
+  - name: keys match exactly
+    env: {}
+    files:
+      /app/config/platform.json: '{"catalog": {"pagesize": 30}}'
+    expect: {CATALOG__PAGESIZE: 20, SEARCH__URL: https://search.internal}
+
+  # Bad overlay values.
+  - name: an overlay value of the wrong type
+    env: {}
+    files:
+      /app/config/platform.json: '{"Catalog": {"PageSize": "many"}}'
+    errors: [{var: CATALOG__PAGESIZE, code: invalid_type}]
+
+  - name: a fractional number for an int
+    env: {}
+    files:
+      /app/config/platform.json: '{"Catalog": {"PageSize": 2.5}}'
+    errors: [{var: CATALOG__PAGESIZE, code: invalid_type}]
+
+  - name: an overlay value out of range
+    env: {}
+    files:
+      /app/config/platform.json: '{"Catalog": {"PageSize": 0}}'
+    errors: [{var: CATALOG__PAGESIZE, code: out_of_range}]
+
+  - name: a duration in the wrong encoding
+    env: {}
+    files:
+      /app/config/platform.json: '{"Catalog": {"RetryAfter": "90s"}}'
+    errors: [{var: CATALOG__RETRYAFTER, code: invalid_type}]
+
+  - name: a list item of the wrong type
+    env: {}
+    files:
+      /app/config/platform.json: '{"Catalog": {"Shards": [1, "x"]}}'
+    errors: [{var: CATALOG__SHARDS, code: invalid_type}]
+
+  - name: an object where a scalar belongs
+    env: {}
+    files:
+      /app/config/platform.json: '{"Catalog": {"Debug": {"on": true}}}'
+    errors: [{var: CATALOG__DEBUG, code: invalid_type}]
+
+  - name: a bad overlay value is reported even where the environment is unset
+    env: {APP_ENV: Development}
+    files:
+      /app/config/platform.json: '{"Search": {"Url": "not a url"}}'
+    errors: [{var: SEARCH__URL, code: invalid_type}]
+
+  - name: an overlay that does not parse
+    env: {}
+    files:
+      /app/config/platform.json: '{"Catalog": '
+    errors: [{var: platform, code: file_malformed}]
+
+  - name: an overlay that is not an object
+    env: {}
+    files:
+      /app/config/platform.json: '[1, 2]'
+    errors: [{var: platform, code: file_malformed}]
