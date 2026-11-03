@@ -642,6 +642,8 @@ The contract states what the app can accept. The policy states what an environme
 
 Error output MUST NOT include the value of a `secret` variable, including a literal wrongly supplied where a secret reference was required. CUE's own messages print values, so the translator redacts them.
 
+Platforms that deploy with Terraform, OpenTofu or Pulumi get the same checks from a generated module and a plan linter, specified in [IAC.md](IAC.md).
+
 Raw CUE errors for a failed disjunction are noisy, for example "8 errors in empty disjunction". The `docuconf` CLI and the Crossplane function MUST turn them into one line per variable using the `type` field, such as `PORT: 70000 is above max 65535`.
 
 ## 8. Distribution
