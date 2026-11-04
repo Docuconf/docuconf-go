@@ -3,8 +3,8 @@
 // typed and constrained like the input and saying how it is set, and
 // outputs that render the inputs into the blocks a workload takes.
 //
-// This version covers the kubernetes target: environment variables, file
-// inputs and config-file overlays.
+// It covers the kubernetes target (environment variables, file inputs and
+// config-file overlays) and the ecs target (environment variables).
 package terraform
 
 import (
@@ -28,12 +28,15 @@ const (
 
 // Options configure a generated module.
 type Options struct {
-	// Targets are the workload kinds to render for. Only "kubernetes" is
-	// implemented.
+	// Targets are the workload kinds to render for: one of kubernetes or
+	// ecs. A module renders for one target (spec/IAC.md 4.1).
 	Targets []string
 	// GeneratorVersion is the docuconf CLI's version, recorded in
 	// docuconf.json.
 	GeneratorVersion string
+	// Warn, if set, receives what the generator leaves out: an optional
+	// input the target cannot carry.
+	Warn func(string)
 }
 
 // Contract is the part of a contract the generator reads.
@@ -158,10 +161,15 @@ func Generate(c *Contract, opt Options) (map[string][]byte, error) {
 	if len(opt.Targets) == 0 {
 		opt.Targets = []string{"kubernetes"}
 	}
-	for _, t := range opt.Targets {
-		if t != "kubernetes" {
-			return nil, fmt.Errorf("target %q is not supported yet; supported: kubernetes", t)
-		}
+	if len(opt.Targets) > 1 {
+		return nil, fmt.Errorf("-target names one target; a module renders for one, so generate one module per target (got %s)", strings.Join(opt.Targets, ", "))
+	}
+	switch opt.Targets[0] {
+	case "kubernetes":
+	case "ecs":
+		return generateECS(c, opt)
+	default:
+		return nil, fmt.Errorf("target %q is not supported yet; supported: kubernetes, ecs", opt.Targets[0])
 	}
 	g := &gen{c: c}
 	for _, v := range c.Vars {
@@ -669,7 +677,11 @@ func esc(x string) string { return fmt.Sprintf(`replace(%s, "$", "$$")`, x) }
 
 // renderValue is an HCL expression for the list of env entries a literal
 // renders to, in the variable's wire encoding.
-func renderValue(v Var, x string) string {
+func renderValue(v Var, x string) string { return renderWire(v, x, esc) }
+
+// renderWire is renderValue with the target's escaping: the kubelet
+// expands $(VAR), so the kubernetes target doubles $; others do not.
+func renderWire(v Var, x string, esc func(string) string) string {
 	entry := func(name, value string) string {
 		return fmt.Sprintf("{ name = %s, value = %s, value_from = null }", name, value)
 	}

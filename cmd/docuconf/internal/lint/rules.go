@@ -89,6 +89,11 @@ func Check(p *Plan) ([]Finding, []Docs) {
 	}
 	for _, m := range p.Modules {
 		c := m.Contract
+		if t := m.Meta.Targets; len(t) == 1 && t[0] != "kubernetes" {
+			out = append(out, Finding{Code: "target_unchecked", Level: Notice, Module: m.Addr,
+				Message: fmt.Sprintf("the linter does not check the %s target yet; the module's own validations and preconditions still run at plan and apply", t[0])})
+			continue
+		}
 		out = append(out, Finding{Code: "image_unverified", Level: Notice, Module: m.Addr,
 			Message: "the module records no image digest, so the linter cannot check that the bound container runs the image the contract describes"})
 		for _, w := range bound[m] {

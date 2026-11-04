@@ -46,7 +46,7 @@ func TestParseKeepsOrder(t *testing.T) {
 
 func TestGenerateRejects(t *testing.T) {
 	c, _ := Parse([]byte(`{"metadata":{"name":"x"},"vars":{}}`))
-	if _, err := Generate(c, Options{Targets: []string{"ecs"}}); err == nil || !strings.Contains(err.Error(), `target "ecs" is not supported yet`) {
+	if _, err := Generate(c, Options{Targets: []string{"lambda"}}); err == nil || !strings.Contains(err.Error(), `target "lambda" is not supported yet`) {
 		t.Errorf("err = %v", err)
 	}
 }
