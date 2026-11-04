@@ -348,17 +348,23 @@ docuconf lint terraform plan.json                      # one line per problem, a
 docuconf lint terraform plan.json -explain             # the binding table of section 7.1
 docuconf lint terraform plan.json -policy prod.cue     # environment policy, as for vet
 docuconf lint terraform plan.json -format json|sarif
+docuconf lint terraform plan.json -dir infra/prod      # the root where terraform init ran
+docuconf lint terraform plan.json -contract contract.cue  # also check the modules were generated from this contract
 ```
 
-The linter is offline: it reads the plan JSON, the modules' `docuconf.json` (located through the plan's module sources), and optionally `terraform providers schema -json` for attribute types (`-schema`). OpenTofu's plan JSON has the same shape. It exits 0 when there are no errors (warnings and notices allowed), 1 when there are, and 2 on bad usage. Messages never contain a secret value, nor the value of anything the plan marks sensitive.
+The linter is offline: it reads the plan JSON, the modules' `docuconf.json` (located through `.terraform/modules/modules.json` in the root given by `-dir`, or a local module source), and optionally `terraform providers schema -json` for attribute types (`-schema`, not yet implemented). OpenTofu's plan JSON has the same shape. It exits 0 when there are no errors (warnings and notices allowed), 1 when there are, and 2 on bad usage. Messages never contain a secret value, nor the value of anything the plan marks sensitive.
 
 ### 7.1 Reconstructing bindings
 
-For each docuconf module instance in the plan (including `count` and `for_each` instances, and modules nested in other modules), the linter:
+For each docuconf module call in the plan (including modules nested in other modules; the instances of a `count` or `for_each` call share its arguments' expressions), the linter:
 
 1. reads each input argument's expression from the plan's `configuration` section and resolves its **origin**: a literal, or the `references` the expression makes (`aws_db_instance.orders.address`, `var.port`, `random_password.api.result`);
-2. reads the argument's planned value, and whether it is known and sensitive (`after_unknown`, `after_sensitive`);
-3. finds every **bound container**: a container in a workload of the target whose env (and volume, mount and annotation) expressions reference the module's rendered outputs.
+2. finds every **bound workload**, and in it the **app container**:
+   - A workload is bound to the modules its configuration references. The plan's `configuration` section does not show references made inside `dynamic` blocks, which is how a container usually takes `kubernetes_env`, so a reference elsewhere (the pod template's `annotations = module.orders_config.pod_annotations`, a label from `module.orders_config.contract.name`) is what binds it.
+   - A workload that references no docuconf module is bound by the env names its containers set, when exactly one module in its scope has a contract they match. With more than one, the linter cannot tell which, says so (`binding_ambiguous`), and checks nothing for it.
+   - The app container is the one that sets the most of the contract's variables; other containers (sidecars) are ignored.
+3. reads what the app container receives, from the plan's planned values (`after`, `after_unknown`, `after_sensitive`): each env entry, value or reference, known or not, sensitive or not; its volume mounts; and the pod's volumes and metadata. This is the configuration the app will boot with, whether the module rendered it or someone wrote it by hand.
+4. rebuilds the values document from it: each variable's env entry read back from its wire encoding ([SPEC.md section 5](SPEC.md#5-wire-encoding-and-parsing)), a reference in the values document's form, an injected source from the module's argument; and the files and overlays documents from the module's constant arguments. An unknown or sensitive value is left out and reported as `deferred`. `docuconf vet`'s engine then checks the documents, with `-policy` if given, so every constraint the contract states is checked on every known value, in vet's words.
 
 `-explain` prints the result, one row per input:
 
@@ -384,14 +390,17 @@ Each rule has a code. Errors fail the lint; warnings and notices do not. Codes s
 | `duplicate_env` | error | A bound container sets one name twice, for example the module's entry and a hand-written one. Kubernetes keeps the last; the linter refuses both. |
 | `unbound_container` | error | A workload runs the contract's image (by digest, or by the repository in `docuconf.json`) but its env does not come from the module. With several containers, only the app container is checked; the others are ignored. |
 | `secret_as_value` | error | A secret input reaches a plain env value: a literal, or an attribute that is sensitive or comes from a resource listed as secret-bearing (`random_password`, `aws_db_instance.password`, `tls_private_key`, `aws_iam_access_key.secret`, and others the linter knows). The module's types prevent this for its own arguments; the rule catches it when someone writes the value into the workload directly. |
-| `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `schema_mismatch` | error | A known value breaks the input's constraint, checked by the `docuconf vet` engine on the reconstructed values document. This covers what HCL cannot: duration bounds, a `json` value's schema, a policy (`-policy`). |
+| `invalid_value` | error | A known value breaks the input's constraint, checked by the `docuconf vet` engine on the reconstructed documents, with vet's message. This covers what HCL cannot (a `json` value's schema, a config file's schema) and what the module never saw (a value written into the container by hand). |
 | `origin_type_mismatch` | warning | An unknown value's origin has a type that cannot satisfy the input, from the provider schema (`-schema`): a `bool` attribute into a `url` input, a `list` into a `string`. A `string` attribute into an `int` input is a warning too, since it may hold a number; the apply-time precondition decides. |
 | `unsupported_source` | error | An input is set with a source the target cannot express (section 5), or a file input is bound on a target that cannot mount it. |
 | `env_from_unchecked` | error | A bound container uses `env_from` (a whole ConfigMap or Secret as env). Its keys are unknown before apply, so it hides typos and missing inputs. Set `docuconf_options.allow_env_from = true` to downgrade it to a warning. |
 | `mount_mismatch` | error | A file input's mount is missing, at a different path, uses `sub_path`, or is writable ([SPEC.md section 4.6](SPEC.md#46-file-inputs)). |
 | `pod_metadata_misplaced` | error | The module's `pod_annotations` or `pod_labels` are set on the workload's metadata instead of the pod template's. |
+| `pod_metadata_missing` | error | An annotation or label an injected source asks for (with its placeholders expanded) is not on the pod template, so the injector would not act. |
+| `module_unused` | warning | No workload in the plan takes the module's outputs, so only its arguments are checked. |
+| `binding_ambiguous` | notice | A workload's env matches more than one module's contract and references none of them outside a `dynamic` block, so it is not checked (section 7.1). |
 | `contract_image_mismatch` | error | The bound container's image digest is not the one the contract was exported from (section 4.7). |
-| `stale_module` | error | The module's `docuconf.json` does not match the contract it says it was generated from (`-contract` given), or was edited by hand. |
+| `stale_module` | error | The module's files differ from what `docuconf terraform` generates from the contract its `docuconf.json` holds, so it was edited by hand; or, with `-contract`, the module was generated from another version of that contract. The contract digest is the sha256 of its compact JSON. |
 | `policy_mismatch` | error | A value or a reference breaks the environment policy (section 7.3). The message names the input, the field and the constraint, such as `DATABASE_URL: awsSecretsManager.account: 210987654321 is not 123456789012 (policy prod.cue)`. A reference is not secret, so its fields are printed; a secret's value never is. |
 | `policy_deferred` | notice | A policy constrains a field that is unknown at plan, such as the account of a secret created in the same apply. The notice names the input, the field and the constraint, and says whether the module checks it at apply (the constraint was compiled, section 4.6, and the selected `environment` is this policy) or nothing checks it before boot. |
 | `deprecated_set` | warning | A deprecated input is set ([SPEC.md section 4.2](SPEC.md#42-variables)), printed with its message. |
@@ -399,6 +408,8 @@ Each rule has a code. Errors fail the lint; warnings and notices do not. Codes s
 | `image_unverified` | notice | The module records no image digest, so `contract_image_mismatch` could not run. |
 
 What the linter cannot know, it says it cannot know: it never passes an input silently because a value was unknown.
+
+Not yet implemented: `-schema` and `origin_type_mismatch`; `contract_image_mismatch`, which needs a module generated from an OCI reference (section 4.7), so every module gets `image_unverified`; `unsupported_source`, which the `kubernetes` target's argument types already prevent; and `policy_deferred`, which needs a target whose references have fields unknown at plan (Kubernetes references are names, known at plan or reported as `deferred`).
 
 ### 7.3 Policy
 
