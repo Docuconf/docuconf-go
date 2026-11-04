@@ -3,9 +3,8 @@
 // typed and constrained like the input and saying how it is set, and
 // outputs that render the inputs into the blocks a workload takes.
 //
-// This version covers the kubernetes target and environment variables.
-// File inputs and overlays are rejected with a clear error until the
-// module can render their volumes and ConfigMaps.
+// This version covers the kubernetes target: environment variables, file
+// inputs and config-file overlays.
 package terraform
 
 import (
@@ -16,7 +15,6 @@ import (
 	"fmt"
 	"math/big"
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -43,9 +41,9 @@ type Contract struct {
 	Name     string
 	Vars     []Var // in contract order
 	Profiles *Profiles
-	Files    []string
-	Overlays []string
-	JSON     []byte // the contract as JSON, as docuconf helm writes it
+	Files    []File    // in contract order
+	Overlays []Overlay // in contract order
+	JSON     []byte    // the contract as JSON, as docuconf helm writes it
 }
 
 // Var is one contract variable.
@@ -70,8 +68,8 @@ func Parse(contractJSON []byte) (*Contract, error) {
 			Name string `json:"name"`
 		} `json:"metadata"`
 		Vars     map[string]map[string]any `json:"vars"`
-		Files    map[string]any            `json:"files"`
-		Overlays map[string]any            `json:"overlays"`
+		Files    map[string]map[string]any `json:"files"`
+		Overlays map[string]map[string]any `json:"overlays"`
 		Profiles *struct {
 			Selector string                    `json:"selector"`
 			Default  string                    `json:"default"`
@@ -83,7 +81,15 @@ func Parse(contractJSON []byte) (*Contract, error) {
 	if err := dec.Decode(&doc); err != nil {
 		return nil, fmt.Errorf("reading the contract: %w", err)
 	}
-	order, err := varOrder(contractJSON)
+	order, err := keyOrder(contractJSON, "vars")
+	if err != nil {
+		return nil, err
+	}
+	fileOrder, err := keyOrder(contractJSON, "files")
+	if err != nil {
+		return nil, err
+	}
+	overlayOrder, err := keyOrder(contractJSON, "overlays")
 	if err != nil {
 		return nil, err
 	}
@@ -92,30 +98,33 @@ func Parse(contractJSON []byte) (*Contract, error) {
 		raw := doc.Vars[n]
 		c.Vars = append(c.Vars, Var{Name: n, Raw: raw, Type: str(raw, "type"), Secret: boolean(raw, "secret") || str(raw, "type") == "keySet"})
 	}
-	for n := range doc.Files {
-		c.Files = append(c.Files, n)
+	for _, n := range fileOrder {
+		raw := doc.Files[n]
+		c.Files = append(c.Files, File{Name: n, Raw: raw, Type: str(raw, "type"), Secret: boolean(raw, "secret")})
 	}
-	for n := range doc.Overlays {
-		c.Overlays = append(c.Overlays, n)
+	for _, n := range overlayOrder {
+		c.Overlays = append(c.Overlays, Overlay{Name: n, Raw: doc.Overlays[n]})
 	}
-	sort.Strings(c.Files)
-	sort.Strings(c.Overlays)
 	if doc.Profiles != nil {
 		c.Profiles = &Profiles{Selector: doc.Profiles.Selector, Default: doc.Profiles.Default, Defaults: doc.Profiles.Defaults}
 	}
 	return c, nil
 }
 
-// varOrder returns the keys of the contract's vars object in the order the
-// JSON holds them, which is the contract's order.
-func varOrder(contractJSON []byte) ([]string, error) {
+// keyOrder returns the keys of one of the contract's objects (vars, files,
+// overlays) in the order the JSON holds them, which is the contract's
+// order. A missing object has no keys.
+func keyOrder(contractJSON []byte, field string) ([]string, error) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(contractJSON, &top); err != nil {
 		return nil, err
 	}
-	dec := json.NewDecoder(bytes.NewReader(top["vars"]))
+	if top[field] == nil {
+		return nil, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(top[field]))
 	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
-		return nil, fmt.Errorf("reading the contract: vars is not an object")
+		return nil, fmt.Errorf("reading the contract: %s is not an object", field)
 	}
 	var out []string
 	for dec.More() {
@@ -142,17 +151,22 @@ func Generate(c *Contract, opt Options) (map[string][]byte, error) {
 			return nil, fmt.Errorf("target %q is not supported yet; supported: kubernetes", t)
 		}
 	}
-	if len(c.Files) > 0 {
-		return nil, fmt.Errorf("file inputs (%s) are not supported by docuconf terraform yet: it renders environment variables only", strings.Join(c.Files, ", "))
-	}
-	if len(c.Overlays) > 0 {
-		return nil, fmt.Errorf("config-file overlays (%s) are not supported by docuconf terraform yet: it renders environment variables only", strings.Join(c.Overlays, ", "))
-	}
 	g := &gen{c: c}
 	for _, v := range c.Vars {
 		if err := g.checkSupported(v); err != nil {
 			return nil, err
 		}
+	}
+	for _, f := range c.Files {
+		switch f.Type {
+		case "config", "tls", "caBundle", "keystore", "text", "binary":
+		default:
+			return nil, fmt.Errorf("%s: file type %q is not supported by docuconf terraform", f.Name, f.Type)
+		}
+	}
+	render, err := g.render()
+	if err != nil {
+		return nil, err
 	}
 	sum := sha256.Sum256(c.JSON)
 	digest := "sha256:" + hex.EncodeToString(sum[:])
@@ -170,7 +184,7 @@ func Generate(c *Contract, opt Options) (map[string][]byte, error) {
 	return map[string][]byte{
 		"versions.tf":   hclwrite.Format([]byte(Header + "\nterraform {\n  # optional() attributes, check blocks and output preconditions.\n  required_version = \">= 1.5.0\"\n}\n")),
 		"variables.tf":  hclwrite.Format(g.variables()),
-		"render.tf":     hclwrite.Format(g.render()),
+		"render.tf":     hclwrite.Format(render),
 		"outputs.tf":    hclwrite.Format(g.outputs(digest)),
 		"docuconf.json": append(meta, '\n'),
 		"README.md":     g.readme(),
@@ -236,18 +250,10 @@ var sourceTypes = map[string]string{
 // required reports whether the module must be given the input. A required
 // input a profile can supply is optional here: which profile applies is
 // only known from the selector's value (spec/IAC.md 4.3).
+// An input an overlay can carry is optional too, and a precondition checks
+// that it is set in one place or the other.
 func (g *gen) required(v Var) bool {
-	if !boolean(v.Raw, "required") {
-		return false
-	}
-	if p := g.c.Profiles; p != nil {
-		for _, m := range p.Defaults {
-			if _, ok := m[v.Name]; ok {
-				return false
-			}
-		}
-	}
-	return true
+	return boolean(v.Raw, "required") && !g.profileSupplies(v) && len(g.inOverlays(v)) == 0
 }
 
 func (g *gen) variables() []byte {
@@ -275,9 +281,48 @@ func (g *gen) variables() []byte {
 		}
 		b.WriteString("}\n")
 		if d, ok := v.Raw["deprecated"].(map[string]any); ok {
-			fmt.Fprintf(&b, "\ncheck %q {\n  assert {\n    condition     = var.%s == null\n    error_message = %s\n  }\n}\n",
-				"deprecated_"+v.Name, v.Name, hclString(fmt.Sprintf("warning: %s is deprecated, and the platform still sets it: %s", v.Name, str(d, "message"))))
+			cond := "var." + v.Name + " == null"
+			for _, o := range g.inOverlays(v) {
+				cond += " && !" + o
+			}
+			writeDeprecated(&b, v.Name, cond, d)
 		}
+	}
+	for _, f := range g.c.Files {
+		ref := "var." + f.Name
+		fmt.Fprintf(&b, "\nvariable %q {\n", f.Name)
+		fmt.Fprintf(&b, "  description = %s\n", hclString(describeFile(f)))
+		b.WriteString("  type = object({\n")
+		for _, s := range fileSources(f) {
+			fmt.Fprintf(&b, "    %-11s = optional(%s)\n", s, fileSourceType(f, s))
+		}
+		b.WriteString("  })\n")
+		if boolean(f.Raw, "required") {
+			b.WriteString("  nullable = false\n")
+		} else {
+			b.WriteString("  default  = null\n")
+		}
+		for _, c := range g.fileChecks(f, ref) {
+			fmt.Fprintf(&b, "\n  validation {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, c.msg)
+		}
+		b.WriteString("}\n")
+		if d, ok := f.Raw["deprecated"].(map[string]any); ok {
+			writeDeprecated(&b, f.Name, ref+" == null", d)
+		}
+	}
+	for _, o := range g.c.Overlays {
+		fmt.Fprintf(&b, "\nvariable %q {\n", "overlay_"+o.Name)
+		desc := fmt.Sprintf("Values for overlay %s, a %s file at %s, by variable name. Each must be a variable with a configKey.", o.Name, str(o.Raw, "format"), str(o.Raw, "path"))
+		if d := str(o.Raw, "description"); d != "" {
+			desc = d + ". " + desc
+		}
+		fmt.Fprintf(&b, "  description = %s\n", hclString(desc))
+		b.WriteString("  # any, not an object type: Terraform would drop a variable the type leaves out, and the overlay must report it.\n")
+		b.WriteString("  type    = any\n  default = null\n")
+		for _, c := range g.overlayChecks(o) {
+			fmt.Fprintf(&b, "\n  validation {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, c.msg)
+		}
+		b.WriteString("}\n")
 	}
 	b.WriteString(`
 variable "docuconf_options" {
@@ -299,6 +344,14 @@ variable "docuconf_options" {
 `)
 	b.WriteString("}\n")
 	return []byte(b.String())
+}
+
+func writeDeprecated(b *strings.Builder, name, cond string, d map[string]any) {
+	msg := fmt.Sprintf("warning: %s is deprecated, and the platform still sets it: %s", name, str(d, "message"))
+	if by := str(d, "replacedBy"); by != "" {
+		msg += fmt.Sprintf(" (replaced by %s)", by)
+	}
+	fmt.Fprintf(b, "\ncheck %q {\n  assert {\n    condition     = %s\n    error_message = %s\n  }\n}\n", "deprecated_"+ident(name), cond, hclString(msg))
 }
 
 func describeVar(v Var) string {
@@ -653,7 +706,7 @@ func renderDuration(x, enc string) string {
 	}
 }
 
-func (g *gen) render() []byte {
+func (g *gen) render() ([]byte, error) {
 	var b strings.Builder
 	b.WriteString(Header)
 	b.WriteString("\n# Each input's env entries, in its wire encoding (SPEC.md 5), as #Render writes them.\nlocals {\n")
@@ -677,13 +730,55 @@ func (g *gen) render() []byte {
 		}
 		fmt.Fprintf(&b, "  env_%s = %s == null ? [] : (%s.injected != null ? (%s) : (%s))\n", v.Name, ref, ref, injected, expr)
 	}
-	var envs []string
+	// File inputs and overlays (#RenderFile, #RenderOverlay).
+	for _, f := range g.c.Files {
+		g.fileLocals(&b, f)
+	}
+	for _, o := range g.c.Overlays {
+		if err := g.overlayLocals(&b, o); err != nil {
+			return nil, err
+		}
+	}
+
+	// #Render's order: variables, then each file's pathEnv; files, then overlays.
+	var envs, vols, mounts, cms, trigs []string
 	for _, v := range g.c.Vars {
 		envs = append(envs, "local.env_"+v.Name)
 	}
-	fmt.Fprintf(&b, "\n  kubernetes_env = flatten([%s])\n", strings.Join(envs, ", "))
+	for _, f := range g.c.Files {
+		id := ident(f.Name)
+		if str(f.Raw, "pathEnv") != "" {
+			envs = append(envs, "local.file_env_"+id)
+		}
+		vols = append(vols, "local.file_volumes_"+id)
+		mounts = append(mounts, "local.file_volume_mounts_"+id)
+		cms = append(cms, "local.file_config_maps_"+id)
+		trigs = append(trigs, "local.file_restart_triggers_"+id)
+	}
+	for _, o := range g.c.Overlays {
+		id := ident(o.Name)
+		vols = append(vols, "local.overlay_volumes_"+id)
+		mounts = append(mounts, "local.overlay_volume_mounts_"+id)
+		cms = append(cms, "local.overlay_config_maps_"+id)
+	}
+	list := func(xs []string) string {
+		if len(xs) == 0 {
+			return "[]"
+		}
+		return fmt.Sprintf("flatten([%s])", strings.Join(xs, ", "))
+	}
+	b.WriteString("\n")
+	fmt.Fprintf(&b, "  kubernetes_env           = %s\n", list(envs))
+	fmt.Fprintf(&b, "  kubernetes_volumes       = %s\n", list(vols))
+	fmt.Fprintf(&b, "  kubernetes_volume_mounts = %s\n", list(mounts))
+	fmt.Fprintf(&b, "  restart_triggers         = %s\n", list(trigs))
+	if len(cms) == 0 {
+		b.WriteString("  kubernetes_config_maps   = {}\n")
+	} else {
+		fmt.Fprintf(&b, "  kubernetes_config_maps   = merge(%s)\n", strings.Join(cms, ", "))
+	}
 
-	// Pod metadata of injected inputs, with {input} expanded (SPEC.md 4.5.2).
+	// Pod metadata of injected inputs, with placeholders expanded (SPEC.md 4.5.2).
 	b.WriteString("\n  # Pod annotations and labels each injected input asks for, after placeholder expansion.\n")
 	var ann, lab []string
 	for _, v := range g.c.Vars {
@@ -694,8 +789,12 @@ func (g *gen) render() []byte {
 		ann = append(ann, "local.pod_annotations_"+v.Name)
 		lab = append(lab, "local.pod_labels_"+v.Name)
 	}
-	fmt.Fprintf(&b, "  pod_annotation_sources = [var.docuconf_options.pod_annotations, %s]\n", strings.Join(ann, ", "))
-	fmt.Fprintf(&b, "  pod_label_sources      = [var.docuconf_options.pod_labels, %s]\n", strings.Join(lab, ", "))
+	for _, f := range g.c.Files {
+		ann = append(ann, "local.pod_annotations_"+ident(f.Name))
+		lab = append(lab, "local.pod_labels_"+ident(f.Name))
+	}
+	fmt.Fprintf(&b, "  pod_annotation_sources = [%s]\n", strings.Join(append([]string{"var.docuconf_options.pod_annotations"}, ann...), ", "))
+	fmt.Fprintf(&b, "  pod_label_sources      = [%s]\n", strings.Join(append([]string{"var.docuconf_options.pod_labels"}, lab...), ", "))
 	b.WriteString("  pod_annotations        = merge(local.pod_annotation_sources...)\n")
 	b.WriteString("  pod_labels             = merge(local.pod_label_sources...)\n")
 
@@ -705,10 +804,26 @@ func (g *gen) render() []byte {
 		for _, s := range g.sources(v) {
 			arms = append(arms, fmt.Sprintf("var.%s.%s != null ? %q", v.Name, s, s))
 		}
-		fmt.Fprintf(&b, "    %s = { set = var.%s != null, source = var.%s == null ? null : (%s : null) }\n", v.Name, v.Name, v.Name, strings.Join(arms, " : "))
+		env := fmt.Sprintf("var.%s == null ? null : (%s : null)", v.Name, strings.Join(arms, " : "))
+		set := fmt.Sprintf("var.%s != null", v.Name)
+		for _, o := range g.c.Overlays {
+			if ok, _ := g.overlayVar(v, o); ok {
+				in := fmt.Sprintf("(%s == null ? false : %s != null)", overlayRef(o), overlayValue(o, v))
+				env = fmt.Sprintf("%s ? %q : %s", in, "overlay_"+o.Name, "("+env+")")
+				set += " || " + in
+			}
+		}
+		fmt.Fprintf(&b, "    %s = { set = %s, source = %s }\n", v.Name, set, env)
+	}
+	for _, f := range g.c.Files {
+		var arms []string
+		for _, s := range fileSources(f) {
+			arms = append(arms, fmt.Sprintf("var.%s.%s != null ? %q", f.Name, s, s))
+		}
+		fmt.Fprintf(&b, "    %s = { set = var.%s != null, source = var.%s == null ? null : (%s : null) }\n", hclString(f.Name), f.Name, f.Name, strings.Join(arms, " : "))
 	}
 	b.WriteString("  }\n}\n")
-	return []byte(b.String())
+	return []byte(b.String()), nil
 }
 
 func (g *gen) outputs(digest string) []byte {
@@ -724,17 +839,24 @@ output "kubernetes_env" {
 	// The same checks as the arguments' validations, again here: an
 	// argument whose value is unknown at plan is checked when it is known,
 	// during apply, before anything that uses this output (spec/IAC.md 4.4).
-	for _, v := range g.c.Vars {
-		for _, c := range g.checks(v, "var."+v.Name) {
+	pre := func(cs []check) {
+		for _, c := range cs {
 			fmt.Fprintf(&b, "\n  precondition {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, c.msg)
 		}
 	}
+	for _, v := range g.c.Vars {
+		pre(g.checks(v, "var."+v.Name))
+	}
+	pre(g.suppliedChecks())
 	// Pod metadata keys and label values, after placeholder expansion
 	// (#PodMetadata), named by the input that asks for them.
 	id := func(c string) string { return c }
 	pod := podChecks("docuconf_options: ", "var.docuconf_options.pod_annotations", "var.docuconf_options.pod_labels", id)
 	for _, v := range g.c.Vars {
 		pod = append(pod, podChecks(v.Name+": ", "local.pod_annotations_"+v.Name, "local.pod_labels_"+v.Name, id)...)
+	}
+	for _, f := range g.c.Files {
+		pod = append(pod, podChecks(f.Name+": ", "local.pod_annotations_"+ident(f.Name), "local.pod_labels_"+ident(f.Name), id)...)
 	}
 	for _, c := range pod {
 		fmt.Fprintf(&b, "\n  precondition {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, safeMessage(c.msg))
@@ -748,6 +870,35 @@ output "kubernetes_env" {
 `, kind)
 	}
 	b.WriteString(`}
+
+# The pod's volumes, each { name, config_map, secret, csi, image } with exactly one kind set, in
+# the kubernetes provider's volume block shape. Use it in a dynamic "volume" block (README.md).
+output "kubernetes_volumes" {
+  description = "The pod's volumes for file inputs and overlays, in the contract's order."
+  value       = local.kubernetes_volumes
+`)
+	for _, f := range g.c.Files {
+		pre(g.fileChecks(f, "var."+f.Name))
+	}
+	for _, o := range g.c.Overlays {
+		pre(g.overlayChecks(o))
+	}
+	b.WriteString(`}
+
+output "kubernetes_volume_mounts" {
+  description = "The container's volume mounts, each { name, mount_path, read_only }, for a dynamic \"volume_mount\" block."
+  value       = local.kubernetes_volume_mounts
+}
+
+output "kubernetes_config_maps" {
+  description = "ConfigMaps for inline file content and overlays, by name: { data, immutable }. Declare a kubernetes_config_map_v1 for each, in the workload's namespace."
+  value       = local.kubernetes_config_maps
+}
+
+output "restart_triggers" {
+  description = "The ConfigMaps, Secrets and SecretProviderClasses, each { kind, name }, whose change must restart the pods (SPEC.md 4.6.2)."
+  value       = local.restart_triggers
+}
 
 output "pod_annotations" {
   description = "Annotations for the pod template's metadata (never the workload's)."
@@ -792,7 +943,44 @@ func (g *gen) readme() []byte {
 		}
 		fmt.Fprintf(&b, "| `%s` | %s | %s | %s | %s |\n", v.Name, typ, req, "`"+strings.Join(g.sources(v), "`, `")+"`", strings.ReplaceAll(str(v.Raw, "description"), "|", `\|`))
 	}
-	b.WriteString("\nSome constraints are checked by `docuconf lint terraform` and at boot rather than in the module: a `json` input's schema, and anything about a secret's or reference's contents.\n\n")
+	if len(g.c.Files) > 0 {
+		b.WriteString("\n### File inputs\n\n| Input | Type | Path | Required | Set with | Description |\n|---|---|---|---|---|---|\n")
+		for _, f := range g.c.Files {
+			req := ""
+			if boolean(f.Raw, "required") {
+				req = "yes"
+			}
+			typ := f.Type
+			if fm := str(f.Raw, "format"); fm != "" {
+				typ += ", " + fm
+			}
+			if f.Secret {
+				typ += ", secret"
+			}
+			fmt.Fprintf(&b, "| `%s` | %s | `%s` | %s | %s | %s |\n", f.Name, typ, f.path(), req, "`"+strings.Join(fileSources(f), "`, `")+"`", strings.ReplaceAll(str(f.Raw, "description"), "|", `\|`))
+		}
+	}
+	if len(g.c.Overlays) > 0 {
+		b.WriteString("\n### Config-file overlays\n\nEach `overlay_<name>` argument maps variable names to values; the module writes them at each variable's `configKey`. A variable is set in the environment or in one overlay, not both.\n\n| Argument | Format | Path | Reload | Variables it can carry |\n|---|---|---|---|---|\n")
+		for _, o := range g.c.Overlays {
+			var vs []string
+			for _, v := range g.c.Vars {
+				if ok, _ := g.overlayVar(v, o); ok {
+					vs = append(vs, "`"+v.Name+"`")
+				}
+			}
+			reload := str(o.Raw, "reload")
+			if reload == "" {
+				reload = "restart"
+			}
+			fmt.Fprintf(&b, "| `overlay_%s` | %s | `%s` | %s | %s |\n", o.Name, str(o.Raw, "format"), str(o.Raw, "path"), reload, strings.Join(vs, ", "))
+		}
+	}
+	b.WriteString("\nSome constraints are checked by `docuconf lint terraform` and at boot rather than in the module: a `json` input's or config file's schema, a TOML file's syntax, and anything about a secret's or reference's contents.\n")
+	if len(g.c.Files) > 0 || len(g.c.Overlays) > 0 {
+		b.WriteString("\nThe module writes YAML with `yamlencode` and JSON compactly, so a ConfigMap's text, and the content hash in its name, can differ from what `docuconf render` and the Helm library chart write for the same values; the data they hold is the same. TOML inline content must be given as text: Terraform has no TOML encoder.\n")
+	}
+	b.WriteString("\n")
 	b.WriteString("## Usage\n\n```hcl\nmodule \"" + strings.ReplaceAll(g.c.Name, "-", "_") + "_config\" {\n  source = \"./modules/" + g.c.Name + "-config\"\n")
 	for _, v := range g.c.Vars {
 		if !g.required(v) {
@@ -802,6 +990,20 @@ func (g *gen) readme() []byte {
 			fmt.Fprintf(&b, "  %s = { secret = { name = \"%s\", key = \"%s\" } }\n", v.Name, g.c.Name, strings.ToLower(strings.ReplaceAll(v.Name, "_", "-")))
 		} else {
 			fmt.Fprintf(&b, "  %s = { value = %s }\n", v.Name, exampleValue(v))
+		}
+	}
+	for _, f := range g.c.Files {
+		if !boolean(f.Raw, "required") {
+			continue
+		}
+		name := g.c.Name + "-" + f.Name
+		switch {
+		case f.Type == "tls":
+			fmt.Fprintf(&b, "  %s = { secret = { name = %q } }\n", f.Name, name)
+		case f.Secret || f.Type == "binary":
+			fmt.Fprintf(&b, "  %s = { secret = { name = %q, key = %q } }\n", f.Name, name, f.fileName())
+		default:
+			fmt.Fprintf(&b, "  %s = { config_map = { name = %q, key = %q } }\n", f.Name, name, f.fileName())
 		}
 	}
 	b.WriteString("}\n```\n\nIn the Deployment's container:\n\n```hcl\ndynamic \"env\" {\n  for_each = module." + strings.ReplaceAll(g.c.Name, "-", "_") + `_config.kubernetes_env
@@ -842,6 +1044,72 @@ func (g *gen) readme() []byte {
   }
 }
 ` + "```\n\nand put `pod_annotations` and `pod_labels` on the pod template's `metadata`.\n")
+	if len(g.c.Files) > 0 || len(g.c.Overlays) > 0 {
+		m := "module." + strings.ReplaceAll(g.c.Name, "-", "_") + "_config"
+		b.WriteString("\nFor file inputs and overlays, declare the ConfigMaps the module renders, in the workload's namespace:\n\n```hcl\n")
+		fmt.Fprintf(&b, `resource "kubernetes_config_map_v1" "config" {
+  for_each = %[1]s.kubernetes_config_maps
+  metadata {
+    name      = each.key
+    namespace = var.namespace
+  }
+  data      = each.value.data
+  immutable = each.value.immutable
+}
+`+"```\n\nand mount the volumes in the pod spec and the container:\n\n```hcl\n"+`dynamic "volume" {
+  for_each = %[1]s.kubernetes_volumes
+  content {
+    name = volume.value.name
+    dynamic "config_map" {
+      for_each = volume.value.config_map == null ? [] : [volume.value.config_map]
+      content {
+        name         = config_map.value.name
+        default_mode = config_map.value.default_mode
+        dynamic "items" {
+          for_each = config_map.value.items
+          content {
+            key  = items.value.key
+            path = items.value.path
+          }
+        }
+      }
+    }
+    dynamic "secret" {
+      for_each = volume.value.secret == null ? [] : [volume.value.secret]
+      content {
+        secret_name  = secret.value.secret_name
+        default_mode = secret.value.default_mode
+        dynamic "items" {
+          for_each = secret.value.items
+          content {
+            key  = items.value.key
+            path = items.value.path
+          }
+        }
+      }
+    }
+    dynamic "csi" {
+      for_each = volume.value.csi == null ? [] : [volume.value.csi]
+      content {
+        driver            = csi.value.driver
+        read_only         = csi.value.read_only
+        volume_attributes = csi.value.volume_attributes
+      }
+    }
+  }
+}
+
+# in the container
+dynamic "volume_mount" {
+  for_each = %[1]s.kubernetes_volume_mounts
+  content {
+    name       = volume_mount.value.name
+    mount_path = volume_mount.value.mount_path
+    read_only  = volume_mount.value.read_only
+  }
+}
+`+"```\n\n`restart_triggers` lists the ConfigMaps, Secrets and SecretProviderClasses whose change must restart the pods; hash their content into a pod template annotation, or hand the list to a reloader. An inline ConfigMap's name already changes with its content.\n", m)
+	}
 	return []byte(b.String())
 }
 
