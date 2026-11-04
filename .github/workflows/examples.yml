@@ -68,6 +68,39 @@ jobs:
       - name: Smoke test
         run: examples/orders/smoke.sh
 
+  # The orders service deployed from Terraform (deploy/terraform): the
+  # committed module is what docuconf terraform generates from the
+  # contract, and the plan passes docuconf lint. These are the README's
+  # commands.
+  orders-terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Install the docuconf CLI
+        working-directory: cmd/docuconf
+        run: go install .
+      - name: Module is up to date
+        working-directory: examples/orders
+        run: docuconf terraform -contract contract.cue -out deploy/terraform/modules/orders-config -check
+      - name: Plan and lint
+        working-directory: examples/orders/deploy/terraform
+        env:
+          # Planning creates nothing, so no cluster is needed.
+          KUBE_HOST: https://127.0.0.1:6443
+        run: |
+          terraform fmt -check -recursive
+          terraform init -input=false
+          terraform validate
+          terraform plan -refresh=false -out plan.out
+          terraform show -json plan.out > plan.json
+          docuconf lint terraform plan.json -contract ../../contract.cue -explain
+
   # The SDK and docuconf-export promise Go 1.24 without a toolchain
   # download, as on distro packages and pinned CI images.
   go124:
