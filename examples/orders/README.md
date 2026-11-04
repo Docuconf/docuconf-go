@@ -167,3 +167,55 @@ platform can use the
 [docuconf Helm chart](https://github.com/docuconf/docuconf-go/tree/main/helm),
 which generates a `values.schema.json` from the contract. The
 [walkthrough](../walkthrough) shows all three paths end to end.
+
+## Deploy with Terraform
+
+[`deploy/terraform`](deploy/terraform) sets the same inputs from
+Terraform or OpenTofu. `docuconf terraform` generates a module from the
+contract, with one argument per input:
+
+```sh
+docuconf terraform -contract contract.cue -out deploy/terraform/modules/orders-config
+```
+
+The platform sets each input through the module, from wherever the value
+comes, and takes the container's env, volumes, mounts and ConfigMaps from
+its outputs:
+
+```hcl
+module "orders_config" {
+  source = "./modules/orders-config"
+
+  DATABASE_URL = { secret = { name = "orders-db", key = "url" } }
+  LOG_LEVEL    = { value = var.environment == "prod" ? "warn" : "debug" }
+  WORKER_COUNT = { value = 8 }
+  discounts    = { inline = { codes = { WELCOME10 = 10, SPRING25 = 25 } } }
+  # …
+}
+```
+
+Each argument accepts only the sources its input allows, so
+`DATABASE_URL = { value = "postgres://…" }` fails at `terraform validate`:
+a secret is never a literal. The module checks every value against the
+contract at plan, with the same messages as `docuconf vet`:
+
+```
+Error: Invalid value for variable
+
+WORKER_COUNT: 100 is above max 64
+```
+
+and repeats the checks at apply for values Terraform only learns then.
+Then `docuconf lint terraform` checks the plan: what the container will
+actually receive, including env written by hand beside the module's:
+
+```sh
+terraform plan -out plan.out
+terraform show -json plan.out > plan.json
+docuconf lint terraform plan.json -contract ../../contract.cue -explain
+```
+
+It reports a typo such as `PORTT` (with a "did you mean `PORT`?"), a
+secret set as a plain value, a file mounted at the wrong path, or a module
+generated from an older contract. See
+[spec/IAC.md](../../spec/IAC.md) for the module and the linter's rules.
