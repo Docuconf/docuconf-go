@@ -26,6 +26,11 @@
 // argument per input, checked against the contract, and outputs that
 // render the inputs into a workload's env (spec/IAC.md).
 //
+// lint terraform checks a plan (terraform show -json) against the contracts
+// of the docuconf modules it uses: what each bound container receives,
+// rebuilt into values documents and checked with vet's engine, and the
+// wiring the module cannot see (spec/IAC.md section 7).
+//
 // docuconf conformance regenerates conformance/cases.json from
 // conformance/load, for maintainers of the spec.
 //
@@ -55,6 +60,7 @@ Usage:
   docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml]
   docuconf helm   -contract <contract.cue> -chart <chart directory>
   docuconf terraform -contract <contract.cue> -out <module directory> [-target kubernetes] [-check]
+  docuconf lint terraform <plan.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-explain] [-format text|json|sarif]
   docuconf check  -contract <contract.cue> [-env-file .env]
   docuconf exec   -contract <contract.cue> [-env-file .env] [-no-defaults] -- <program> [args...]
   docuconf docs   <contract.cue | docs.json> [--format model|markdown|agents] [-o file | --check file]
@@ -89,6 +95,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runHelm(args[1:], stdout, stderr)
 	case "terraform":
 		err = runTerraform(args[1:], stdout, stderr)
+	case "lint":
+		err = runLint(args[1:], stdout, stderr)
 	case "check":
 		err = runCheck(args[1:], stdout, stderr)
 	case "exec":

@@ -141,6 +141,18 @@ func keyOrder(contractJSON []byte, field string) ([]string, error) {
 	return out, nil
 }
 
+// Digest is a contract's digest as a module records it: the sha256 of its
+// compact JSON, so that it does not depend on how the JSON is indented.
+func Digest(contractJSON []byte) string {
+	var b bytes.Buffer
+	if err := json.Compact(&b, contractJSON); err != nil {
+		b.Reset()
+		b.Write(contractJSON)
+	}
+	sum := sha256.Sum256(b.Bytes())
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
 // Generate writes the module's files, keyed by file name.
 func Generate(c *Contract, opt Options) (map[string][]byte, error) {
 	if len(opt.Targets) == 0 {
@@ -168,8 +180,7 @@ func Generate(c *Contract, opt Options) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	sum := sha256.Sum256(c.JSON)
-	digest := "sha256:" + hex.EncodeToString(sum[:])
+	digest := Digest(c.JSON)
 	meta, err := json.MarshalIndent(map[string]any{
 		"apiVersion":     "docuconf.dev/v1alpha1",
 		"kind":           "TerraformModule",
