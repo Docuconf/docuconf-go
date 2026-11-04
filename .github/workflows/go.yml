@@ -76,8 +76,21 @@ jobs:
         with:
           tofu_version: ${{ matrix.version }}
           tofu_wrapper: false
+      # The lint tests plan with the kubernetes and aws providers; keep them
+      # between runs rather than downloading them every time.
+      - name: Provider cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: providers-${{ matrix.tool }}-${{ hashFiles('cmd/docuconf/*_test.go') }}
+          restore-keys: providers-${{ matrix.tool }}-
       - name: Modules match docuconf render
         working-directory: cmd/docuconf
         env:
           DOCUCONF_TERRAFORM: ${{ matrix.tool }}
-        run: go test -count=1 -v -run Terraform .
+          TF_PLUGIN_CACHE_DIR: /home/runner/.terraform.d/plugin-cache
+          # The tests' roots have no lock file; use the cache anyway.
+          TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE: "true"
+        run: |
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          go test -count=1 -v -run Terraform .
