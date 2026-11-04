@@ -47,3 +47,37 @@ jobs:
           )
           EOF
           GOWORK="$RUNNER_TEMP/go.work" go test -run 'Check|Exec' .
+
+  # docuconf terraform: generated modules are applied and compared with
+  # docuconf render, on the oldest Terraform they support, the latest, and
+  # OpenTofu (cmd/docuconf/terraform_test.go).
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {tool: terraform, version: "1.5.7"}
+          - {tool: terraform, version: latest}
+          - {tool: tofu, version: latest}
+    name: terraform (${{ matrix.tool }} ${{ matrix.version }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - if: matrix.tool == 'terraform'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ matrix.version }}
+          terraform_wrapper: false
+      - if: matrix.tool == 'tofu'
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ matrix.version }}
+          tofu_wrapper: false
+      - name: Modules match docuconf render
+        working-directory: cmd/docuconf
+        env:
+          DOCUCONF_TERRAFORM: ${{ matrix.tool }}
+        run: go test -count=1 -v -run Terraform .

@@ -73,7 +73,10 @@
       "release-type": "go",
       "package-name": "cmd/docuconf",
       "component": "cmd/docuconf",
-      "tag-separator": "/"
+      "tag-separator": "/",
+      "extra-files": [
+        "version.go"
+      ]
     }
   }
 }
