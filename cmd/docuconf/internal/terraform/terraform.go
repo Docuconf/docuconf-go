@@ -4,7 +4,9 @@
 // outputs that render the inputs into the blocks a workload takes.
 //
 // It covers the kubernetes target (environment variables, file inputs and
-// config-file overlays) and the ecs target (environment variables).
+// config-file overlays), the ecs target (environment variables) and the
+// cloudrun target (environment variables and file inputs from Secret
+// Manager).
 package terraform
 
 import (
@@ -28,8 +30,8 @@ const (
 
 // Options configure a generated module.
 type Options struct {
-	// Targets are the workload kinds to render for: one of kubernetes or
-	// ecs. A module renders for one target (spec/IAC.md 4.1).
+	// Targets are the workload kinds to render for: one of kubernetes,
+	// ecs or cloudrun. A module renders for one target (spec/IAC.md 4.1).
 	Targets []string
 	// GeneratorVersion is the docuconf CLI's version, recorded in
 	// docuconf.json.
@@ -168,8 +170,10 @@ func Generate(c *Contract, opt Options) (map[string][]byte, error) {
 	case "kubernetes":
 	case "ecs":
 		return generateECS(c, opt)
+	case "cloudrun":
+		return generateCloudRun(c, opt)
 	default:
-		return nil, fmt.Errorf("target %q is not supported yet; supported: kubernetes, ecs", opt.Targets[0])
+		return nil, fmt.Errorf("target %q is not supported yet; supported: kubernetes, ecs, cloudrun", opt.Targets[0])
 	}
 	g := &gen{c: c}
 	for _, v := range c.Vars {

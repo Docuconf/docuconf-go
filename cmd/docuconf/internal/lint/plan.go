@@ -65,7 +65,7 @@ type Workload struct {
 	Addr   string // the full address, module path included
 	Scope  string // the module the resource is declared in
 	Type   string
-	Target string // kubernetes or ecs
+	Target string // kubernetes, ecs or cloudrun
 	// Unknown is set when the plan does not know what the containers get,
 	// such as container_definitions built from an ARN created in the same
 	// apply.
@@ -96,7 +96,7 @@ type Container struct {
 type Env struct {
 	Name      string
 	Value     *string
-	ValueFrom map[string]any // the first value_from block: secret_key_ref, …; for ECS, {"ecs": valueFrom}
+	ValueFrom map[string]any // the first value_from block: secret_key_ref, …; for ECS, {"ecs": valueFrom}; for Cloud Run, {"gcp": {secret, version}}
 	Unknown   bool           // the value (or a reference field) is unknown at plan
 	Sensitive bool
 }
@@ -248,6 +248,8 @@ func Read(planFile, root string) (*Plan, error) {
 			w = readWorkload(rc.Type, rc.Change.After, rc.Change.AfterUnknown, rc.Change.AfterSensitive)
 		case rc.Type == "aws_ecs_task_definition":
 			w = readTaskDefinition(rc.Change.After, rc.Change.AfterUnknown)
+		case rc.Type == "google_cloud_run_v2_service" || rc.Type == "google_cloud_run_v2_job":
+			w = readCloudRun(rc.Type, rc.Change.After, rc.Change.AfterUnknown, rc.Change.AfterSensitive)
 		default:
 			continue
 		}
@@ -419,6 +421,56 @@ func readTaskDefinition(after, unknown any) *Workload {
 			ct.Env = append(ct.Env, Env{Name: e.Name, ValueFrom: map[string]any{"ecs": e.ValueFrom}})
 		}
 		w.Containers = append(w.Containers, ct)
+	}
+	return w
+}
+
+// readCloudRun reads a Cloud Run service's or job's revision template:
+// its containers' env and volume mounts, and its volumes.
+func readCloudRun(typ string, after, unknown, sensitive any) *Workload {
+	w := &Workload{Type: typ, Target: "cloudrun"}
+	tp := []any{"template", 0}
+	if typ == "google_cloud_run_v2_job" {
+		tp = []any{"template", 0, "template", 0}
+	}
+	sub := func(v any, extra ...any) any { return at(v, append(append([]any{}, tp...), extra...)...) }
+	containers, _ := sub(after, "containers").([]any)
+	for i, c := range containers {
+		cu := sub(unknown, "containers", i)
+		cs := sub(sensitive, "containers", i)
+		ct := Container{}
+		ct.Name, _ = at(c, "name").(string)
+		ct.Image, _ = at(c, "image").(string)
+		envs, _ := at(c, "env").([]any)
+		for j, e := range envs {
+			env := Env{}
+			env.Name, _ = at(e, "name").(string)
+			if s, ok := at(e, "value").(string); ok && at(e, "value_source", 0) == nil {
+				env.Value = &s
+			}
+			if r, ok := at(e, "value_source", 0, "secret_key_ref", 0).(map[string]any); ok {
+				env.ValueFrom = map[string]any{"gcp": r}
+			}
+			eu := at(cu, "env", j)
+			env.Unknown = eu == true || at(eu, "value") == true || anyTrue(at(eu, "value_source"))
+			es := at(cs, "env", j)
+			env.Sensitive = cs == true || at(cs, "env") == true || es == true || at(es, "value") == true
+			ct.Env = append(ct.Env, env)
+		}
+		mounts, _ := at(c, "volume_mounts").([]any)
+		for _, mo := range mounts {
+			m := Mount{ReadOnly: true} // Cloud Run mounts secret volumes read-only
+			m.Name, _ = at(mo, "name").(string)
+			m.MountPath, _ = at(mo, "mount_path").(string)
+			ct.Mounts = append(ct.Mounts, m)
+		}
+		w.Containers = append(w.Containers, ct)
+	}
+	vols, _ := sub(after, "volumes").([]any)
+	for _, v := range vols {
+		if m, ok := v.(map[string]any); ok {
+			w.Volumes = append(w.Volumes, m)
+		}
 	}
 	return w
 }

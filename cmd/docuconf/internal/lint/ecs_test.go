@@ -23,3 +23,12 @@ func TestParseValueFrom(t *testing.T) {
 		}
 	}
 }
+
+func TestParseGCPSecret(t *testing.T) {
+	if got, want := ParseGCPSecret("projects/acme/secrets/db", "4"), map[string]any{"gcpSecretManager": map[string]any{"project": "acme", "secret": "db", "version": "4"}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	if got, want := ParseGCPSecret("db", "latest"), map[string]any{"gcpSecretManager": map[string]any{"secret": "db", "version": "latest"}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}

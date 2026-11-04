@@ -21,7 +21,7 @@ func runTerraform(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("terraform", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	contract := fs.String("contract", "contract.cue", "the service's contract")
-	target := fs.String("target", "kubernetes", "the workload kind to render for: kubernetes or ecs")
+	target := fs.String("target", "kubernetes", "the workload kind to render for: kubernetes, ecs or cloudrun")
 	out := fs.String("out", "", "the module directory to write into")
 	check := fs.Bool("check", false, "compare with the module in -out instead of writing; exit 1 if it is out of date (generator.version is ignored)")
 	if err := fs.Parse(args); err != nil {

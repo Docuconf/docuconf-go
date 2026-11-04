@@ -199,7 +199,7 @@ func vetDocs(p *platform.Platform, d lint.Docs, policy cue.Value, policyFile str
 	for _, l := range deferred {
 		name, _, _ := strings.Cut(l, ":")
 		out = append(out, lint.Finding{Code: "policy_deferred", Level: lint.Notice, Module: d.Module.Addr, Where: d.Where, Input: name,
-			Message: fmt.Sprintf("%s (policy %s); nothing checks it before the task starts", l, filepath.Base(policyFile))})
+			Message: fmt.Sprintf("%s (policy %s); nothing checks it before the app starts", l, filepath.Base(policyFile))})
 	}
 	for _, w := range warnings {
 		out = append(out, lint.Finding{Code: "deprecated_set", Level: lint.Warning, Module: d.Module.Addr, Where: d.Where,
