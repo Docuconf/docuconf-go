@@ -640,6 +640,14 @@ goodProd: contract.#Validate & {contract: billing, values: goodValues & prodPoli
 
 The contract states what the app can accept. The policy states what an environment allows. A deploy must satisfy both, and neither side has to edit the other's file.
 
+Beside the inputs, the document a policy is unified with has two lowercase fields, which never collide with a variable name (section 4.2): `references`, holding every input set by reference (`secretKeyRef`, `configMapKeyRef`, `fieldRef`, `resourceFieldRef` or `injected`), keyed by input name, and `secretReferences`, holding only the secret inputs among them. A rule for every secret is then one pattern constraint:
+
+```cue
+secretReferences: [string]: secretKeyRef?: name: =~"^billing-"
+```
+
+The values document itself MUST NOT set either field. The infrastructure-as-code linter fills the same two maps with each target's own reference forms ([IAC.md section 7.3](IAC.md#73-policy)).
+
 Error output MUST NOT include the value of a `secret` variable, including a literal wrongly supplied where a secret reference was required. CUE's own messages print values, so the translator redacts them.
 
 Platforms that deploy with Terraform, OpenTofu or Pulumi get the same checks from a generated module and a plan linter, specified in [IAC.md](IAC.md).
