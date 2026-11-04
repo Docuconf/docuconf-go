@@ -123,7 +123,7 @@ resource "aws_secretsmanager_secret" "db" {
 	if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(root.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := tf(t, bin, dir, "init", "-input=false", "-no-color"); err != nil {
+	if out, err := tfInit(t, bin, dir); err != nil {
 		t.Fatalf("init (needs the aws provider; see the comment above): %v\n%s", err, out)
 	}
 	if out, err := tf(t, bin, dir, "plan", "-input=false", "-no-color", "-refresh=false", "-out", "plan.out"); err != nil {
