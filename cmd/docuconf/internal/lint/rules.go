@@ -40,6 +40,9 @@ type Docs struct {
 	// Deferred names the inputs left out because their value is unknown
 	// or sensitive at plan.
 	Deferred map[string]bool
+	// Refs are references in their target's form, which only the policy
+	// sees (spec/IAC.md 7.3): {awsSecretsManager: {account: …}}.
+	Refs     map[string]any
 	Bindings []Binding
 }
 
@@ -62,7 +65,7 @@ func Check(p *Plan) ([]Finding, []Docs) {
 	for _, w := range p.Workloads {
 		var refd, matches []*Module
 		for _, m := range p.Modules {
-			if w.Scope != m.Scope {
+			if w.Scope != m.Scope || w.Target != m.Target() {
 				continue
 			}
 			if ok, _ := refersTo(w.Config, "module."+m.Name); ok {
@@ -89,20 +92,32 @@ func Check(p *Plan) ([]Finding, []Docs) {
 	}
 	for _, m := range p.Modules {
 		c := m.Contract
-		if t := m.Meta.Targets; len(t) == 1 && t[0] != "kubernetes" {
+		if t := m.Target(); t != "kubernetes" && t != "ecs" {
 			out = append(out, Finding{Code: "target_unchecked", Level: Notice, Module: m.Addr,
-				Message: fmt.Sprintf("the linter does not check the %s target yet; the module's own validations and preconditions still run at plan and apply", t[0])})
+				Message: fmt.Sprintf("the linter does not check the %s target yet; the module's own validations and preconditions still run at plan and apply", t)})
 			continue
 		}
 		out = append(out, Finding{Code: "image_unverified", Level: Notice, Module: m.Addr,
 			Message: "the module records no image digest, so the linter cannot check that the bound container runs the image the contract describes"})
 		for _, w := range bound[m] {
 			_, attrs := refersTo(w.Config, "module."+m.Name)
+			if w.Unknown {
+				// What the containers get is known only during apply: the
+				// module's preconditions check it then; here, its arguments.
+				out = append(out, Finding{Code: "deferred", Level: Notice, Module: m.Addr, Where: w.Addr,
+					Message: fmt.Sprintf("%s's container definitions are unknown at plan, so the linter checks only %s's arguments; the module's preconditions check the values at apply", w.Addr, m.Addr)})
+				docs = append(docs, constantDocs(m, w.Addr))
+				continue
+			}
 			app := appContainer(w, c)
 			if app < 0 {
 				if len(renderedNames(m)) > 0 {
+					output := "kubernetes_env output in the app container's env"
+					if m.Target() == "ecs" {
+						output = "ecs_environment and ecs_secrets outputs in the app's container definition"
+					}
 					out = append(out, Finding{Code: "unbound_container", Level: Error, Module: m.Addr, Where: w.Addr,
-						Message: fmt.Sprintf("%s reads %s, but none of its containers takes the env the module renders; use its kubernetes_env output in the app container's env", w.Addr, m.Addr)})
+						Message: fmt.Sprintf("%s reads %s, but none of its containers takes the env the module renders; use its %s", w.Addr, m.Addr, output)})
 				}
 				continue
 			}
@@ -110,7 +125,9 @@ func Check(p *Plan) ([]Finding, []Docs) {
 			where := fmt.Sprintf("%s, container %q", w.Addr, ct.Name)
 			f, d := checkContainer(m, w, ct, where)
 			out = append(out, f...)
-			out = append(out, checkPodMeta(m, w, where, attrs)...)
+			if w.Target == "kubernetes" {
+				out = append(out, checkPodMeta(m, w, where, attrs)...)
+			}
 			docs = append(docs, d)
 		}
 		if len(bound[m]) == 0 {
@@ -270,7 +287,11 @@ func checkContainer(m *Module, w *Workload, ct Container, where string) ([]Findi
 	}
 	for _, n := range renderedNames(m) {
 		if seen[n] == 0 {
-			add("unbound_container", Error, strings.TrimSuffix(n, "__0"), fmt.Sprintf("%s: %s renders it, but the container does not set it; take the container's env from %s.kubernetes_env", strings.TrimSuffix(n, "__0"), m.Addr, m.Addr))
+			from := m.Addr + ".kubernetes_env"
+			if w.Target == "ecs" {
+				from = m.Addr + ".ecs_environment and .ecs_secrets"
+			}
+			add("unbound_container", Error, strings.TrimSuffix(n, "__0"), fmt.Sprintf("%s: %s renders it, but the container does not set it; take the container's env from %s", strings.TrimSuffix(n, "__0"), m.Addr, from))
 		}
 	}
 	if len(ct.EnvFrom) > 0 {
@@ -278,13 +299,19 @@ func checkContainer(m *Module, w *Workload, ct Container, where string) ([]Findi
 		if boolArg(m, "allow_env_from") {
 			level = Warning
 		}
-		add("env_from_unchecked", level, "", "the container takes env_from a whole ConfigMap or Secret, whose keys the linter cannot see before apply; set each input through the module instead, or set docuconf_options.allow_env_from")
+		if w.Target == "ecs" {
+			add("env_from_unchecked", Error, "", "the container takes environmentFiles, whose keys the linter cannot see before apply; set each input through the module instead")
+		} else {
+			add("env_from_unchecked", level, "", "the container takes env_from a whole ConfigMap or Secret, whose keys the linter cannot see before apply; set each input through the module instead, or set docuconf_options.allow_env_from")
+		}
 	}
-	out = append(out, checkMounts(m, w, ct)...)
+	if w.Target == "kubernetes" {
+		out = append(out, checkMounts(m, w, ct)...)
+	}
 	for i := range out {
 		out[i].Where = where
 	}
-	d := containerDocs(m, ct, where)
+	d := containerDocs(m, w, ct, where)
 	for _, n := range sortedKeys(d.Deferred) {
 		origin := "an unknown value"
 		if x, ok := m.Args[n]; ok && len(x.References) > 0 {
@@ -544,11 +571,17 @@ func argValue(x Expr) (any, bool) {
 // constantDocs builds the documents from the module's constant arguments
 // alone, when no workload takes its outputs.
 func constantDocs(m *Module, where string) Docs {
-	d := Docs{Module: m, Where: where, Values: map[string]any{}, Files: map[string]any{}, Overlays: map[string]any{}, Deferred: map[string]bool{}}
+	d := Docs{Module: m, Where: where, Values: map[string]any{}, Files: map[string]any{}, Overlays: map[string]any{}, Deferred: map[string]bool{}, Refs: map[string]any{}}
 	for _, v := range m.Contract.Vars {
 		x, ok := m.Args[v.Name]
 		if !ok {
 			continue
+		}
+		if m.Target() == "ecs" && source(x) == "secret" {
+			if _, ok := at(x.Constant, "secret", "value_from").(string); ok {
+				d.ecsSecret(v.Name, ecsValueFrom(x.Constant))
+				continue
+			}
 		}
 		if val, ok := argValue(x); ok {
 			d.Values[v.Name] = val
@@ -603,8 +636,12 @@ func (d *Docs) fillShared(m *Module) {
 // containerDocs builds the documents from what the container receives:
 // each variable's env entry, read back from its wire form (SPEC.md 5), or
 // the module's constant argument where that says more (an injected source).
-func containerDocs(m *Module, ct Container, where string) Docs {
-	d := Docs{Module: m, Where: where, Values: map[string]any{}, Files: map[string]any{}, Overlays: map[string]any{}, Deferred: map[string]bool{}}
+func containerDocs(m *Module, w *Workload, ct Container, where string) Docs {
+	d := Docs{Module: m, Where: where, Values: map[string]any{}, Files: map[string]any{}, Overlays: map[string]any{}, Deferred: map[string]bool{}, Refs: map[string]any{}}
+	unescape := unescape
+	if w.Target == "ecs" {
+		unescape = func(s string) string { return s } // ECS passes values as they are
+	}
 	env := map[string]Env{}
 	for _, e := range ct.Env {
 		env[e.Name] = e
@@ -650,6 +687,9 @@ func containerDocs(m *Module, ct Container, where string) Docs {
 		switch {
 		case e.Unknown, e.Sensitive && e.ValueFrom == nil:
 			d.Deferred[v.Name] = true
+		case e.ValueFrom != nil && e.ValueFrom["ecs"] != nil:
+			vf, _ := e.ValueFrom["ecs"].(string)
+			d.ecsSecret(v.Name, vf)
 		case e.ValueFrom != nil:
 			if r := reference(e.ValueFrom); r != nil {
 				d.Values[v.Name] = r
@@ -820,6 +860,10 @@ func bindings(m *Module, d *Docs) []Binding {
 		if set {
 			b.Source = source(x)
 			switch {
+			case x.Constant == nil && x.References == nil:
+				// Not a module argument: written into the container by hand.
+				b.Source = "by hand"
+				b.Origin = "in the container, not through the module"
 			case !x.IsConstant:
 				// The source the container got, read back from its env.
 				b.Source = "value"
@@ -864,9 +908,57 @@ func bindings(m *Module, d *Docs) []Binding {
 		_, inDoc := d.Values[v.Name]
 		row(v.Name, x, ok || inDoc, v.Secret)
 	}
-	for _, f := range m.Contract.Files {
-		x, ok := m.Args[f.Name]
-		row(f.Name, x, ok, f.Secret)
+	if m.Target() == "kubernetes" {
+		for _, f := range m.Contract.Files {
+			x, ok := m.Args[f.Name]
+			row(f.Name, x, ok, f.Secret)
+		}
 	}
 	return out
+}
+
+// ecsSecret records an ECS secret: in the values document as a secret
+// reference, which #Validate accepts for a secret input, and in Refs in
+// its own form, for the policy.
+func (d *Docs) ecsSecret(name, valueFrom string) {
+	d.Values[name] = map[string]any{"secretKeyRef": map[string]any{"name": valueFrom, "key": ""}}
+	d.Refs[name] = ParseValueFrom(valueFrom)
+}
+
+// ecsValueFrom is a constant secret argument's valueFrom, as the module
+// renders it.
+func ecsValueFrom(arg any) string {
+	vf, _ := at(arg, "secret", "value_from").(string)
+	sel := func(k string) string { s, _ := at(arg, "secret", k).(string); return s }
+	if sel("json_key") == "" && sel("version_stage") == "" && sel("version_id") == "" {
+		return vf
+	}
+	return vf + ":" + sel("json_key") + ":" + sel("version_stage") + ":" + sel("version_id")
+}
+
+var (
+	smValueFrom  = regexp.MustCompile(`^(arn:(aws[a-z-]*):secretsmanager:([a-z0-9-]+):([0-9]{12}):secret:([^:]+))(?::([^:]*):([^:]*):([^:]*))?$`)
+	ssmValueFrom = regexp.MustCompile(`^arn:(aws[a-z-]*):ssm:([a-z0-9-]+):([0-9]{12}):parameter(/.+)$`)
+	smSuffix     = regexp.MustCompile(`-[A-Za-z0-9]{6}$`)
+)
+
+// ParseValueFrom reads an ECS secrets[].valueFrom into the policy's form
+// (spec/IAC.md 7.3): a Secrets Manager secret or a Parameter Store
+// parameter, with its partition, region, account and name. A bare name is
+// a parameter in the task's own account and region, which the plan does
+// not record, so only its name is known.
+func ParseValueFrom(vf string) map[string]any {
+	if m := smValueFrom.FindStringSubmatch(vf); m != nil {
+		f := map[string]any{"arn": m[1], "partition": m[2], "region": m[3], "account": m[4], "name": smSuffix.ReplaceAllString(m[5], "")}
+		for i, k := range []string{"jsonKey", "versionStage", "versionId"} {
+			if m[6+i] != "" {
+				f[k] = m[6+i]
+			}
+		}
+		return map[string]any{"awsSecretsManager": f}
+	}
+	if m := ssmValueFrom.FindStringSubmatch(vf); m != nil {
+		return map[string]any{"awsSsmParameter": map[string]any{"arn": vf, "partition": m[1], "region": m[2], "account": m[3], "name": m[4]}}
+	}
+	return map[string]any{"awsSsmParameter": map[string]any{"name": vf}}
 }

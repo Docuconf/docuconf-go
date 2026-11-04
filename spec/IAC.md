@@ -301,7 +301,7 @@ LOG_LEVEL    = { value = "warn" }
 
 The outputs are `ecs_environment`, a list of `{name, value}`, and `ecs_secrets`, a list of `{name, valueFrom}`, in the shapes `container_definitions` takes, so they go into `jsonencode` as they are. Values are not `$`-escaped. `ecs_environment` carries the arguments' checks again as preconditions, as `kubernetes_env` does. The task execution role must be allowed to read each secret; the module does not grant it.
 
-`docuconf lint terraform` does not check the `ecs` target yet. It reports the module with a `target_unchecked` notice and still checks that the module is current (`stale_module`).
+`docuconf lint terraform` reads an `aws_ecs_task_definition`'s planned `container_definitions` (section 7.1). When they are unknown at plan, because they include an ARN created in the same apply, it checks the module's constant arguments instead and says so (`deferred`).
 
 ## 6. Pulumi
 
@@ -382,7 +382,7 @@ For each docuconf module call in the plan (including modules nested in other mod
    - A workload is bound to the modules its configuration references. The plan's `configuration` section does not show references made inside `dynamic` blocks, which is how a container usually takes `kubernetes_env`, so a reference elsewhere (the pod template's `annotations = module.orders_config.pod_annotations`, a label from `module.orders_config.contract.name`) is what binds it.
    - A workload that references no docuconf module is bound by the env names its containers set, when exactly one module in its scope has a contract they match. With more than one, the linter cannot tell which, says so (`binding_ambiguous`), and checks nothing for it.
    - The app container is the one that sets the most of the contract's variables; other containers (sidecars) are ignored.
-3. reads what the app container receives, from the plan's planned values (`after`, `after_unknown`, `after_sensitive`): each env entry, value or reference, known or not, sensitive or not; its volume mounts; and the pod's volumes and metadata. This is the configuration the app will boot with, whether the module rendered it or someone wrote it by hand.
+3. reads what the app container receives, from the plan's planned values (`after`, `after_unknown`, `after_sensitive`): each env entry, value or reference, known or not, sensitive or not; its volume mounts; and the pod's volumes and metadata. This is the configuration the app will boot with, whether the module rendered it or someone wrote it by hand. For the `ecs` target, the containers are the task definition's `container_definitions` JSON: `environment`, `secrets` (as references) and `environmentFiles` (as `env_from`).
 4. rebuilds the values document from it: each variable's env entry read back from its wire encoding ([SPEC.md section 5](SPEC.md#5-wire-encoding-and-parsing)), a reference in the values document's form, an injected source from the module's argument; and the files and overlays documents from the module's constant arguments. An unknown or sensitive value is left out and reported as `deferred`. `docuconf vet`'s engine then checks the documents, with `-policy` if given, so every constraint the contract states is checked on every known value, in vet's words.
 
 `-explain` prints the result, one row per input:
@@ -418,7 +418,7 @@ Each rule has a code. Errors fail the lint; warnings and notices do not. Codes s
 | `pod_metadata_missing` | error | An annotation or label an injected source asks for (with its placeholders expanded) is not on the pod template, so the injector would not act. |
 | `module_unused` | warning | No workload in the plan takes the module's outputs, so only its arguments are checked. |
 | `binding_ambiguous` | notice | A workload's env matches more than one module's contract and references none of them outside a `dynamic` block, so it is not checked (section 7.1). |
-| `target_unchecked` | notice | The module is for a target the linter does not check yet (section 5.1); only `stale_module` applies to it. |
+| `target_unchecked` | notice | The module is for a target the linter does not check yet; only `stale_module` applies to it. |
 | `contract_image_mismatch` | error | The bound container's image digest is not the one the contract was exported from (section 4.7). |
 | `stale_module` | error | The module's files differ from what `docuconf terraform` generates from the contract its `docuconf.json` holds, so it was edited by hand; or, with `-contract`, the module was generated from another version of that contract. The contract digest is the sha256 of its compact JSON. |
 | `policy_mismatch` | error | A value or a reference breaks the environment policy (section 7.3). The message names the input, the field and the constraint, such as `DATABASE_URL: awsSecretsManager.account: 210987654321 is not 123456789012 (policy prod.cue)`. A reference is not secret, so its fields are printed; a secret's value never is. |
@@ -429,7 +429,7 @@ Each rule has a code. Errors fail the lint; warnings and notices do not. Codes s
 
 What the linter cannot know, it says it cannot know: it never passes an input silently because a value was unknown.
 
-Not yet implemented: `-schema` and `origin_type_mismatch`; `contract_image_mismatch`, which needs a module generated from an OCI reference (section 4.7), so every module gets `image_unverified`; `unsupported_source`, which the `kubernetes` target's argument types already prevent; and `policy_deferred`, which needs a target whose references have fields unknown at plan (Kubernetes references are names, known at plan or reported as `deferred`).
+Not yet implemented: `-schema` and `origin_type_mismatch`; `contract_image_mismatch`, which needs a module generated from an OCI reference (section 4.7), so every module gets `image_unverified`; and `unsupported_source`, which the targets' argument types already prevent.
 
 ### 7.3 Policy
 
@@ -449,7 +449,9 @@ Not yet implemented: `-schema` and `origin_type_mismatch`; `contract_image_misma
 | `containerAppSecret` | `containerapps`, `secret`, a secret held by the app itself | `name` |
 | `injected` | every target | `provider`, `ref` (as in SPEC.md section 4.5.1) |
 
-A `valueFrom` that names a parameter or secret without an ARN (ECS accepts a bare name in the task's own region and account) is filled in from the task definition's region and account when the plan knows them.
+A `valueFrom` that names a parameter without an ARN (ECS accepts a bare name in the task's own region and account) is an `awsSsmParameter` with only its `name`: the plan does not record the task's region and account, so a policy on them is `policy_deferred`, not passed.
+
+A reference is one form: the linter closes it, so a policy that asks for another (`awsSecretsManager` where the input is wired to Parameter Store) fails with `WEBHOOK_KEYS: is set from awsSsmParameter, and the policy allows only awsSecretsManager here`, rather than adding the form beside it. To allow either, make both optional: `awsSecretsManager?: {…}`, `awsSsmParameter?: {…}`. `docuconf vet` checks the contract with the values document's own forms; only the policy sees these.
 
 **`references` and `secretReferences`.** Beside the inputs, the document has two lowercase fields, which never collide with an input, since variable names are upper case ([SPEC.md section 4.2](SPEC.md#42-variables)): `references` holds every input set by reference, in the form above, keyed by input name, and `secretReferences` holds only the secret inputs among them. A rule for every secret is then one CUE pattern constraint instead of one rule per input.
 

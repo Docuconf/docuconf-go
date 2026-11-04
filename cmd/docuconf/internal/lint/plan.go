@@ -40,6 +40,14 @@ type Module struct {
 	Unknown map[string]bool
 }
 
+// Target is the module's target: kubernetes unless docuconf.json says.
+func (m *Module) Target() string {
+	if len(m.Meta.Targets) == 1 {
+		return m.Meta.Targets[0]
+	}
+	return "kubernetes"
+}
+
 // Meta is a module's docuconf.json.
 type Meta struct {
 	Kind           string          `json:"kind"`
@@ -51,11 +59,17 @@ type Meta struct {
 	Targets []string `json:"targets"`
 }
 
-// Workload is a Kubernetes resource that runs pods.
+// Workload is a resource that runs the app: a Kubernetes resource that
+// runs pods, or an ECS task definition.
 type Workload struct {
-	Addr       string // the full address, module path included
-	Scope      string // the module the resource is declared in
-	Type       string
+	Addr   string // the full address, module path included
+	Scope  string // the module the resource is declared in
+	Type   string
+	Target string // kubernetes or ecs
+	// Unknown is set when the plan does not know what the containers get,
+	// such as container_definitions built from an ARN created in the same
+	// apply.
+	Unknown    bool
 	Config     map[string]any // the resource's expressions
 	Meta       Metadata       // the workload's own metadata (none for a pod)
 	PodMeta    Metadata       // the pod template's metadata
@@ -82,7 +96,7 @@ type Container struct {
 type Env struct {
 	Name      string
 	Value     *string
-	ValueFrom map[string]any // the first value_from block: secret_key_ref, …
+	ValueFrom map[string]any // the first value_from block: secret_key_ref, …; for ECS, {"ecs": valueFrom}
 	Unknown   bool           // the value (or a reference field) is unknown at plan
 	Sensitive bool
 }
@@ -225,12 +239,20 @@ func Read(planFile, root string) (*Plan, error) {
 		}
 	}
 	for _, rc := range pj.ResourceChanges {
-		if rc.Mode != "managed" || !podTemplate[rc.Type] || isDelete(rc.Change.Actions) {
+		if rc.Mode != "managed" || isDelete(rc.Change.Actions) {
+			continue
+		}
+		var w *Workload
+		switch {
+		case podTemplate[rc.Type]:
+			w = readWorkload(rc.Type, rc.Change.After, rc.Change.AfterUnknown, rc.Change.AfterSensitive)
+		case rc.Type == "aws_ecs_task_definition":
+			w = readTaskDefinition(rc.Change.After, rc.Change.AfterUnknown)
+		default:
 			continue
 		}
 		scope := stripKeys(rc.ModuleAddress)
 		local := strings.TrimPrefix(stripKeys(rc.Address), scope+".")
-		w := readWorkload(rc.Type, rc.Change.After, rc.Change.AfterUnknown, rc.Change.AfterSensitive)
 		w.Addr, w.Scope = rc.Address, scope
 		w.Config = configs[join(scope, local)]
 		p.Workloads = append(p.Workloads, w)
@@ -361,8 +383,48 @@ func templatePath(typ string) []any {
 	return []any{"spec", 0, "template", 0}
 }
 
+// readTaskDefinition reads an ECS task definition's container_definitions,
+// a JSON string, which is unknown at plan when it is built from values
+// only known during apply.
+func readTaskDefinition(after, unknown any) *Workload {
+	w := &Workload{Type: "aws_ecs_task_definition", Target: "ecs"}
+	s, ok := at(after, "container_definitions").(string)
+	if !ok || at(unknown, "container_definitions") == true {
+		w.Unknown = true
+		return w
+	}
+	var defs []struct {
+		Name        string `json:"name"`
+		Image       string `json:"image"`
+		Environment []struct {
+			Name  string  `json:"name"`
+			Value *string `json:"value"`
+		} `json:"environment"`
+		Secrets []struct {
+			Name      string `json:"name"`
+			ValueFrom string `json:"valueFrom"`
+		} `json:"secrets"`
+		EnvironmentFiles []any `json:"environmentFiles"`
+	}
+	if json.Unmarshal([]byte(s), &defs) != nil {
+		w.Unknown = true
+		return w
+	}
+	for _, d := range defs {
+		ct := Container{Name: d.Name, Image: d.Image, EnvFrom: d.EnvironmentFiles}
+		for _, e := range d.Environment {
+			ct.Env = append(ct.Env, Env{Name: e.Name, Value: e.Value})
+		}
+		for _, e := range d.Secrets {
+			ct.Env = append(ct.Env, Env{Name: e.Name, ValueFrom: map[string]any{"ecs": e.ValueFrom}})
+		}
+		w.Containers = append(w.Containers, ct)
+	}
+	return w
+}
+
 func readWorkload(typ string, after, unknown, sensitive any) *Workload {
-	w := &Workload{Type: typ}
+	w := &Workload{Type: typ, Target: "kubernetes"}
 	tp := templatePath(typ)
 	sub := func(v any, extra ...any) any { return at(v, append(append([]any{}, tp...), extra...)...) }
 	meta := func(v, u any) Metadata {

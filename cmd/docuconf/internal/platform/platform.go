@@ -222,11 +222,40 @@ func (p *Platform) Validate(c *Contract, values, files, overlays, policy cue.Val
 // deprecated input the platform still sets (#Validate's deprecatedSet,
 // SPEC §4.2). Warnings do not make the values invalid.
 func (p *Platform) ValidateWarn(c *Contract, values, files, overlays, policy cue.Value) (problems, warnings []string, err error) {
+	problems, warnings, _, err = p.ValidateRefs(c, values, files, overlays, policy, cue.Value{})
+	return problems, warnings, err
+}
+
+// ValidateRefs is ValidateWarn for a target whose references the values
+// document cannot hold (spec/IAC.md 7.3). refs maps input names to the
+// reference in its target's form ({awsSecretsManager: {account: …}}); the
+// policy sees that form, in the input's field and in references and
+// secretReferences, while #Validate sees the values document. deferred
+// names each field of such a reference that the policy constrains but the
+// reference does not carry, such as the account of a bare parameter name:
+// it is unknown, so it is neither passed nor failed.
+func (p *Platform) ValidateRefs(c *Contract, values, files, overlays, policy, refs cue.Value) (problems, warnings, deferred []string, err error) {
 	schemas, err := p.Schemas(c)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+	if !refs.Exists() {
+		refs = p.ctx.CompileString("{}")
+	}
+	// A reference is one form: a policy that asks for another fails rather
+	// than adding it beside (close() at the top only, so a field the
+	// reference lacks stays open for deferredFields).
+	closed := p.ctx.CompileString("{}")
+	for name, r := range fields(refs) {
+		c := p.ctx.CompileString("close(" + jsonOf(r) + ")")
+		if err := c.Err(); err != nil {
+			return nil, nil, nil, err
+		}
+		closed = closed.FillPath(cue.MakePath(cue.Str(name)), c)
+	}
+	refs = closed
 	t := newTranslator(c, values, files, overlays)
+	t.refs = refs
 	// An undeclared name makes CUE reject the whole values struct, which
 	// would hide every other problem, so unknown names are reported here
 	// and left out of #Validate. The values document's shared pod metadata
@@ -244,27 +273,41 @@ func (p *Platform) ValidateWarn(c *Contract, values, files, overlays, policy cue
 
 	// Policy applies to a value however it is supplied: env or overlay.
 	if policy.Exists() {
-		all := values
+		// The policy's view: each input's value, or its reference in the
+		// target's form.
+		all := p.ctx.CompileString("{}")
+		override := fields(refs)
+		for name, v := range fields(values) {
+			if r, ok := override[name]; ok {
+				v = r
+			}
+			all = all.FillPath(cue.MakePath(cue.Str(name)), v)
+		}
+		for name, r := range override {
+			all = all.FillPath(cue.MakePath(cue.Str(name)), r)
+		}
 		for _, m := range fields(overlays) {
 			all = all.Unify(m)
 		}
 		// Every input set by reference, and the secret ones among them, so
 		// one pattern constraint can cover them all (SPEC §7). Lower case,
 		// so they never collide with a variable name.
-		refs, secretRefs := p.ctx.CompileString("{}"), p.ctx.CompileString("{}")
-		for name, v := range fields(values) {
+		allRefs, secretRefs := p.ctx.CompileString("{}"), p.ctx.CompileString("{}")
+		for name, v := range fields(all) {
 			if !isReference(v) {
 				continue
 			}
 			path := cue.MakePath(cue.Str(name))
-			refs = refs.FillPath(path, v)
+			allRefs = allRefs.FillPath(path, v)
 			if cv, ok := t.vars[name]; ok && boolean(cv, "secret") {
 				secretRefs = secretRefs.FillPath(path, v)
 			}
 		}
-		all = all.FillPath(cue.ParsePath("references"), refs).
+		all = all.FillPath(cue.ParsePath("references"), allRefs).
 			FillPath(cue.ParsePath("secretReferences"), secretRefs)
-		if err := all.Unify(policy).Validate(cue.Concrete(true)); err != nil {
+		unified := all.Unify(policy)
+		deferred = t.deferredFields(unified)
+		if err := unified.Validate(cue.Concrete(true)); err != nil {
 			t.policy(err)
 		}
 	}
@@ -279,7 +322,7 @@ func (p *Platform) ValidateWarn(c *Contract, values, files, overlays, policy cue
 	if err := v.Validate(cue.Concrete(true)); err != nil {
 		t.validate(err)
 	}
-	return t.lines(), deprecatedWarnings(v.LookupPath(cue.ParsePath("deprecatedSet"))), nil
+	return t.lines(), deprecatedWarnings(v.LookupPath(cue.ParsePath("deprecatedSet"))), deferred, nil
 }
 
 // deprecatedWarnings phrases #Validate's deprecatedSet, one line per input
@@ -509,7 +552,9 @@ func jsonOf(v cue.Value) string {
 
 // referenceForms are the value sources of SPEC §4.5 that are references
 // rather than literals.
-var referenceForms = []string{"secretKeyRef", "configMapKeyRef", "fieldRef", "resourceFieldRef", "injected"}
+var referenceForms = []string{"secretKeyRef", "configMapKeyRef", "fieldRef", "resourceFieldRef", "injected",
+	// The forms of other targets (spec/IAC.md 7.3), which only the policy sees.
+	"awsSecretsManager", "awsSsmParameter", "gcpSecretManager", "azureKeyVault", "containerAppSecret"}
 
 // isReference reports whether a value is one of the reference forms: a
 // struct with exactly one field, naming the form.
