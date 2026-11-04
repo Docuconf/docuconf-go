@@ -224,7 +224,7 @@ docuconf vet -contract contract.cue -values deploy/values.yaml -files deploy/fil
 docuconf render -contract contract.cue -values deploy/values.yaml -files deploy/files.yaml
 ```
 
-`vet` prints one line per problem, such as `PORT: 70000 is above max 65535` or `LOG_LEVL: is not declared in the contract (check the spelling)`, and exits 1. `-policy prod.cue` adds an environment's own rules. `render` turns valid inputs into the pod's `env`, volumes and ConfigMaps. A Helm-based platform can use the [docuconf Helm chart](helm), and a Crossplane composition can evaluate the contract in plain CUE. The [walkthrough](examples/walkthrough) shows all three paths end to end, including a policy file.
+`vet` prints one line per problem, such as `PORT: 70000 is above max 65535` or `LOG_LEVL: is not declared in the contract (check the spelling)`, and exits 1. `-policy prod.cue` adds an environment's own rules, on values and on references: `secretReferences: [string]: secretKeyRef?: name: =~"^orders-"` pins every secret to the service's own Secrets. `render` turns valid inputs into the pod's `env`, volumes and ConfigMaps. A Helm-based platform can use the [docuconf Helm chart](helm), and a Crossplane composition can evaluate the contract in plain CUE. The [walkthrough](examples/walkthrough) shows all three paths end to end, including a policy file.
 
 ## Reference
 

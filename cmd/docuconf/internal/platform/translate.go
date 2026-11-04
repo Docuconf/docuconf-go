@@ -271,6 +271,21 @@ func (t *translator) policy(err error) {
 			continue
 		}
 		name := p[0]
+		if (name == "references" || name == "secretReferences") && len(p) > 1 {
+			// A rule on every reference: name the input and the field. A
+			// reference is not secret material, so its fields are printed.
+			name, field := p[1], p[2:]
+			sel := []cue.Selector{}
+			for _, f := range field {
+				sel = append(sel, cue.Str(f))
+			}
+			if v := t.value(name).LookupPath(cue.MakePath(sel...)); len(field) > 0 && v.Exists() {
+				t.add("%s: %s %s is not allowed by policy", name, strings.Join(field, "."), describe(v))
+			} else {
+				t.add("%s: this reference is not allowed by policy", name)
+			}
+			continue
+		}
 		if v, ok := t.vars[name]; ok && boolean(v, "secret") {
 			t.add("%s: value is not allowed by policy", name)
 			continue

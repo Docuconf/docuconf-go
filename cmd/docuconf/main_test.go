@@ -64,6 +64,46 @@ func TestVetGatewayValid(t *testing.T) {
 	}
 }
 
+// Policy sees every reference in references, and the secret ones in
+// secretReferences, so one rule covers them all (SPEC §7).
+func TestVetPolicyReferences(t *testing.T) {
+	vet := func(policy string) (string, int) {
+		out, _, code := docuconf(t, "vet", "-contract", gateway,
+			"-values", "testdata/gateway/values.yaml", "-files", "testdata/gateway/files.yaml",
+			"-policy", write(t, "policy.cue", policy))
+		return out, code
+	}
+	if out, code := vet(`secretReferences: [string]: secretKeyRef?: name: =~"^partner-"
+references: POD_NAMESPACE: fieldRef: fieldPath: "metadata.namespace"
+`); code != 0 || out != "gateway: ok\n" {
+		t.Fatalf("matching policy: exit %d\n%s", code, out)
+	}
+	out, code := vet(`secretReferences: [string]: secretKeyRef?: name: =~"^billing-"
+references: POD_NAMESPACE: fieldRef: fieldPath: "metadata.name"
+`)
+	requireLines(t, out, code,
+		`PARTNER_API_KEYS: secretKeyRef.name "partner-api-keys" is not allowed by policy`,
+		`PARTNER_KEYSTORE_PASSWORD: secretKeyRef.name "partner-keystore" is not allowed by policy`,
+		`POD_NAMESPACE: fieldRef.fieldPath "metadata.namespace" is not allowed by policy`,
+	)
+	// Only secret inputs are in secretReferences: POD_NAMESPACE is a
+	// reference but not a secret, so a rule there forbidding fieldRef
+	// does not reach it.
+	if out, code := vet(`secretReferences: [string]: fieldRef?: _|_
+`); code != 0 {
+		t.Fatalf("secretReferences held a non-secret input: exit %d\n%s", code, out)
+	}
+}
+
+// The maps are the policy's, never the platform's: a values document that
+// sets one is an undeclared name like any other.
+func TestVetValuesCannotSetReferences(t *testing.T) {
+	values := read(t, "testdata/gateway/values.yaml") + "references: {}\n"
+	out, _, code := docuconf(t, "vet", "-contract", gateway,
+		"-values", write(t, "values.yaml", values), "-files", "testdata/gateway/files.yaml")
+	requireLines(t, out, code, "references: is not declared in the contract (check the spelling)")
+}
+
 func TestVetGatewayCertificateMissingDNSName(t *testing.T) {
 	files := strings.Replace(read(t, "testdata/gateway/files.yaml"), `"*.example.com"`, `"*.example.org"`, 1)
 	out, _, code := docuconf(t, "vet", "-contract", gateway,

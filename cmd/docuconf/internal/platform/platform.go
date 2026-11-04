@@ -248,6 +248,22 @@ func (p *Platform) ValidateWarn(c *Contract, values, files, overlays, policy cue
 		for _, m := range fields(overlays) {
 			all = all.Unify(m)
 		}
+		// Every input set by reference, and the secret ones among them, so
+		// one pattern constraint can cover them all (SPEC §7). Lower case,
+		// so they never collide with a variable name.
+		refs, secretRefs := p.ctx.CompileString("{}"), p.ctx.CompileString("{}")
+		for name, v := range fields(values) {
+			if !isReference(v) {
+				continue
+			}
+			path := cue.MakePath(cue.Str(name))
+			refs = refs.FillPath(path, v)
+			if cv, ok := t.vars[name]; ok && boolean(cv, "secret") {
+				secretRefs = secretRefs.FillPath(path, v)
+			}
+		}
+		all = all.FillPath(cue.ParsePath("references"), refs).
+			FillPath(cue.ParsePath("secretReferences"), secretRefs)
 		if err := all.Unify(policy).Validate(cue.Concrete(true)); err != nil {
 			t.policy(err)
 		}
@@ -489,4 +505,26 @@ func jsonOf(v cue.Value) string {
 		return string(b)
 	}
 	return buf.String()
+}
+
+// referenceForms are the value sources of SPEC §4.5 that are references
+// rather than literals.
+var referenceForms = []string{"secretKeyRef", "configMapKeyRef", "fieldRef", "resourceFieldRef", "injected"}
+
+// isReference reports whether a value is one of the reference forms: a
+// struct with exactly one field, naming the form.
+func isReference(v cue.Value) bool {
+	if v.IncompleteKind() != cue.StructKind {
+		return false
+	}
+	f := fields(v)
+	if len(f) != 1 {
+		return false
+	}
+	for _, form := range referenceForms {
+		if _, ok := f[form]; ok {
+			return true
+		}
+	}
+	return false
 }
