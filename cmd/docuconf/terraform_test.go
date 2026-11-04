@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"cuelang.org/go/cue"
 	toml "github.com/pelletier/go-toml/v2"
@@ -390,6 +391,28 @@ func tf(t *testing.T, bin, dir string, args ...string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
+// registryUnreachable matches the errors of an init that could not reach a
+// provider registry, as opposed to a problem with the configuration.
+var registryUnreachable = regexp.MustCompile(`could not connect to registry|Client\.Timeout exceeded|connection reset by peer|TLS handshake timeout|i/o timeout`)
+
+// tfInit runs init, retrying when a provider registry could not be
+// reached: the tests that plan with providers download them, and a
+// registry that times out says nothing about the code under test.
+func tfInit(t *testing.T, bin, dir string, args ...string) ([]byte, error) {
+	t.Helper()
+	args = append([]string{"init", "-input=false", "-no-color"}, args...)
+	var out []byte
+	var err error
+	for attempt := 1; attempt <= 3; attempt++ {
+		if out, err = tf(t, bin, dir, args...); err == nil || !registryUnreachable.Match(out) {
+			return out, err
+		}
+		t.Logf("init could not reach a provider registry (attempt %d of 3)", attempt)
+		time.Sleep(time.Duration(attempt*5) * time.Second)
+	}
+	return out, err
+}
+
 // newRoot generates the kitchen module and a root module that calls it.
 func newRoot(t *testing.T) string {
 	t.Helper()
@@ -404,7 +427,7 @@ func newRoot(t *testing.T) string {
 func initRoot(t *testing.T, bin, dir string, root any) {
 	t.Helper()
 	writeJSON(t, filepath.Join(dir, "main.tf.json"), root)
-	if out, err := tf(t, bin, dir, "init", "-backend=false", "-input=false", "-no-color"); err != nil {
+	if out, err := tfInit(t, bin, dir, "-backend=false"); err != nil {
 		t.Fatalf("init: %v\n%s", err, out)
 	}
 }
