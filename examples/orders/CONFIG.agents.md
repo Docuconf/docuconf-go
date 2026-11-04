@@ -14,7 +14,7 @@ This file lists every configuration input `orders-api` reads, from its docuconf 
 
 ## Using this config in code
 
-- The app declares these inputs in its own code with a docuconf SDK (this contract was exported by `docuconf-go` `0.1.0`, go). The contract and the docs are generated from that declaration: edit the declaration, never the generated files.
+- The app declares these inputs in its own code with a docuconf SDK (this contract was exported by `docuconf-go` `0.2.0`, go). The contract and the docs are generated from that declaration: edit the declaration, never the generated files.
 - Read configuration through the SDK's typed values, not by reading environment variables or files directly: the SDK validates every input at boot and fails with all problems listed.
 - `config key` below is where a setting lives in the app's own configuration (its options class, settings file or config path). Search the code for it, or for the variable name, to find where it is read.
 - A file input is read from its `path`. For local runs, `DOCUCONF_FILE_ROOT=./dev` makes the SDK read every path under `./dev`.
