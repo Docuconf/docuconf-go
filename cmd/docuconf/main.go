@@ -6,6 +6,7 @@
 //	docuconf vet    -contract contract.cue -values values.yaml [-files files.yaml] [-policy policy.cue]
 //	docuconf render -contract contract.cue -values values.yaml [-files files.yaml]
 //	docuconf helm   -contract contract.cue -chart ./chart
+//	docuconf terraform -contract contract.cue -target kubernetes -out ./modules/billing-api-config
 //	docuconf check  -contract contract.cue
 //	docuconf exec   -contract contract.cue -- program [args...]
 //	docuconf docs   contract.cue [--format model|markdown|agents] [-o file | --check file]
@@ -20,6 +21,10 @@
 // program, passing it the environment it validated: the process
 // environment, -env-file values for what that leaves unset, and the
 // contract's defaults for what is still unset (unless -no-defaults).
+//
+// terraform generates a Terraform or OpenTofu module from a contract: one
+// argument per input, checked against the contract, and outputs that
+// render the inputs into a workload's env (spec/IAC.md).
 //
 // docuconf conformance regenerates conformance/cases.json from
 // conformance/load, for maintainers of the spec.
@@ -49,6 +54,7 @@ Usage:
   docuconf vet    -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml] [-policy policy.cue]
   docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml]
   docuconf helm   -contract <contract.cue> -chart <chart directory>
+  docuconf terraform -contract <contract.cue> -out <module directory> [-target kubernetes] [-check]
   docuconf check  -contract <contract.cue> [-env-file .env]
   docuconf exec   -contract <contract.cue> [-env-file .env] [-no-defaults] -- <program> [args...]
   docuconf docs   <contract.cue | docs.json> [--format model|markdown|agents] [-o file | --check file]
@@ -81,6 +87,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runRender(args[1:], stdout, stderr)
 	case "helm":
 		err = runHelm(args[1:], stdout, stderr)
+	case "terraform":
+		err = runTerraform(args[1:], stdout, stderr)
 	case "check":
 		err = runCheck(args[1:], stdout, stderr)
 	case "exec":

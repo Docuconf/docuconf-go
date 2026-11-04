@@ -93,6 +93,7 @@ The module is plain HCL and runs on Terraform 1.5 or later and OpenTofu 1.6 or l
 
 | File | Holds |
 |---|---|
+| `versions.tf` | `required_version`: Terraform 1.5 or later. |
 | `variables.tf` | One input argument per contract input and overlay value (section 4.3), plus `docuconf_options` (below). |
 | `render.tf` | `locals` that render each input in its wire encoding (section 4.4). |
 | `outputs.tf` | Per target, the blocks the workload takes; `bindings`; `contract`. |
@@ -103,6 +104,7 @@ The module is plain HCL and runs on Terraform 1.5 or later and OpenTofu 1.6 or l
 
 | Field | Default | Meaning |
 |---|---|---|
+| `pod_annotations`, `pod_labels` | `{}` | Pod metadata shared by every injector, the values document's `podAnnotations` and `podLabels` ([SPEC.md section 4.5.2](SPEC.md#452-enabling-the-injector)). They cannot use placeholders. |
 | `environment` | `null` | Selects one of the compiled policies (section 4.6). |
 | `create_config_maps` | `false` | The module declares the `kubernetes_config_map_v1` resources for inline content and overlays itself, and needs the `kubernetes` provider. |
 | `namespace` | `null` | The namespace for those ConfigMaps. |
@@ -128,13 +130,18 @@ variable "PORT" {
   nullable = true
 
   validation {
-    condition     = var.PORT == null || length([for k, v in var.PORT : k if v != null]) == 1
+    condition     = var.PORT == null ? true : length([for k, s in var.PORT : k if s != null]) == 1
     error_message = "PORT: set exactly one of value, config_map or injected"
   }
   validation {
-    condition     = try(var.PORT.value == null || (floor(var.PORT.value) == var.PORT.value && var.PORT.value >= 1 && var.PORT.value <= 65535), false)
-    error_message = "PORT: must be a whole number from 1 to 65535"
+    condition     = var.PORT == null ? true : (var.PORT.value == null ? true : floor(var.PORT.value) == var.PORT.value)
+    error_message = "PORT: expected an integer, got ${try(format("%v", var.PORT.value), "")}"
   }
+  validation {
+    condition     = var.PORT == null ? true : (var.PORT.value == null ? true : var.PORT.value >= 1)
+    error_message = "PORT: ${try(format("%v", var.PORT.value), "")} is below min 1"
+  }
+  # …and max, and the injected source's checks
 }
 
 variable "DATABASE_URL" {
@@ -151,9 +158,10 @@ variable "DATABASE_URL" {
 Rules:
 
 - **Types.** The `value` attribute has the platform type of [SPEC.md section 4.3](SPEC.md#43-types): `string` for `string`, `url`, `enum` and `duration` (Go syntax), `number` for `int` and `float`, `bool`, `list(string)` or `list(number)` for a `list`, and `any` for a `json` value. An `int` adds a whole-number check.
-- **Secrets have no `value`.** A `secret: true` input, and every `keySet`, has only `secret` and `injected`, so `DATABASE_URL = { value = "postgres://…" }` is `Unsupported attribute` at validate. A secret file input has no `inline` and no `config_map`.
+- **Secrets have no `value`.** A `secret: true` input, and every `keySet`, has only `secret` and `injected`, so `DATABASE_URL = { value = "postgres://…" }` fails at validate. Terraform drops an attribute an object type does not declare rather than rejecting it, so the argument arrives with nothing set, and the exactly-one validation says why: `DATABASE_URL: set exactly one of secret or injected (a secret is never a literal value; Terraform ignores a value attribute here)`. A secret file input has no `inline` and no `config_map`.
 - **Required.** A required input has `nullable = false` and no default. A required input satisfied by a profile ([SPEC.md section 4.4](SPEC.md#44-config-files-and-profiles)) is optional here, since the module cannot know which profile the platform selects until the selector's argument is known; the linter checks it (section 7, rule `missing_required`).
-- **Constraints** become `validation` blocks on the `value` attribute, one per constraint, with the error message `docuconf vet` prints for the same mistake ([SPEC.md section 7](SPEC.md#7-platform-validation)): ranges, `values`, `pattern`, `schemes`, lengths, list bounds and item bounds. They run at plan on known values. A constraint HCL cannot express exactly (a duration's bounds, a `json` value's `schema`, a `float`'s shortest round-trip form) is left to the linter and to boot, and the generated README says so.
+- **Constraints** become `validation` blocks on the `value` attribute, one per constraint, with the error message `docuconf vet` prints for the same mistake ([SPEC.md section 7](SPEC.md#7-platform-validation)): ranges, `values`, `pattern`, `schemes`, lengths, list bounds and item bounds. They run at plan on known values. A duration's bounds are compared in nanoseconds, which Terraform's arbitrary-precision numbers hold exactly. A constraint HCL cannot express exactly (a `json` value's `schema`) is left to the linter and to boot, and the generated README says so.
+- **Null-safe messages.** Terraform evaluates a validation's `error_message` even when its condition holds, so every interpolation in a message is wrapped in `try(format("%v", …), "")`, and every condition is guarded with `var.X == null ? true : …` rather than `||`, since not every supported version short-circuits `||`.
 - **Regular expressions.** Terraform's `regex` and `can(regex(...))` use Go's RE2, the dialect of [SPEC.md section 4.3](SPEC.md#43-types), so a `pattern` is copied unchanged and matches anywhere, as the spec requires.
 - **Lengths count code points.** Terraform's `length()` counts grapheme clusters, not code points, so `"é"` written as `e` plus a combining accent is 1 to Terraform and 2 to the spec. The generator MUST count with `length(regexall("(?s).", v))`, which counts code points, never with `length(v)`.
 - **Origins are free.** The argument says how an input is set, not where the value comes from: `DATABASE_URL = { secret = { name = kubernetes_secret_v1.db.metadata[0].name, key = "url" } }` and `PORT = { value = var.port }` are both fine. The linter reconstructs the origin from the plan (section 7.1).
@@ -167,6 +175,8 @@ Rules:
 - the wire encodings of [SPEC.md section 5](SPEC.md#5-wire-encoding-and-parsing): `csv`, `json` and `indexed` lists (an `indexed` list becomes one entry per item), the duration encodings, `int` and `float` forms, compact JSON;
 - `$` escaped as `$$` for the `kubernetes` target, where the kubelet expands `$(VAR)`, and left alone for targets that do not;
 - one entry per `pathEnv`, file inputs projected with `items` (never `subPath`), content-hashed ConfigMap names for inline content, the pod annotations and labels of injected sources with their placeholders expanded ([SPEC.md section 4.5.2](SPEC.md#452-enabling-the-injector)), and the restart triggers of [section 4.6.2](SPEC.md#462-rotation).
+
+Two differences from `#Render` are allowed, because Terraform's values do not keep them: a `float` is written in Terraform's form (`1` for a value the values document writes `1.0`, `0.0000001` for `1E-7`), and a `json` object's keys are written in sorted order. Both parse to the same value, and the lengths a `maxLength` sees can differ only by the float's spelling.
 
 Every output that carries rendered values has `precondition`s that repeat each input's constraint checks. Terraform evaluates a precondition at plan when its values are known, and otherwise during apply, before anything that depends on the output. A workload that takes its env from the output therefore cannot be created or changed with a value that breaks the contract, even when the value came from an attribute computed earlier in the same apply.
 
@@ -185,7 +195,7 @@ For the `kubernetes` target:
 
 The other targets have their own outputs in section 5. Every module also has:
 
-- `bindings`: for each input, `{source = "secret" | "value" | …, set = true | false}`, plus `contract_digest`. The linter uses it to find the module in the plan and to tell an unset optional input from one the module failed to render.
+- `bindings`: for each input, `{source = "secret" | "value" | …, set = true | false}`. The linter uses it to find the module in the plan and to tell an unset optional input from one the module failed to render.
 - `contract`: the contract's name, digest and, when known, the image digest.
 
 A platform uses the outputs like this:
@@ -455,7 +465,7 @@ The module is generated from one contract, so contract changes ([SPEC.md section
 | A new required input | `Missing required argument` at validate. |
 | A removed input | `Unsupported argument` at validate, wherever the platform still sets it. Deprecate first: a deprecated input keeps its argument, with a warning. |
 | A tightened constraint | A validation error at plan, on values that no longer qualify. |
-| A secret that was not secret before | `Unsupported attribute "value"`: the platform must switch to a secret reference. |
+| A secret that was not secret before | The exactly-one validation fails, saying a secret is never a literal value: the platform must switch to a secret reference. |
 
 `-check` in CI (section 4.1) keeps the committed module in step with the contract, and `stale_module` catches a module that drifted anyway. The module's outputs and their shapes are versioned with this document: in `v1alpha1` they may change; from `v1beta1` on, only additively.
 
