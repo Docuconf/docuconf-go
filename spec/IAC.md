@@ -264,7 +264,12 @@ docuconf pulumi -contract contract.cue -target kubernetes -lang typescript -out 
 docuconf pulumi policy -contract contract.cue -target kubernetes -out policy/orders-config
 ```
 
-The first generates a **component** in one language (`typescript`, `python`, `go`, `csharp` or `java`): a local package the program imports, with no provider plugin. The second generates a **CrossGuard policy pack** (TypeScript, which Pulumi runs against programs in every language). Both take `-check` as in section 4.1.
+```sh
+pulumi preview --json > preview.json
+docuconf lint pulumi preview.json -policy prod.cue
+```
+
+The first generates a **component** in one language (`typescript`, `python`, `go`, `csharp` or `java`): a local package the program imports, with no provider plugin. The second generates a **CrossGuard policy pack** (TypeScript, which Pulumi runs against programs in every language). Both take `-check` as in section 4.1. The third applies an environment policy (section 7.3) to a preview: the policy pack checks the contract's rules, but does not evaluate CUE, so environment policy runs in `docuconf lint pulumi`, which reads the resource inputs of `pulumi preview --json` and applies sections 7.2 and 7.3 as for Terraform.
 
 ### 6.2 The component
 
@@ -358,11 +363,62 @@ Each rule has a code. Errors fail the lint; warnings and notices do not. Codes s
 | `pod_metadata_misplaced` | error | The module's `pod_annotations` or `pod_labels` are set on the workload's metadata instead of the pod template's. |
 | `contract_image_mismatch` | error | The bound container's image digest is not the one the contract was exported from (section 4.6). |
 | `stale_module` | error | The module's `docuconf.json` does not match the contract it says it was generated from (`-contract` given), or was edited by hand. |
+| `policy_mismatch` | error | A value or a reference breaks the environment policy (section 7.3). The message names the input, the field and the constraint, such as `DATABASE_URL: awsSecretsManager.account: 210987654321 is not 123456789012 (policy prod.cue)`. A reference is not secret, so its fields are printed; a secret's value never is. |
+| `policy_deferred` | notice | A policy constrains a field that is unknown at plan, such as the account of a secret created in the same apply. The notice names the input, the field and the constraint; nothing checks it later, so a platform that needs the guarantee makes the field known (section 7.3). |
 | `deprecated_set` | warning | A deprecated input is set ([SPEC.md section 4.2](SPEC.md#42-variables)), printed with its message. |
 | `deferred` | notice | A value is unknown at plan. The notice names the input and its origin, and says where it is checked: at apply by the module's preconditions, or at boot. |
 | `image_unverified` | notice | The module records no image digest, so `contract_image_mismatch` could not run. |
 
 What the linter cannot know, it says it cannot know: it never passes an input silently because a value was unknown.
+
+### 7.3 Policy
+
+`-policy` takes the same CUE policy as `docuconf vet` ([SPEC.md section 7](SPEC.md#7-platform-validation)): it is unified with the values the platform sets, so it can narrow what an environment allows without editing the app's contract. The linter builds that values document from the bindings of section 7.1, one field per input that is set, and adds two maps for rules that apply to every reference at once.
+
+**Values.** A literal appears as its typed value, as in a values document. A reference appears in one of the forms below. The linter parses each target's reference into named fields, so a policy matches an account, a region or a name, not a substring of an ARN:
+
+| Form | Target and source | Fields |
+|---|---|---|
+| `secretKeyRef` | `kubernetes`, `secret` | `name`, `key` (as in SPEC.md section 4.5) |
+| `configMapKeyRef` | `kubernetes`, `config_map` | `name`, `key` |
+| `fieldRef`, `resourceFieldRef` | `kubernetes` | as in SPEC.md section 4.5 |
+| `awsSecretsManager` | `ecs`, `secret`, a Secrets Manager `valueFrom` | `arn` (as written), `partition`, `region`, `account`, `name` (without the 6-character suffix Secrets Manager appends to the ARN), and, when the `valueFrom` selects them, `jsonKey`, `versionStage`, `versionId` |
+| `awsSsmParameter` | `ecs`, `secret`, a Parameter Store `valueFrom` | `arn`, `partition`, `region`, `account`, `name` (with its leading `/`) |
+| `gcpSecretManager` | `cloudrun`, `secret` | `project`, `secret`, `version` (`latest` or a number) |
+| `azureKeyVault` | `containerapps`, `secret`, a secret with `key_vault_secret_id` | `vault` (the vault's host name), `name`, `version` (empty when the ID has none), `identity` |
+| `containerAppSecret` | `containerapps`, `secret`, a secret held by the app itself | `name` |
+| `injected` | every target | `provider`, `ref` (as in SPEC.md section 4.5.1) |
+
+A `valueFrom` that names a parameter or secret without an ARN (ECS accepts a bare name in the task's own region and account) is filled in from the task definition's region and account when the plan knows them.
+
+**`references` and `secretReferences`.** Beside the inputs, the document has two lowercase fields, which never collide with an input, since variable names are upper case ([SPEC.md section 4.2](SPEC.md#42-variables)): `references` holds every input set by reference, in the form above, keyed by input name, and `secretReferences` holds only the secret inputs among them. A rule for every secret is then one CUE pattern constraint instead of one rule per input.
+
+A production policy for an ECS service:
+
+```cue
+// prod.cue
+// Every secret comes from Secrets Manager in the prod account and region, under orders/prod/.
+secretReferences: [string]: {
+	awsSecretsManager: {
+		account: "123456789012"
+		region:  "us-east-1"
+		name:    =~"^orders/prod/"
+	}
+	awsSsmParameter?: _|_ // Parameter Store is not allowed for secrets in prod
+}
+
+// A non-secret ARN the app reads: the contract checks its shape (pattern: "^arn:aws:sqs:"),
+// the policy pins it to this environment's account and region.
+ORDERS_QUEUE_ARN?: =~"^arn:aws:sqs:us-east-1:123456789012:"
+
+LOG_LEVEL?: "info" | "warn" | "error"
+```
+
+With it, a `DATABASE_URL` wired to `arn:aws:secretsmanager:us-east-1:210987654321:secret:orders/prod/db-AbCdEf` fails with `policy_mismatch` on `account`, and one wired to a Parameter Store parameter fails on `awsSsmParameter`.
+
+**Unknown fields.** A reference to a secret created in the same apply has an ARN that is unknown at plan. The linter fills in what the origin resource tells it: the secret's `name` from its configuration, and the `region` and `account` from the provider configuration or an `aws_caller_identity` data source when those are known. A constraint on a field that stays unknown is reported as `policy_deferred`, never passed. The module does not re-check policy at apply, so a platform that needs the guarantee keeps the constrained fields known at plan: names come from configuration, and the account and region from provider configuration rather than from a lookup.
+
+**`docuconf vet`.** The forms above that a values document can hold (`secretKeyRef`, `configMapKeyRef`, `fieldRef`, `resourceFieldRef`, `injected`) are already what `vet` checks a policy against, so the same policy file works with both tools for Kubernetes. `vet` should add `references` and `secretReferences` too, so a rule for every secret works there as well; that is a one-line change to [SPEC.md section 7](SPEC.md#7-platform-validation) and is proposed with this document.
 
 ## 8. Conformance
 
@@ -370,7 +426,7 @@ The generated modules join the conformance suite of [SPEC.md section 12](SPEC.md
 
 - **Render.** For every case in `cue/testdata/render`, the Terraform module and each Pulumi component, given the same inputs, MUST produce the same env entries, volumes, mounts, ConfigMap data, annotations and labels as `#Render`, value for value and in the same order. The suite runs the modules with `terraform console` and the components in each language's test runner.
 - **Arguments.** For every value case in the load suite, the module's argument validation and the component's value checks MUST accept and reject exactly what `#Validate` accepts and rejects, with the same message.
-- **Lint.** `conformance/iac/` holds plan JSON fixtures, each with the problems the linter must report: a typo, a missing required input, a secret written as a value, an unbound container, an unknown origin, `env_from`, a mount with `sub_path`, a stale module, and one clean plan per target.
+- **Lint.** `conformance/iac/` holds plan JSON fixtures, each with the problems the linter must report: a typo, a missing required input, a secret written as a value, an unbound container, an unknown origin, `env_from`, a mount with `sub_path`, a stale module, a policy that pins the account and name of every secret (one plan within it, one outside, one with an unknown account), and one clean plan per target.
 
 ## 9. Compatibility
 
@@ -409,4 +465,5 @@ The module is generated from one contract, so contract changes ([SPEC.md section
 1. Should the module declare the workload resource itself, behind an option, for platforms that want a one-line deploy? This document says no (section 1.2), so that the platform keeps control of the resource, but it would make `unbound_container` impossible by construction.
 2. Should the list of secret-bearing attributes (rule `secret_as_value`) be data the platform can extend, for providers docuconf does not know?
 3. Should the linter also read the state, to check bindings that did not change in this plan? A plan only shows what changes; a clean plan with stale values elsewhere passes. Running `terraform plan -refresh-only` gives the linter the whole picture without reading the state directly.
-4. A Terraform provider with a `docuconf_contract` data source could validate during plan without the extra lint step. It would be a binary to install and sign; is the trade worth it once the module and linter exist?
+4. Should `docuconf terraform -policy prod.cue` also compile the simple parts of a policy (fixed values, prefixes, patterns) into the module's preconditions, so that `policy_deferred` fields are checked at apply as contract constraints are? CUE is more expressive than HCL, so only part of a policy would carry over, and the linter would have to say which part.
+5. A Terraform provider with a `docuconf_contract` data source could validate during plan without the extra lint step. It would be a binary to install and sign; is the trade worth it once the module and linter exist?
