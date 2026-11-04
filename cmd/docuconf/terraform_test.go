@@ -373,6 +373,8 @@ var rejectCases = []struct {
 	values map[string]any
 	want   string // in the module's error
 }{
+	{"secret_as_value", map[string]any{"API_TOKEN": "hunter2"}, "API_TOKEN: set exactly one of secret or injected (a secret is never a literal value"},
+	{"list_from_config_map", map[string]any{"PORTS": map[string]any{"configMapKeyRef": map[string]any{"name": "a", "key": "b"}}}, "PORTS: set exactly one of value or injected (a list cannot come from a ConfigMap key"},
 	{"int_below_min", map[string]any{"WORKERS": 0}, "WORKERS: 0 is below min 1"},
 	{"int_fraction", map[string]any{"WORKERS": 1.5}, "WORKERS: expected an integer, got 1.5"},
 	{"string_too_short", map[string]any{"GREETING": "x"}, `GREETING: "x" is 1 characters, below minLength 2`},
@@ -414,6 +416,7 @@ var rejectCases = []struct {
 var ownWording = map[string]bool{
 	"field_path": true, "resource": true, "shared_placeholder": true,
 	"shared_label_value": true, "pod_conflict": true,
+	"secret_as_value": true, "list_from_config_map": true,
 }
 
 func TestTerraformRejectsWhatVetRejects(t *testing.T) {

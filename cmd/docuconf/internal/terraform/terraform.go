@@ -327,7 +327,7 @@ func (g *gen) checks(v Var, ref string) []check {
 	copy(list, srcs)
 	out = append(out, check{
 		cond: fmt.Sprintf("%s == null ? true : length([for k, s in %s : k if s != null]) == 1", ref, ref),
-		msg:  hclString(fmt.Sprintf("%s: set exactly one of %s", n, orList(list))),
+		msg:  hclString(fmt.Sprintf("%s: set exactly one of %s%s", n, orList(list), unsupportedHint(v, srcs))),
 	})
 	inj := ref + ".injected"
 	out = append(out,
@@ -433,6 +433,19 @@ func podChecks(prefix, ann, lab string, wrap func(string) string) []check {
 				prefix, lab, placeholder, labelValue, lab, placeholder, labelValue),
 		},
 	}
+}
+
+// unsupportedHint explains an argument with nothing set. Terraform drops
+// attributes its object type does not declare, so a secret given as
+// { value = ... } arrives empty rather than as an error.
+func unsupportedHint(v Var, srcs []string) string {
+	switch {
+	case v.Secret:
+		return " (a secret is never a literal value; Terraform ignores a value attribute here)"
+	case !has(srcs, "config_map"):
+		return " (a list cannot come from a ConfigMap key; Terraform ignores a config_map attribute here)"
+	}
+	return ""
 }
 
 // guard makes cond apply only when ref and attr are set.

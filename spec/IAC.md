@@ -158,7 +158,7 @@ variable "DATABASE_URL" {
 Rules:
 
 - **Types.** The `value` attribute has the platform type of [SPEC.md section 4.3](SPEC.md#43-types): `string` for `string`, `url`, `enum` and `duration` (Go syntax), `number` for `int` and `float`, `bool`, `list(string)` or `list(number)` for a `list`, and `any` for a `json` value. An `int` adds a whole-number check.
-- **Secrets have no `value`.** A `secret: true` input, and every `keySet`, has only `secret` and `injected`, so `DATABASE_URL = { value = "postgres://…" }` is `Unsupported attribute` at validate. A secret file input has no `inline` and no `config_map`.
+- **Secrets have no `value`.** A `secret: true` input, and every `keySet`, has only `secret` and `injected`, so `DATABASE_URL = { value = "postgres://…" }` fails at validate. Terraform drops an attribute an object type does not declare rather than rejecting it, so the argument arrives with nothing set, and the exactly-one validation says why: `DATABASE_URL: set exactly one of secret or injected (a secret is never a literal value; Terraform ignores a value attribute here)`. A secret file input has no `inline` and no `config_map`.
 - **Required.** A required input has `nullable = false` and no default. A required input satisfied by a profile ([SPEC.md section 4.4](SPEC.md#44-config-files-and-profiles)) is optional here, since the module cannot know which profile the platform selects until the selector's argument is known; the linter checks it (section 7, rule `missing_required`).
 - **Constraints** become `validation` blocks on the `value` attribute, one per constraint, with the error message `docuconf vet` prints for the same mistake ([SPEC.md section 7](SPEC.md#7-platform-validation)): ranges, `values`, `pattern`, `schemes`, lengths, list bounds and item bounds. They run at plan on known values. A duration's bounds are compared in nanoseconds, which Terraform's arbitrary-precision numbers hold exactly. A constraint HCL cannot express exactly (a `json` value's `schema`) is left to the linter and to boot, and the generated README says so.
 - **Null-safe messages.** Terraform evaluates a validation's `error_message` even when its condition holds, so every interpolation in a message is wrapped in `try(format("%v", …), "")`, and every condition is guarded with `var.X == null ? true : …` rather than `||`, since not every supported version short-circuits `||`.
@@ -465,7 +465,7 @@ The module is generated from one contract, so contract changes ([SPEC.md section
 | A new required input | `Missing required argument` at validate. |
 | A removed input | `Unsupported argument` at validate, wherever the platform still sets it. Deprecate first: a deprecated input keeps its argument, with a warning. |
 | A tightened constraint | A validation error at plan, on values that no longer qualify. |
-| A secret that was not secret before | `Unsupported attribute "value"`: the platform must switch to a secret reference. |
+| A secret that was not secret before | The exactly-one validation fails, saying a secret is never a literal value: the platform must switch to a secret reference. |
 
 `-check` in CI (section 4.1) keeps the committed module in step with the contract, and `stale_module` catches a module that drifted anyway. The module's outputs and their shapes are versioned with this document: in `v1alpha1` they may change; from `v1beta1` on, only additively.
 
