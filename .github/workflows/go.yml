@@ -48,6 +48,27 @@ jobs:
           EOF
           GOWORK="$RUNNER_TEMP/go.work" go test -run 'Check|Exec' .
 
+  # docuconf pulumi: the generated TypeScript component type-checks under
+  # the tsconfig of pulumi new typescript, renders what docuconf render does
+  # for every render case, and rejects what vet rejects. It runs on Node
+  # with @pulumi/pulumi's mocks (cmd/docuconf/pulumi_test.go).
+  pulumi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cmd/docuconf/testdata/pulumi/package-lock.json
+      - working-directory: cmd/docuconf/testdata/pulumi
+        run: npm ci --no-audit --no-fund
+      - working-directory: cmd/docuconf
+        run: go test -count=1 -v -run Pulumi .
+
   # docuconf terraform: generated modules are applied and compared with
   # docuconf render, on the oldest Terraform they support, the latest, and
   # OpenTofu (cmd/docuconf/terraform_test.go).

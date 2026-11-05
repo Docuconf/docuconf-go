@@ -219,3 +219,31 @@ It reports a typo such as `PORTT` (with a "did you mean `PORT`?"), a
 secret set as a plain value, a file mounted at the wrong path, or a module
 generated from an older contract. See
 [spec/IAC.md](../../spec/IAC.md) for the module and the linter's rules.
+
+## Deploy with Pulumi
+
+[`deploy/pulumi`](deploy/pulumi) sets the same inputs from a Pulumi
+program in TypeScript, through a component `docuconf pulumi` generates
+from the contract:
+
+```sh
+docuconf pulumi -contract contract.cue -out deploy/pulumi/orders-config
+```
+
+Each argument is a source in the vocabulary of `values.yaml`: `{ value }`,
+`{ secretKeyRef }`, `{ inline }`, `{ certificate }` and so on. A secret
+has no `value`, so `DATABASE_URL: { value: "postgres://…" }` does not
+compile. The component checks every value with `@docuconf/core`, the
+engine the service runs at boot, so a value that would stop the service
+from starting stops the deployment instead:
+
+```
+docuconf:orders-api:Config (orders):
+  error: orders-api config: 1 configuration problem:
+    WORKER_COUNT: must be at most 64 (got 100) (out_of_range)
+```
+
+CI runs the program with the kubernetes provider rendering YAML to a
+directory, and checks that the manifests match `docuconf render` of
+[`deploy/values.yaml`](deploy/values.yaml) and
+[`deploy/files.yaml`](deploy/files.yaml).

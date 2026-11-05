@@ -1,0 +1,14 @@
+{
+  "name": "docuconf-pulumi-tests",
+  "private": true,
+  "description": "What the docuconf pulumi tests run generated TypeScript components with: npm ci here, or let the tests do it.",
+  "devDependencies": {
+    "@docuconf/core": "0.1.0",
+    "@pulumi/pulumi": "3.274.0",
+    "@types/node": "22.20.5",
+    "smol-toml": "1.8.0",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "yaml": "2.9.1"
+  }
+}

@@ -1,0 +1,15 @@
+name: orders
+description: The orders service on Kubernetes, from Pulumi, through the component docuconf pulumi generates from the contract.
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+config:
+  orders:namespace:
+    default: orders
+  orders:image:
+    default: registry.example.com/orders-api:2.3.0
+  orders:environment:
+    default: prod
+  orders:workerCount:
+    default: 8

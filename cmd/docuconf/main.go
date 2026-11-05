@@ -7,6 +7,7 @@
 //	docuconf render -contract contract.cue -values values.yaml [-files files.yaml]
 //	docuconf helm   -contract contract.cue -chart ./chart
 //	docuconf terraform -contract contract.cue -target kubernetes -out ./modules/billing-api-config
+//	docuconf pulumi -contract contract.cue -lang typescript -out ./sdk/billing-api-config
 //	docuconf check  -contract contract.cue
 //	docuconf exec   -contract contract.cue -- program [args...]
 //	docuconf docs   contract.cue [--format model|markdown|agents] [-o file | --check file]
@@ -60,6 +61,7 @@ Usage:
   docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml]
   docuconf helm   -contract <contract.cue> -chart <chart directory>
   docuconf terraform -contract <contract.cue> -out <module directory> [-target kubernetes] [-check]
+  docuconf pulumi -contract <contract.cue> -out <component directory> [-lang typescript] [-target kubernetes] [-check]
   docuconf lint terraform <plan.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-explain] [-format text|json|sarif]
   docuconf check  -contract <contract.cue> [-env-file .env]
   docuconf exec   -contract <contract.cue> [-env-file .env] [-no-defaults] -- <program> [args...]
@@ -95,6 +97,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runHelm(args[1:], stdout, stderr)
 	case "terraform":
 		err = runTerraform(args[1:], stdout, stderr)
+	case "pulumi":
+		err = runPulumi(args[1:], stdout, stderr)
 	case "lint":
 		err = runLint(args[1:], stdout, stderr)
 	case "check":
