@@ -2,4 +2,4 @@
 .terraform.lock.hcl
 plan.out
 plan.json
-provider_override.tf
+/provider_override.tf
