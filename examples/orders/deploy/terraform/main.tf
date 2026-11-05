@@ -72,9 +72,24 @@ resource "kubernetes_deployment_v1" "orders" {
         annotations = module.orders_config.pod_annotations
       }
       spec {
+        # The image runs as uid 65532. fsGroup makes the files of the
+        # mounted TLS Secret, which the module mounts with mode 0400,
+        # readable to it.
+        security_context {
+          run_as_non_root = true
+          run_as_user     = 65532
+          fs_group        = 65532
+        }
+
         container {
           name  = "orders-api"
           image = var.image
+
+          security_context {
+            allow_privilege_escalation = false
+            read_only_root_filesystem  = true
+            capabilities { drop = ["ALL"] }
+          }
 
           dynamic "env" {
             for_each = module.orders_config.kubernetes_env
