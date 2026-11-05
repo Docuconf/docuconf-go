@@ -1,0 +1,12 @@
+name: orders-go
+description: The orders service on Kubernetes, from a Pulumi program in Go, through the component docuconf pulumi -lang go generates from the contract.
+runtime: go
+config:
+  orders-go:namespace:
+    default: orders
+  orders-go:image:
+    default: registry.example.com/orders-api:2.3.0
+  orders-go:environment:
+    default: prod
+  orders-go:workerCount:
+    default: 8

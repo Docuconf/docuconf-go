@@ -24,6 +24,9 @@ jobs:
           go test -race ./...
       - name: CLI
         working-directory: cmd/docuconf
+        env:
+          # The pulumi-go job runs them, with the Pulumi Go modules cached.
+          DOCUCONF_SKIP_PULUMI_GO: "1"
         run: |
           go build ./...
           go vet ./...
@@ -67,7 +70,26 @@ jobs:
       - working-directory: cmd/docuconf/testdata/pulumi
         run: npm ci --no-audit --no-fund
       - working-directory: cmd/docuconf
+        env:
+          DOCUCONF_SKIP_PULUMI_GO: "1"
         run: go test -count=1 -v -run Pulumi .
+
+  # docuconf pulumi -lang go: the generated component passes go vet, renders
+  # what docuconf render does for every render case, and rejects what vet
+  # rejects, with the Pulumi Go SDK's mocks (cmd/docuconf/pulumi_go_test.go).
+  # Its module pins the Pulumi modules (testdata/pulumi-go).
+  pulumi-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: |
+            cmd/docuconf/go.sum
+            cmd/docuconf/testdata/pulumi-go/go.sum
+      - working-directory: cmd/docuconf
+        run: go test -count=1 -v -run PulumiGo .
 
   # docuconf terraform: generated modules are applied and compared with
   # docuconf render, on the oldest Terraform they support, the latest, and

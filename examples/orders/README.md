@@ -288,8 +288,22 @@ directory, and checks that the manifests match `docuconf render` of
 [`deploy/values.yaml`](deploy/values.yaml) and
 [`deploy/files.yaml`](deploy/files.yaml).
 
+[`deploy/pulumi-go`](deploy/pulumi-go) is the same program in Go,
+through the component `docuconf pulumi -lang go` generates:
+
+```sh
+docuconf pulumi -contract contract.cue -lang go -out deploy/pulumi-go/ordersapiconfig
+```
+
+Each source is a constructor, and each input's field accepts only the
+sources its input allows: `DATABASE_URL` is a `SecretVar`, which
+`ordersapiconfig.SecretKeyRef(...)` implements and
+`ordersapiconfig.String(...)` does not, so a literal secret does not
+compile. Values are checked with the Go SDK.
+
 [`deploy/pulumi/e2e.sh`](deploy/pulumi/e2e.sh) is the end-to-end test
-above for the Pulumi program: it deploys to a kind cluster with `pulumi
+above for the Pulumi programs (`deploy/pulumi/e2e.sh deploy/pulumi-go`
+for the Go one): it deploys to a kind cluster with `pulumi
 up`, and checks the running service the same way, with a forbidden value
 failing at preview and a discount code added through stack config rolling
 out. Both tests share [`deploy/e2e`](deploy/e2e): the cluster's fixtures
