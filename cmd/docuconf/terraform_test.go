@@ -76,7 +76,19 @@ func (d doc) allValues() map[string]any {
 func vals(v map[string]any) doc { return doc{values: v} }
 
 const (
-	cert   = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+	// A real CA certificate, valid for a century: the Pulumi component
+	// checks inline content with @docuconf/core, which parses it.
+	cert = "-----BEGIN CERTIFICATE-----\n" +
+		"MIIBizCCATGgAwIBAgIUNilHmxOCCuALVx//POpOUEjedfAwCgYIKoZIzj0EAwIw\n" +
+		"GjEYMBYGA1UEAwwPa2l0Y2hlbiB0ZXN0IENBMCAXDTI2MTEwNTAyNDM0NloYDzIx\n" +
+		"MjYxMDEyMDI0MzQ2WjAaMRgwFgYDVQQDDA9raXRjaGVuIHRlc3QgQ0EwWTATBgcq\n" +
+		"hkjOPQIBBggqhkjOPQMBBwNCAAR1RzQTx7k5kpSG6uSryUDlNodKpwURHGImodDZ\n" +
+		"2OQ7LatP2kd732AZadLqYwudF/u/7xlmrVoeQwlhdBV7qch+o1MwUTAdBgNVHQ4E\n" +
+		"FgQUbpuZWXh0IT69wd0rf1LWgcdyTjUwHwYDVR0jBBgwFoAUbpuZWXh0IT69wd0r\n" +
+		"f1LWgcdyTjUwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiAs4b9r\n" +
+		"3LXios4Sjm4kFzoa6lI8pXIjiJiVRbq6b1wy9gIhAJWDmKZYnW7nPVeIR0VETKys\n" +
+		"N5+wm2JxIsZAhMmqApfy\n" +
+		"-----END CERTIFICATE-----\n"
 	tagEsc = `\` + "u003c" // a literal backslash before u003c, which must stay as it is
 )
 

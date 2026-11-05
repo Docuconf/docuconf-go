@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/platform"
+	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/pulumi"
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/terraform"
 )
 
@@ -51,25 +52,34 @@ func runTerraform(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	regen := fmt.Sprintf("docuconf terraform -contract %s -target %s -out %s", *contract, *target, *out)
+	return writeGenerated("docuconf terraform", *out, files, *check, regen, terraform.MaskVersion, stdout, stderr)
+}
+
+// writeGenerated writes a generated module or component into dir, and
+// removes the files docuconf generated there before but no longer does.
+// With check, it compares instead, and returns errStale if anything
+// differs; mask hides what may differ (the generator's version).
+func writeGenerated(tool, dir string, files map[string][]byte, check bool, regen string, mask func(string, []byte) []byte, stdout, stderr io.Writer) error {
 	names := make([]string, 0, len(files))
 	for n := range files {
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	extra, err := staleGenerated(*out, files)
+	extra, err := staleGenerated(dir, files)
 	if err != nil {
 		return err
 	}
-	if *check {
+	if check {
 		var stale []string
 		for _, n := range names {
-			path := filepath.Join(*out, n)
+			path := filepath.Join(dir, n)
 			have, err := os.ReadFile(path)
 			if err != nil && !os.IsNotExist(err) {
 				return err
 			}
 			want := files[n]
-			if bytes.Equal(terraform.MaskVersion(n, have), terraform.MaskVersion(n, want)) {
+			if bytes.Equal(mask(n, have), mask(n, want)) {
 				continue
 			}
 			stale = append(stale, n)
@@ -79,24 +89,23 @@ func runTerraform(args []string, stdout, stderr io.Writer) error {
 			stale = append(stale, n+" (no longer generated)")
 		}
 		if len(stale) > 0 {
-			fmt.Fprintf(stderr, "docuconf terraform: %s is out of date: %s; regenerate it with: docuconf terraform -contract %s -target %s -out %s\n",
-				*out, strings.Join(stale, ", "), *contract, *target, *out)
+			fmt.Fprintf(stderr, "%s: %s is out of date: %s; regenerate it with: %s\n", tool, dir, strings.Join(stale, ", "), regen)
 			return errStale
 		}
 		return nil
 	}
-	if err := os.MkdirAll(*out, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	for _, n := range names {
-		path := filepath.Join(*out, n)
+		path := filepath.Join(dir, n)
 		if err := os.WriteFile(path, files[n], 0o644); err != nil {
 			return err
 		}
 		fmt.Fprintf(stdout, "wrote %s\n", path)
 	}
 	for _, n := range extra {
-		path := filepath.Join(*out, n)
+		path := filepath.Join(dir, n)
 		if err := os.Remove(path); err != nil {
 			return err
 		}
@@ -124,7 +133,7 @@ func staleGenerated(dir string, files map[string][]byte) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if bytes.HasPrefix(b, []byte(terraform.Header)) || bytes.HasPrefix(b, []byte(terraform.MarkdownHeader)) {
+		if bytes.HasPrefix(b, []byte(terraform.Header)) || bytes.HasPrefix(b, []byte(terraform.MarkdownHeader)) || bytes.HasPrefix(b, []byte(pulumi.Header)) {
 			out = append(out, e.Name())
 		}
 	}

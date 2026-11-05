@@ -184,3 +184,85 @@ jobs:
         run: |
           go test ./...
           go tool docuconf-export -pkg ./internal/config -name orders-api -package orders -check contract.cue
+
+  # The orders service deployed from Pulumi (deploy/pulumi): the committed
+  # component is what docuconf pulumi generates from the contract, the
+  # program type-checks, `pulumi up` renders manifests that match docuconf
+  # render of the same inputs, and a forbidden value fails at preview. The
+  # kubernetes provider renders YAML to a directory, so no cluster is needed.
+  orders-pulumi:
+    runs-on: ubuntu-latest
+    env:
+      PULUMI_CONFIG_PASSPHRASE: ""
+      PULUMI_SKIP_UPDATE_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: examples/orders/deploy/pulumi/package-lock.json
+      - uses: pulumi/actions@v6
+        with:
+          pulumi-version: 3.274.0
+      - run: pip install pyyaml
+      - name: Install the docuconf CLI
+        working-directory: cmd/docuconf
+        run: go install .
+      - name: Component is up to date
+        working-directory: examples/orders
+        run: docuconf pulumi -contract contract.cue -out deploy/pulumi/orders-config -check
+      - name: Render and compare with docuconf render
+        working-directory: examples/orders/deploy/pulumi
+        run: |
+          npm ci --no-audit --no-fund
+          npx tsc --noEmit -p .
+          mkdir -p "$RUNNER_TEMP/pulumi-state"
+          pulumi login "file://$RUNNER_TEMP/pulumi-state"
+          pulumi stack init ci
+          pulumi config set renderDir "$RUNNER_TEMP/rendered"
+          pulumi up --yes --non-interactive
+          docuconf render -contract ../../contract.cue -values ../values.yaml -files ../files.yaml > "$RUNNER_TEMP/render.yaml"
+          ./check-rendered.py "$RUNNER_TEMP/render.yaml" "$RUNNER_TEMP/rendered"
+      - name: A forbidden value fails at preview
+        working-directory: examples/orders/deploy/pulumi
+        run: |
+          pulumi config set workerCount 100
+          if pulumi preview --non-interactive > "$RUNNER_TEMP/preview.txt" 2>&1; then
+            cat "$RUNNER_TEMP/preview.txt"; echo "the preview accepted WORKER_COUNT = 100"; exit 1
+          fi
+          cat "$RUNNER_TEMP/preview.txt"
+          grep -q "WORKER_COUNT: must be at most 64 (got 100)" "$RUNNER_TEMP/preview.txt"
+
+  # deploy/pulumi deployed to a kind cluster, and the running service
+  # checked against what the component rendered, as orders-e2e does for
+  # Terraform: see deploy/pulumi/e2e.sh.
+  orders-pulumi-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: examples/orders/deploy/pulumi/package-lock.json
+      - uses: pulumi/actions@v6
+        with:
+          pulumi-version: 3.274.0
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: orders-e2e
+      - name: End-to-end test
+        env:
+          KIND_CLUSTER: orders-e2e
+        run: examples/orders/deploy/pulumi/e2e.sh
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl get all,certificates,configmaps,secrets -n orders -o wide || true
+          kubectl -n orders describe pods || true
+          kubectl -n orders logs -l app=orders-api --all-containers --prefix || true

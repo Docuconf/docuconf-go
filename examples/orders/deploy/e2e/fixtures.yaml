@@ -1,8 +1,9 @@
-# What the platform provides beside the module, for the end-to-end test
-# (e2e.sh): the namespace, the Secrets that DATABASE_URL and WEBHOOK_KEYS
-# reference, and the cert-manager Certificate behind serving-tls, with the
-# spec main.tf gives the module. A self-signed CA issues it, so the test
-# can verify the service's certificate against the CA.
+# What the platform provides beside the orders config, for the end-to-end
+# tests (terraform/e2e/e2e.sh and pulumi/e2e.sh): the namespace, the
+# Secrets that DATABASE_URL and WEBHOOK_KEYS reference, and the
+# cert-manager Certificate behind serving-tls, with the spec both programs
+# give it. A self-signed CA issues it, so the tests can verify the
+# service's certificate against the CA.
 apiVersion: v1
 kind: Namespace
 metadata:
