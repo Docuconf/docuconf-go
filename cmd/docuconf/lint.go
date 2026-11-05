@@ -160,14 +160,19 @@ func vetDocs(p *platform.Platform, d lint.Docs, policy cue.Value, policyFile str
 	if err != nil {
 		return nil, err
 	}
+	refs, err := doc("refs", d.Refs)
+	if err != nil {
+		return nil, err
+	}
 	empty, _ := doc("policy", map[string]any{})
-	base, warnings, err := p.ValidateWarn(c, values, files, overlays, empty)
+	base, warnings, _, err := p.ValidateRefs(c, values, files, overlays, empty, refs)
 	if err != nil {
 		return nil, err
 	}
 	withPolicy := base
+	var deferred []string
 	if policy.Exists() {
-		if withPolicy, _, err = p.ValidateWarn(c, values, files, overlays, policy); err != nil {
+		if withPolicy, _, deferred, err = p.ValidateRefs(c, values, files, overlays, policy, refs); err != nil {
 			return nil, err
 		}
 	}
@@ -190,6 +195,11 @@ func vetDocs(p *platform.Platform, d lint.Docs, policy cue.Value, policyFile str
 			f.Code = "missing_required"
 		}
 		out = append(out, f)
+	}
+	for _, l := range deferred {
+		name, _, _ := strings.Cut(l, ":")
+		out = append(out, lint.Finding{Code: "policy_deferred", Level: lint.Notice, Module: d.Module.Addr, Where: d.Where, Input: name,
+			Message: fmt.Sprintf("%s (policy %s); nothing checks it before the app starts", l, filepath.Base(policyFile))})
 	}
 	for _, w := range warnings {
 		out = append(out, lint.Finding{Code: "deprecated_set", Level: lint.Warning, Module: d.Module.Addr, Where: d.Where,

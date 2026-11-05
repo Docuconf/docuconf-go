@@ -6,6 +6,7 @@ import (
 	"path"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +31,10 @@ type translator struct {
 	secrets       []string // literal values to scrub from every line
 	explained     map[string]bool
 	out           []string
+	// refs are target-form references the policy sees (ValidateRefs), and
+	// unknown the fields of them it constrains but they do not carry.
+	refs    cue.Value
+	unknown map[string]bool
 }
 
 func newTranslator(c *Contract, values, files, overlays cue.Value) *translator {
@@ -194,7 +199,39 @@ func collectStrings(v cue.Value, dst *[]string) {
 }
 
 func (t *translator) value(name string) cue.Value {
+	if r := t.refs.LookupPath(cue.MakePath(cue.Str(name))); t.refs.Exists() && r.Exists() {
+		return r
+	}
 	return t.values.LookupPath(cue.MakePath(cue.Str(name)))
+}
+
+// deferredFields lists the fields of target-form references that the
+// policy constrains and the reference does not carry: unknown at plan.
+func (t *translator) deferredFields(unified cue.Value) []string {
+	var out []string
+	t.unknown = map[string]bool{}
+	for name, r := range fields(t.refs) {
+		for form, data := range fields(r) {
+			have := fields(data)
+			seen := map[string]bool{}
+			for _, at := range []cue.Path{
+				cue.MakePath(cue.Str(name), cue.Str(form)),
+				cue.MakePath(cue.Str("references"), cue.Str(name), cue.Str(form)),
+				cue.MakePath(cue.Str("secretReferences"), cue.Str(name), cue.Str(form)),
+			} {
+				for f := range fields(unified.LookupPath(at)) {
+					if _, ok := have[f]; ok || seen[f] {
+						continue
+					}
+					seen[f] = true
+					t.unknown[name+"/"+form+"."+f] = true
+					out = append(out, fmt.Sprintf("%s: %s.%s is unknown at plan, and the policy constrains it", name, form, f))
+				}
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (t *translator) source(name string) cue.Value {
@@ -271,6 +308,13 @@ func (t *translator) policy(err error) {
 			continue
 		}
 		name := p[0]
+		// A field the reference does not carry is deferred, not failed.
+		if (name == "references" || name == "secretReferences") && len(p) > 3 && t.unknown[p[1]+"/"+p[2]+"."+p[3]] {
+			continue
+		}
+		if len(p) > 2 && t.unknown[p[0]+"/"+p[1]+"."+p[2]] {
+			continue
+		}
 		if (name == "references" || name == "secretReferences") && len(p) > 1 {
 			// A rule on every reference: name the input and the field. A
 			// reference is not secret material, so its fields are printed.
@@ -278,6 +322,15 @@ func (t *translator) policy(err error) {
 			sel := []cue.Selector{}
 			for _, f := range field {
 				sel = append(sel, cue.Str(f))
+			}
+			if len(field) > 0 && slices.Contains(referenceForms, field[0]) && !t.value(name).LookupPath(cue.MakePath(cue.Str(field[0]))).Exists() {
+				// The policy asks for another kind of reference.
+				have := "a literal"
+				for f := range fields(t.value(name)) {
+					have = f
+				}
+				t.add("%s: is set from %s, and the policy allows only %s here", name, have, field[0])
+				continue
 			}
 			if v := t.value(name).LookupPath(cue.MakePath(sel...)); len(field) > 0 && v.Exists() {
 				t.add("%s: %s %s is not allowed by policy", name, strings.Join(field, "."), describe(v))
