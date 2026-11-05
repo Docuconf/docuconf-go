@@ -237,14 +237,70 @@ jobs:
           cat "$RUNNER_TEMP/preview.txt"
           grep -q "WORKER_COUNT: must be at most 64 (got 100)" "$RUNNER_TEMP/preview.txt"
 
-  # deploy/pulumi deployed to a kind cluster, and the running service
-  # checked against what the component rendered, as orders-e2e does for
-  # Terraform: see deploy/pulumi/e2e.sh.
+  # The same program in Go (deploy/pulumi-go), through docuconf pulumi
+  # -lang go: the committed component is up to date and formatted, the
+  # program builds, its manifests match docuconf render (ConfigMap content
+  # by meaning: a Go map has no key order), and a forbidden value fails at
+  # preview.
+  orders-pulumi-go:
+    runs-on: ubuntu-latest
+    env:
+      PULUMI_CONFIG_PASSPHRASE: ""
+      PULUMI_SKIP_UPDATE_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: examples/orders/deploy/pulumi-go/go.sum
+      - uses: pulumi/actions@v6
+        with:
+          pulumi-version: 3.274.0
+      - run: pip install pyyaml
+      - name: Install the docuconf CLI
+        working-directory: cmd/docuconf
+        run: go install .
+      - name: Component is up to date
+        working-directory: examples/orders
+        run: docuconf pulumi -contract contract.cue -lang go -out deploy/pulumi-go/ordersapiconfig -check
+      - name: Render and compare with docuconf render
+        working-directory: examples/orders/deploy/pulumi-go
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          mkdir -p "$RUNNER_TEMP/pulumi-state"
+          pulumi login "file://$RUNNER_TEMP/pulumi-state"
+          pulumi stack init ci
+          pulumi config set renderDir "$RUNNER_TEMP/rendered"
+          pulumi up --yes --non-interactive
+          docuconf render -contract ../../contract.cue -values ../values.yaml -files ../files.yaml > "$RUNNER_TEMP/render.yaml"
+          ../pulumi/check-rendered.py --by-meaning "$RUNNER_TEMP/render.yaml" "$RUNNER_TEMP/rendered"
+      - name: A forbidden value fails at preview
+        working-directory: examples/orders/deploy/pulumi-go
+        run: |
+          pulumi config set workerCount 100
+          if pulumi preview --non-interactive > "$RUNNER_TEMP/preview.txt" 2>&1; then
+            cat "$RUNNER_TEMP/preview.txt"; echo "the preview accepted WORKER_COUNT = 100"; exit 1
+          fi
+          cat "$RUNNER_TEMP/preview.txt"
+          grep -q "WORKER_COUNT: 100 is above max 64" "$RUNNER_TEMP/preview.txt"
+
+  # deploy/pulumi and deploy/pulumi-go deployed to a kind cluster, and the
+  # running service checked against what the component rendered, as
+  # orders-e2e does for Terraform: see deploy/pulumi/e2e.sh.
   orders-pulumi-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        program: [pulumi, pulumi-go]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: examples/orders/deploy/pulumi-go/go.sum
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -259,7 +315,7 @@ jobs:
       - name: End-to-end test
         env:
           KIND_CLUSTER: orders-e2e
-        run: examples/orders/deploy/pulumi/e2e.sh
+        run: examples/orders/deploy/pulumi/e2e.sh examples/orders/deploy/${{ matrix.program }}
       - name: Cluster state on failure
         if: failure()
         run: |

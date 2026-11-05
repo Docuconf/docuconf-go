@@ -34,8 +34,11 @@ const (
 
 // Options configure a generated component.
 type Options struct {
-	// Lang is the component's language. Only typescript is supported yet.
+	// Lang is the component's language: typescript or go.
 	Lang string
+	// Package is a Go component's package name; by default the contract's
+	// name, without separators, then "config".
+	Package string
 	// Target is the workload kind to render for. Only kubernetes is
 	// supported yet.
 	Target string
@@ -52,8 +55,8 @@ func Generate(c *terraform.Contract, opt Options) (map[string][]byte, error) {
 	if opt.Target == "" {
 		opt.Target = "kubernetes"
 	}
-	if opt.Lang != "typescript" {
-		return nil, fmt.Errorf("-lang %q is not supported yet; supported: typescript", opt.Lang)
+	if opt.Lang != "typescript" && opt.Lang != "go" {
+		return nil, fmt.Errorf("-lang %q is not supported yet; supported: typescript, go", opt.Lang)
 	}
 	if opt.Target != "kubernetes" {
 		return nil, fmt.Errorf("-target %q is not supported by docuconf pulumi yet; supported: kubernetes", opt.Target)
@@ -88,6 +91,9 @@ func Generate(c *terraform.Contract, opt Options) (map[string][]byte, error) {
 	}, "", "  ")
 	if err != nil {
 		return nil, err
+	}
+	if opt.Lang == "go" {
+		return generateGo(c, opt, append(meta, '\n'), digest)
 	}
 	contractTS, err := g.contractTS(digest)
 	if err != nil {

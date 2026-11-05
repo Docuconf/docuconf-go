@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# End-to-end test: deploys the orders service to a kind cluster with the
-# Pulumi program in this directory, then checks that the running service
-# received what the component rendered:
+# End-to-end test: deploys the orders service to a kind cluster with a
+# Pulumi program, the TypeScript one in this directory or the one given
+# (../pulumi-go, in Go), then checks that the running service received
+# what the component rendered:
+#
+#   e2e.sh [program directory]
 #
 #   1. A value the contract forbids fails at preview, before the cluster
 #      sees it.
@@ -14,7 +17,7 @@
 #      served.
 #   5. A renewed certificate is served without a restart.
 #
-# Needs docker, kind, kubectl, pulumi, npm, curl and openssl. The cluster is
+# Needs docker, kind, kubectl, pulumi, curl, openssl, and npm or go. The cluster is
 # as for ../terraform/e2e/e2e.sh: $KIND_CLUSTER (default orders-e2e),
 # created and deleted unless it exists, KEEP_CLUSTER=1 to keep it. The
 # stack's state is local and temporary. The shared steps are in
@@ -22,9 +25,10 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
+program="$(cd "${1:-$here}" && pwd)"
 # shellcheck source=SCRIPTDIR/../e2e/lib.sh
 . "$here/../e2e/lib.sh"
-need pulumi npm
+need pulumi
 
 export PULUMI_CONFIG_PASSPHRASE="" PULUMI_SKIP_UPDATE_CHECK=1 PULUMI_BACKEND_URL="file://$tmp/state"
 teardown() { (cd "$tmp/pulumi" && pulumi destroy --yes --non-interactive); }
@@ -33,11 +37,20 @@ setup
 
 # Work in a copy of the program, so the test leaves no stack files in the
 # repository.
-step "program"
+step "program ${program#"$orders"/}"
 mkdir "$tmp/state" "$tmp/pulumi"
-cp -r "$here"/index.ts "$here"/package.json "$here"/package-lock.json "$here"/tsconfig.json "$here"/Pulumi.yaml "$here"/orders-config "$tmp/pulumi/"
-cd "$tmp/pulumi"
-npm ci --no-audit --no-fund >/dev/null
+if [ -f "$program/go.mod" ]; then
+  need go
+  cp -r "$program"/main.go "$program"/go.mod "$program"/go.sum "$program"/Pulumi.yaml "$program"/ordersapiconfig "$tmp/pulumi/"
+  cd "$tmp/pulumi"
+  # The program builds against the SDK in this checkout.
+  go mod edit -replace "github.com/docuconf/docuconf-go=$repo"
+else
+  need npm
+  cp -r "$program"/index.ts "$program"/package.json "$program"/package-lock.json "$program"/tsconfig.json "$program"/Pulumi.yaml "$program"/orders-config "$tmp/pulumi/"
+  cd "$tmp/pulumi"
+  npm ci --no-audit --no-fund >/dev/null
+fi
 pulumi stack init e2e >/dev/null
 pulumi config set image "$image"
 
@@ -46,9 +59,10 @@ pulumi config set workerCount 100
 if pulumi preview --non-interactive >"$tmp/preview.txt" 2>&1; then
   fail "the preview accepted WORKER_COUNT = 100"
 fi
-grep -q "WORKER_COUNT: must be at most 64 (got 100)" "$tmp/preview.txt" ||
+# Each SDK words it its own way: "must be at most 64 (got 100)" in
+# TypeScript, "100 is above max 64" in Go.
+grep -E "WORKER_COUNT: .*(at most 64|above max 64)" "$tmp/preview.txt" ||
   { cat "$tmp/preview.txt" >&2; fail "the preview failed, but not on WORKER_COUNT"; }
-echo "refused: WORKER_COUNT: must be at most 64 (got 100)"
 pulumi config set workerCount 8
 
 deploy() { # pulumi up, and wait for the rollout
