@@ -1,0 +1,75 @@
+# What the platform provides beside the module, for the end-to-end test
+# (e2e.sh): the namespace, the Secrets that DATABASE_URL and WEBHOOK_KEYS
+# reference, and the cert-manager Certificate behind serving-tls, with the
+# spec main.tf gives the module. A self-signed CA issues it, so the test
+# can verify the service's certificate against the CA.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: orders
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: orders-db
+  namespace: orders
+stringData:
+  url: postgres://orders:e2e-db-password@db.orders.svc:5432/orders
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: orders-webhooks
+  namespace: orders
+stringData:
+  # Mid-rotation: the old key and the new one.
+  keys: old-webhook-key-0123456789abcdef0123,new-webhook-key-0123456789abcdef0123
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned
+  namespace: orders
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: e2e-ca
+  namespace: orders
+spec:
+  isCA: true
+  commonName: orders e2e CA
+  secretName: e2e-ca
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: e2e-ca
+  namespace: orders
+spec:
+  ca:
+    secretName: e2e-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: orders-tls
+  namespace: orders
+spec:
+  secretName: orders-tls
+  dnsNames: [orders.example.com]
+  duration: 2160h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: e2e-ca

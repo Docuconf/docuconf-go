@@ -101,6 +101,73 @@ jobs:
           terraform show -json plan.out > plan.json
           docuconf lint terraform plan.json -contract ../../contract.cue -explain
 
+  # The same service on ECS and Cloud Run (deploy/ecs, deploy/cloudrun):
+  # the committed module is what docuconf terraform -target generates, and
+  # the plan passes docuconf lint. Planning needs no cloud account: the
+  # job copies in an override file that configures the provider without
+  # credentials.
+  orders-cloud:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ecs, cloudrun]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Install the docuconf CLI
+        working-directory: cmd/docuconf
+        run: go install .
+      - name: Module is up to date
+        working-directory: examples/orders
+        run: docuconf terraform -contract contract.cue -target ${{ matrix.target }} -out deploy/${{ matrix.target }}/modules/orders-config -check
+      - name: Plan and lint
+        working-directory: examples/orders/deploy/${{ matrix.target }}
+        run: |
+          terraform fmt -check -recursive
+          cp ci/provider_override.tf .
+          terraform init -input=false
+          terraform validate
+          terraform plan -refresh=false -out plan.out
+          terraform show -json plan.out > plan.json
+          docuconf lint terraform plan.json -contract ../../contract.cue -explain
+
+  # deploy/terraform applied to a kind cluster, and the running service
+  # checked against what the module rendered: see
+  # deploy/terraform/e2e/e2e.sh.
+  orders-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: orders-e2e
+      - name: Install the docuconf CLI
+        working-directory: cmd/docuconf
+        run: go install .
+      - name: End-to-end test
+        env:
+          KIND_CLUSTER: orders-e2e
+        run: examples/orders/deploy/terraform/e2e/e2e.sh
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl get all,certificates,configmaps,secrets -n orders -o wide || true
+          kubectl -n orders describe pods || true
+          kubectl -n orders logs -l app=orders-api --all-containers --prefix || true
+
   # The SDK and docuconf-export promise Go 1.24 without a toolchain
   # download, as on distro packages and pinned CI images.
   go124:

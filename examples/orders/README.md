@@ -220,6 +220,46 @@ secret set as a plain value, a file mounted at the wrong path, or a module
 generated from an older contract. See
 [spec/IAC.md](../../spec/IAC.md) for the module and the linter's rules.
 
+### ECS and Cloud Run
+
+[`deploy/ecs`](deploy/ecs) and [`deploy/cloudrun`](deploy/cloudrun) set
+the same inputs for Amazon ECS and Cloud Run, each through a module
+generated for its target:
+
+```sh
+docuconf terraform -contract contract.cue -target ecs -out deploy/ecs/modules/orders-config
+docuconf terraform -contract contract.cue -target cloudrun -out deploy/cloudrun/modules/orders-config
+```
+
+A secret there is a Secrets Manager or Parameter Store ARN, or a Secret
+Manager secret. ECS mounts no files, so its module has no `discounts` or
+`serving-tls`. A Cloud Run secret volume holds a single file, so its module
+takes `discounts` from Secret Manager but has no `serving-tls`. In both,
+TLS ends in front of the service. CI plans and lints both on every change,
+without a cloud account.
+
+### End-to-end test
+
+[`deploy/terraform/e2e/e2e.sh`](deploy/terraform/e2e/e2e.sh) builds the
+service's image ([`Dockerfile`](Dockerfile)), applies `deploy/terraform`
+to a kind cluster with cert-manager, and checks the running service:
+
+- a value the contract forbids fails at plan;
+- the plan passes `docuconf lint`;
+- the service serves HTTPS with the issued certificate;
+- `/config` shows the values set in `main.tf`, with secrets redacted;
+- `/discounts` serves the inline file;
+- both rotating webhook keys are accepted;
+- a discount code added through Terraform rolls out;
+- a renewed certificate is served without a restart.
+
+It needs docker, kind, kubectl, terraform, docuconf, curl and openssl, and
+runs in CI on every change:
+
+```sh
+deploy/terraform/e2e/e2e.sh
+```
+
 ## Deploy with Pulumi
 
 [`deploy/pulumi`](deploy/pulumi) sets the same inputs from a Pulumi
