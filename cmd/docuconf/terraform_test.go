@@ -404,8 +404,9 @@ func tf(t *testing.T, bin, dir string, args ...string) ([]byte, error) {
 }
 
 // registryUnreachable matches the errors of an init that could not reach a
-// provider registry, as opposed to a problem with the configuration.
-var registryUnreachable = regexp.MustCompile(`could not connect to registry|Client\.Timeout exceeded|connection reset by peer|TLS handshake timeout|i/o timeout`)
+// provider registry, or the release host behind it (a 502, 503 or 504), as
+// opposed to a problem with the configuration.
+var registryUnreachable = regexp.MustCompile(`could not connect to registry|Client\.Timeout exceeded|connection reset by peer|TLS handshake timeout|i/o timeout|50[234]\s+(Bad Gateway|Service Unavailable|Gateway Timeout)`)
 
 // tfInit runs init, retrying when a provider registry could not be
 // reached: the tests that plan with providers download them, and a
