@@ -61,7 +61,7 @@ Usage:
   docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml]
   docuconf helm   -contract <contract.cue> -chart <chart directory>
   docuconf terraform -contract <contract.cue> -out <module directory> [-target kubernetes] [-check]
-  docuconf pulumi -contract <contract.cue> -out <component directory> [-lang typescript|go] [-package name] [-target kubernetes] [-check]
+  docuconf pulumi -contract <contract.cue> -out <component directory> [-lang typescript|go] [-package name] [-target kubernetes|ecs|cloudrun] [-check]
   docuconf lint terraform <plan.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-explain] [-format text|json|sarif]
   docuconf check  -contract <contract.cue> [-env-file .env]
   docuconf exec   -contract <contract.cue> [-env-file .env] [-no-defaults] -- <program> [args...]
