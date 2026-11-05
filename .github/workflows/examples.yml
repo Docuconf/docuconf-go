@@ -153,6 +153,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npx tsc --noEmit -p .
+          mkdir -p "$RUNNER_TEMP/pulumi-state"
           pulumi login "file://$RUNNER_TEMP/pulumi-state"
           pulumi stack init ci
           pulumi config set renderDir "$RUNNER_TEMP/rendered"
