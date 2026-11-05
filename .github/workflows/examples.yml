@@ -236,3 +236,33 @@ jobs:
           fi
           cat "$RUNNER_TEMP/preview.txt"
           grep -q "WORKER_COUNT: must be at most 64 (got 100)" "$RUNNER_TEMP/preview.txt"
+
+  # deploy/pulumi deployed to a kind cluster, and the running service
+  # checked against what the component rendered, as orders-e2e does for
+  # Terraform: see deploy/pulumi/e2e.sh.
+  orders-pulumi-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: examples/orders/deploy/pulumi/package-lock.json
+      - uses: pulumi/actions@v6
+        with:
+          pulumi-version: 3.274.0
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: orders-e2e
+      - name: End-to-end test
+        env:
+          KIND_CLUSTER: orders-e2e
+        run: examples/orders/deploy/pulumi/e2e.sh
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl get all,certificates,configmaps,secrets -n orders -o wide || true
+          kubectl -n orders describe pods || true
+          kubectl -n orders logs -l app=orders-api --all-containers --prefix || true

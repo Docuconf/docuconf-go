@@ -287,3 +287,10 @@ CI runs the program with the kubernetes provider rendering YAML to a
 directory, and checks that the manifests match `docuconf render` of
 [`deploy/values.yaml`](deploy/values.yaml) and
 [`deploy/files.yaml`](deploy/files.yaml).
+
+[`deploy/pulumi/e2e.sh`](deploy/pulumi/e2e.sh) is the end-to-end test
+above for the Pulumi program: it deploys to a kind cluster with `pulumi
+up`, and checks the running service the same way, with a forbidden value
+failing at preview and a discount code added through stack config rolling
+out. Both tests share [`deploy/e2e`](deploy/e2e): the cluster's fixtures
+and the checks.

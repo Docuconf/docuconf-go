@@ -13,6 +13,9 @@ const config = new pulumi.Config();
 const namespace = config.require("namespace");
 const image = config.require("image");
 const environment = config.require("environment");
+// The discount codes, written into an immutable, content-hashed ConfigMap:
+// changing them rolls the Deployment.
+const discountCodes = config.getObject<Record<string, number>>("discountCodes") ?? { WELCOME10: 10, SPRING25: 25 };
 
 // With renderDir set, the provider writes the manifests there instead of
 // applying them, so the program runs without a cluster (CI does this).
@@ -38,7 +41,7 @@ const orders = new OrdersApiConfig("orders", {
       renewBefore: "720h",
     },
   },
-  discounts: { inline: { codes: { WELCOME10: 10, SPRING25: 25 } } },
+  discounts: { inline: { codes: discountCodes } },
 });
 
 // The component renders the ConfigMaps; the program declares them.
