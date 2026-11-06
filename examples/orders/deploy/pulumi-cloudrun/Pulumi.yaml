@@ -1,0 +1,21 @@
+name: orders-cloudrun
+description: The orders service on Cloud Run, from Pulumi, through the component docuconf pulumi -target cloudrun generates from the contract.
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+config:
+  gcp:project:
+    value: acme-prod
+  gcp:region:
+    value: us-central1
+  orders-cloudrun:image:
+    default: us-docker.pkg.dev/acme-prod/orders/orders-api:2.3.0
+  orders-cloudrun:environment:
+    default: prod
+  orders-cloudrun:workerCount:
+    default: 8
+  # The service account the revision runs as. It must be allowed to access
+  # each secret (roles/secretmanager.secretAccessor).
+  orders-cloudrun:serviceAccount:
+    default: orders-api@acme-prod.iam.gserviceaccount.com

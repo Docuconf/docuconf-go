@@ -1,0 +1,20 @@
+name: orders-go-ecs
+description: The orders service on Amazon ECS (Fargate), from a Pulumi program in Go, through the component docuconf pulumi -lang go -target ecs generates from the contract.
+runtime: go
+config:
+  aws:region:
+    value: us-east-1
+  orders-go-ecs:image:
+    default: registry.example.com/orders-api:2.3.0
+  orders-go-ecs:environment:
+    default: prod
+  orders-go-ecs:workerCount:
+    default: 8
+  # Where the secrets live. The task execution role must be allowed to read
+  # them (secretsmanager:GetSecretValue, ssm:GetParameters).
+  orders-go-ecs:databaseUrlSecretArn:
+    default: arn:aws:secretsmanager:us-east-1:123456789012:secret:orders/prod/db-AbCdEf
+  orders-go-ecs:webhookKeysParameterArn:
+    default: arn:aws:ssm:us-east-1:123456789012:parameter/orders/prod/webhook-keys
+  orders-go-ecs:executionRoleArn:
+    default: arn:aws:iam::123456789012:role/orders-task-execution

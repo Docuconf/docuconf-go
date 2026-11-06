@@ -1,0 +1,17 @@
+{
+  "name": "orders-pulumi-cloudrun",
+  "private": true,
+  "description": "The orders service on Cloud Run, from Pulumi (README.md).",
+  "main": "index.ts",
+  "dependencies": {
+    "@docuconf/core": "0.1.0",
+    "@pulumi/gcp": "8.41.1",
+    "@pulumi/pulumi": "3.274.0",
+    "smol-toml": "1.8.0",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

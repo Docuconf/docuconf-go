@@ -1,0 +1,17 @@
+{
+  "name": "orders-pulumi-ecs",
+  "private": true,
+  "description": "The orders service on Amazon ECS, from Pulumi (README.md).",
+  "main": "index.ts",
+  "dependencies": {
+    "@docuconf/core": "0.1.0",
+    "@pulumi/aws": "7.10.0",
+    "@pulumi/pulumi": "3.274.0",
+    "smol-toml": "1.8.0",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

@@ -285,6 +285,48 @@ jobs:
           cat "$RUNNER_TEMP/preview.txt"
           grep -q "WORKER_COUNT: 100 is above max 64" "$RUNNER_TEMP/preview.txt"
 
+  # The ECS and Cloud Run programs (deploy/pulumi-ecs, pulumi-cloudrun,
+  # pulumi-go-ecs, pulumi-go-cloudrun): the committed component is what
+  # docuconf pulumi -target generates, and the program plans what the
+  # Terraform root of its target plans, with a forbidden value failing at
+  # preview. Previews need no cloud account: see deploy/check-cloud-plan.sh.
+  orders-pulumi-cloud:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { program: pulumi-ecs, target: ecs, lang: typescript, out: orders-config }
+          - { program: pulumi-cloudrun, target: cloudrun, lang: typescript, out: orders-config }
+          - { program: pulumi-go-ecs, target: ecs, lang: go, out: ordersapiconfig }
+          - { program: pulumi-go-cloudrun, target: cloudrun, lang: go, out: ordersapiconfig }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: ${{ matrix.lang == 'go' && format('examples/orders/deploy/{0}/go.sum', matrix.program) || 'cmd/docuconf/go.sum' }}
+      - uses: actions/setup-node@v4
+        if: matrix.lang == 'typescript'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: examples/orders/deploy/${{ matrix.program }}/package-lock.json
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: pulumi/actions@v6
+        with:
+          pulumi-version: 3.274.0
+      - name: Install the docuconf CLI
+        working-directory: cmd/docuconf
+        run: go install .
+      - name: Component is up to date
+        working-directory: examples/orders
+        run: docuconf pulumi -contract contract.cue -target ${{ matrix.target }} -lang ${{ matrix.lang }} -out deploy/${{ matrix.program }}/${{ matrix.out }} -check
+      - name: Plan, compare with Terraform, and refuse a forbidden value
+        run: examples/orders/deploy/check-cloud-plan.sh ${{ matrix.target }} examples/orders/deploy/${{ matrix.program }}
+
   # deploy/pulumi and deploy/pulumi-go deployed to a kind cluster, and the
   # running service checked against what the component rendered, as
   # orders-e2e does for Terraform: see deploy/pulumi/e2e.sh.
