@@ -220,23 +220,29 @@ secret set as a plain value, a file mounted at the wrong path, or a module
 generated from an older contract. See
 [spec/IAC.md](../../spec/IAC.md) for the module and the linter's rules.
 
-### ECS and Cloud Run
+### ECS, Cloud Run and Azure Container Apps
 
-[`deploy/ecs`](deploy/ecs) and [`deploy/cloudrun`](deploy/cloudrun) set
-the same inputs for Amazon ECS and Cloud Run, each through a module
+[`deploy/ecs`](deploy/ecs), [`deploy/cloudrun`](deploy/cloudrun) and
+[`deploy/containerapps`](deploy/containerapps) set the same inputs for
+Amazon ECS, Cloud Run and Azure Container Apps, each through a module
 generated for its target:
 
 ```sh
 docuconf terraform -contract contract.cue -target ecs -out deploy/ecs/modules/orders-config
 docuconf terraform -contract contract.cue -target cloudrun -out deploy/cloudrun/modules/orders-config
+docuconf terraform -contract contract.cue -target containerapps -out deploy/containerapps/modules/orders-config
 ```
 
-A secret there is a Secrets Manager or Parameter Store ARN, or a Secret
-Manager secret. ECS mounts no files, so its module has no `discounts` or
-`serving-tls`. A Cloud Run secret volume holds a single file, so its module
-takes `discounts` from Secret Manager but has no `serving-tls`. In both,
-TLS ends in front of the service. CI plans and lints both on every change,
-without a cloud account.
+A secret there is a Secrets Manager or Parameter Store ARN, a Secret
+Manager secret, or a Key Vault secret ID read by a managed identity. ECS
+mounts no files, so its module has no `discounts` or `serving-tls`. A Cloud
+Run secret volume and a Container Apps secret each hold a single file, so
+those modules take `discounts` from Secret Manager or Key Vault but have no
+`serving-tls`. In all three, TLS ends in front of the service. CI plans and
+lints each on every change, without a cloud account: the azurerm provider
+wants a token before it plans, so CI points it at
+[`ci/fakeazure`](deploy/containerapps/ci/fakeazure), a stand-in for the few
+Azure endpoints it calls first.
 
 ### End-to-end test
 

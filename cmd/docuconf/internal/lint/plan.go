@@ -73,7 +73,7 @@ type Workload struct {
 	Addr   string // the full address, module path included
 	Scope  string // the module the resource is declared in
 	Type   string
-	Target string // kubernetes, ecs or cloudrun
+	Target string // kubernetes, ecs, cloudrun or containerapps
 	// Unknown is set when the plan does not know what the containers get,
 	// such as container_definitions built from an ARN created in the same
 	// apply.
@@ -83,6 +83,9 @@ type Workload struct {
 	PodMeta    Metadata       // the pod template's metadata
 	Containers []Container
 	Volumes    []map[string]any
+	// AppSecrets are a container app's secret blocks, by name, without
+	// their values.
+	AppSecrets map[string]map[string]any
 }
 
 // Metadata is planned annotations and labels; nil maps are unknown.
@@ -104,7 +107,7 @@ type Container struct {
 type Env struct {
 	Name      string
 	Value     *string
-	ValueFrom map[string]any // the first value_from block: secret_key_ref, …; for ECS, {"ecs": valueFrom}; for Cloud Run, {"gcp": {secret, version}}
+	ValueFrom map[string]any // the first value_from block: secret_key_ref, …; for ECS, {"ecs": valueFrom}; for Cloud Run, {"gcp": {secret, version}}; for Container Apps, {"azure": the app's secret block}
 	Unknown   bool           // the value (or a reference field) is unknown at plan
 	Sensitive bool
 }
@@ -259,6 +262,8 @@ func Read(planFile, root string) (*Plan, error) {
 			w = readTaskDefinition(rc.Change.After, rc.Change.AfterUnknown)
 		case rc.Type == "google_cloud_run_v2_service" || rc.Type == "google_cloud_run_v2_job":
 			w = readCloudRun(rc.Type, rc.Change.After, rc.Change.AfterUnknown, rc.Change.AfterSensitive)
+		case rc.Type == "azurerm_container_app":
+			w = readContainerApp(rc.Change.After, rc.Change.AfterUnknown)
 		default:
 			continue
 		}
@@ -476,6 +481,69 @@ func readCloudRun(typ string, after, unknown, sensitive any) *Workload {
 		w.Containers = append(w.Containers, ct)
 	}
 	vols, _ := sub(after, "volumes").([]any)
+	for _, v := range vols {
+		if m, ok := v.(map[string]any); ok {
+			w.Volumes = append(w.Volumes, m)
+		}
+	}
+	return w
+}
+
+// readContainerApp reads a container app's template: its containers' env
+// and volume mounts and its volumes, with each env entry's secret_name
+// resolved to the app's secret block.
+func readContainerApp(after, unknown any) *Workload {
+	w := &Workload{Type: "azurerm_container_app", Target: "containerapps"}
+	secrets := map[string]map[string]any{}
+	list, _ := at(after, "secret").([]any)
+	for _, x := range list {
+		if m, ok := x.(map[string]any); ok {
+			n, _ := m["name"].(string)
+			delete(m, "value") // a literal secret's value: never read
+			secrets[n] = m
+		}
+	}
+	w.AppSecrets = secrets
+	// The secrets are a set, so an unknown one cannot be told apart.
+	secretsUnknown := anyTrue(at(unknown, "secret"))
+	containers, _ := at(after, "template", 0, "container").([]any)
+	for i, c := range containers {
+		cu := at(unknown, "template", 0, "container", i)
+		ct := Container{}
+		ct.Name, _ = at(c, "name").(string)
+		ct.Image, _ = at(c, "image").(string)
+		envs, _ := at(c, "env").([]any)
+		for j, e := range envs {
+			env := Env{}
+			env.Name, _ = at(e, "name").(string)
+			eu := at(cu, "env", j)
+			env.Unknown = eu == true || at(eu, "value") == true || at(eu, "secret_name") == true
+			if sn, ok := at(e, "secret_name").(string); ok && sn != "" {
+				sec, found := secrets[sn]
+				if !found {
+					sec = map[string]any{"name": sn}
+					env.Unknown = env.Unknown || secretsUnknown
+				}
+				env.ValueFrom = map[string]any{"azure": sec}
+				if v, _ := sec["key_vault_secret_id"].(string); v == "" && secretsUnknown {
+					env.Unknown = true
+				}
+			} else if s, ok := at(e, "value").(string); ok {
+				env.Value = &s
+			}
+			ct.Env = append(ct.Env, env)
+		}
+		mounts, _ := at(c, "volume_mounts").([]any)
+		for _, mo := range mounts {
+			m := Mount{ReadOnly: true} // Container Apps mounts secret volumes read-only
+			m.Name, _ = at(mo, "name").(string)
+			m.MountPath, _ = at(mo, "path").(string)
+			m.SubPath, _ = at(mo, "sub_path").(string)
+			ct.Mounts = append(ct.Mounts, m)
+		}
+		w.Containers = append(w.Containers, ct)
+	}
+	vols, _ := at(after, "template", 0, "volume").([]any)
 	for _, v := range vols {
 		if m, ok := v.(map[string]any); ok {
 			w.Volumes = append(w.Volumes, m)

@@ -44,6 +44,9 @@ type Docs struct {
 	// sees (spec/IAC.md 7.3): {awsSecretsManager: {account: …}}.
 	Refs     map[string]any
 	Bindings []Binding
+	// appSecrets are the bound container app's secrets, which say what a
+	// file input's argument is when the argument itself is not constant.
+	appSecrets map[string]map[string]any
 }
 
 // Binding is one row of -explain.
@@ -102,7 +105,7 @@ func Check(p *Plan) ([]Finding, []Docs) {
 	}
 	for _, m := range p.Modules {
 		c := m.Contract
-		if t := m.Target(); t != "kubernetes" && t != "ecs" && t != "cloudrun" {
+		if t := m.Target(); t != "kubernetes" && t != "ecs" && t != "cloudrun" && t != "containerapps" {
 			out = append(out, Finding{Code: "target_unchecked", Level: Notice, Module: m.Addr,
 				Message: fmt.Sprintf("the linter does not check the %s target yet; the %s's own checks still run", t, m.unit())})
 			continue
@@ -131,6 +134,8 @@ func Check(p *Plan) ([]Finding, []Docs) {
 						output = m.out("ecs_environment") + " and " + m.out("ecs_secrets") + " outputs in the app's container definition"
 					case "cloudrun":
 						output = m.out("cloudrun_env") + " output in the app container's env"
+					case "containerapps":
+						output = m.out("containerapp_env") + " output in the app container's env, and its " + m.out("containerapp_secrets") + " in the app's secrets"
 					}
 					out = append(out, Finding{Code: "unbound_container", Level: Error, Module: m.Addr, Where: w.Addr,
 						Message: fmt.Sprintf("%s reads %s, but none of its containers takes the env the %s renders; use its %s", w.Addr, m.Addr, m.unit(), output)})
@@ -312,6 +317,8 @@ func checkContainer(m *Module, w *Workload, ct Container, where string) ([]Findi
 				from = m.Addr + "." + m.out("ecs_environment") + " and ." + m.out("ecs_secrets")
 			case "cloudrun":
 				from = m.Addr + "." + m.out("cloudrun_env")
+			case "containerapps":
+				from = m.Addr + "." + m.out("containerapp_env")
 			}
 			add("unbound_container", Error, strings.TrimSuffix(n, "__0"), fmt.Sprintf("%s: %s renders it, but the container does not set it; take the container's env from %s", strings.TrimSuffix(n, "__0"), m.Addr, from))
 		}
@@ -327,8 +334,11 @@ func checkContainer(m *Module, w *Workload, ct Container, where string) ([]Findi
 			add("env_from_unchecked", level, "", "the container takes "+m.term("env_from")+" a whole ConfigMap or Secret, whose keys the linter cannot see before apply; set each input through the "+m.unit()+" instead, or set "+m.option("allow_env_from"))
 		}
 	}
-	if w.Target == "kubernetes" || w.Target == "cloudrun" {
+	switch w.Target {
+	case "kubernetes", "cloudrun":
 		out = append(out, checkMounts(m, w, ct)...)
+	case "containerapps":
+		out = append(out, checkContainerAppMounts(m, w, ct)...)
 	}
 	for i := range out {
 		out[i].Where = where
@@ -606,6 +616,12 @@ func constantDocs(m *Module, where string) Docs {
 		if !ok {
 			continue
 		}
+		if m.Target() == "containerapps" && source(x) == "secret" {
+			if sec, ok := at(x.Constant, "secret").(map[string]any); ok && sec["key_vault_secret_id"] != nil {
+				d.azureSecret(v.Name, sec)
+				continue
+			}
+		}
 		if m.Target() == "cloudrun" && source(x) == "secret" {
 			if sec, ok := at(x.Constant, "secret", "secret").(string); ok {
 				ver, _ := at(x.Constant, "secret", "version").(string)
@@ -646,11 +662,24 @@ func (d *Docs) fillShared(m *Module) {
 			continue
 		}
 		if !x.IsConstant {
+			if sec := d.appSecrets[terraform.FileSecretName(f)]; m.Target() == "containerapps" && sec != nil {
+				if id, _ := sec["key_vault_secret_id"].(string); id != "" {
+					d.Files[f.Name] = keyVaultFile(id)
+					continue
+				}
+			}
 			d.Deferred[f.Name] = true
 			continue
 		}
 		if x.Constant == nil {
 			continue
+		}
+		if m.Target() == "containerapps" {
+			// A Key Vault secret, in the files document's secret form.
+			if id, ok := at(x.Constant, "secret", "key_vault_secret_id").(string); ok {
+				d.Files[f.Name] = keyVaultFile(id)
+				continue
+			}
 		}
 		if m.Target() == "cloudrun" {
 			// A Secret Manager secret, in the files document's secret form,
@@ -686,10 +715,10 @@ func (d *Docs) fillShared(m *Module) {
 // each variable's env entry, read back from its wire form (SPEC.md 5), or
 // the module's constant argument where that says more (an injected source).
 func containerDocs(m *Module, w *Workload, ct Container, where string) Docs {
-	d := Docs{Module: m, Where: where, Values: map[string]any{}, Files: map[string]any{}, Overlays: map[string]any{}, Deferred: map[string]bool{}, Refs: map[string]any{}}
+	d := Docs{Module: m, Where: where, Values: map[string]any{}, Files: map[string]any{}, Overlays: map[string]any{}, Deferred: map[string]bool{}, Refs: map[string]any{}, appSecrets: w.AppSecrets}
 	unescape := unescape
-	if w.Target != "kubernetes" {
-		unescape = func(s string) string { return s } // only the kubelet expands $(VAR)
+	if w.Target != "kubernetes" && w.Target != "containerapps" {
+		unescape = func(s string) string { return s } // only the kubelet, and Container Apps on it, expand $(VAR)
 	}
 	env := map[string]Env{}
 	for _, e := range ct.Env {
@@ -741,6 +770,9 @@ func containerDocs(m *Module, w *Workload, ct Container, where string) Docs {
 			sec, _ := r["secret"].(string)
 			ver, _ := r["version"].(string)
 			d.gcpSecret(v.Name, sec, ver)
+		case e.ValueFrom != nil && e.ValueFrom["azure"] != nil:
+			sec, _ := e.ValueFrom["azure"].(map[string]any)
+			d.azureSecret(v.Name, sec)
 		case e.ValueFrom != nil && e.ValueFrom["ecs"] != nil:
 			vf, _ := e.ValueFrom["ecs"].(string)
 			d.ecsSecret(v.Name, vf)
@@ -921,6 +953,9 @@ func bindings(m *Module, d *Docs) []Binding {
 			case !x.IsConstant:
 				// The source the container got, read back from its env.
 				b.Source = "value"
+				if f, ok := d.Files[name].(map[string]any); ok && f["secret"] != nil {
+					b.Source = "secret"
+				}
 				if r, ok := d.Values[name].(map[string]any); ok {
 					for k, s := range map[string]string{"secretKeyRef": "secret", "configMapKeyRef": "config_map", "fieldRef": "field", "resourceFieldRef": "resource_field", "injected": "injected"} {
 						if r[k] != nil {
@@ -984,7 +1019,7 @@ func bindings(m *Module, d *Docs) []Binding {
 	}
 	if m.Target() != "ecs" {
 		for _, f := range m.Contract.Files {
-			if m.Target() == "cloudrun" && f.Type == "tls" {
+			if (m.Target() == "cloudrun" || m.Target() == "containerapps") && f.Type == "tls" {
 				continue
 			}
 			x, ok := m.Args[f.Name]
@@ -1064,6 +1099,98 @@ func ParseGCPSecret(secret, version string) map[string]any {
 	return map[string]any{"gcpSecretManager": f}
 }
 
+// azureSecret records a Container Apps secret: in the values document as
+// a secret reference, which #Validate accepts for a secret input, and in
+// Refs in its own form, for the policy. sec is the app's secret block, or
+// the module's secret argument: key_vault_secret_id and identity, or only
+// the name of a secret the app holds itself.
+func (d *Docs) azureSecret(name string, sec map[string]any) {
+	id, _ := sec["key_vault_secret_id"].(string)
+	if id == "" {
+		n, _ := sec["name"].(string)
+		d.Values[name] = map[string]any{"secretKeyRef": map[string]any{"name": n, "key": ""}}
+		d.Refs[name] = map[string]any{"containerAppSecret": map[string]any{"name": n}}
+		return
+	}
+	identity, _ := sec["identity"].(string)
+	if identity == "" {
+		identity = "System"
+	}
+	d.Values[name] = map[string]any{"secretKeyRef": map[string]any{"name": id, "key": ""}}
+	d.Refs[name] = ParseKeyVaultSecret(id, identity)
+}
+
+var keyVaultSecretID = regexp.MustCompile(`^https://([^/]+)/secrets/([^/]+)(?:/([^/]*))?/?$`)
+
+// ParseKeyVaultSecret reads a Key Vault secret ID into the policy's form
+// (spec/IAC.md 7.3): the vault's host name, the secret's name and its
+// version, empty when the ID has none.
+func ParseKeyVaultSecret(id, identity string) map[string]any {
+	f := map[string]any{"vault": "", "name": id, "version": ""}
+	if m := keyVaultSecretID.FindStringSubmatch(id); m != nil {
+		f["vault"], f["name"], f["version"] = m[1], m[2], m[3]
+	}
+	if identity != "" {
+		f["identity"] = identity
+	}
+	return map[string]any{"azureKeyVault": f}
+}
+
+// keyVaultFile is a Key Vault secret in the files document's secret form,
+// which #CheckFile accepts for a file input.
+func keyVaultFile(id string) map[string]any {
+	kv, _ := ParseKeyVaultSecret(id, "")["azureKeyVault"].(map[string]any)
+	name, _ := kv["name"].(string)
+	ver, _ := kv["version"].(string)
+	if ver == "" {
+		ver = "latest"
+	}
+	return map[string]any{"secret": map[string]any{"name": name, "key": ver}}
+}
+
+// checkContainerAppMounts checks that each file input the module renders a
+// secret for is mounted at its path, from the module's Secret volume, with
+// its secret as sub_path: Container Apps mounts every secret in the volume,
+// so sub_path picks the one (spec/IAC.md 5.3).
+func checkContainerAppMounts(m *Module, w *Workload, ct Container) []Finding {
+	var out []Finding
+	vol := terraform.ContainerAppsVolume
+	hasVol := false
+	for _, v := range w.Volumes {
+		if n, _ := v["name"].(string); n == vol {
+			t, _ := v["storage_type"].(string)
+			hasVol = t == "Secret"
+		}
+	}
+	for _, f := range m.Contract.Files {
+		x, ok := m.Args[f.Name]
+		if src := source(x); !ok || src == "" || src == "injected" || f.Type == "tls" {
+			continue
+		}
+		add := func(msg string) {
+			out = append(out, Finding{Code: "mount_mismatch", Level: Error, Module: m.Addr, Input: f.Name, Message: f.Name + ": " + msg})
+		}
+		if !hasVol {
+			add(fmt.Sprintf("the app has no Secret volume %s; take its volumes from %s.%s", vol, m.Addr, m.out("containerapp_volumes")))
+		}
+		p, _ := f.Raw["path"].(string)
+		want := terraform.FileSecretName(f)
+		var mt *Mount
+		for i := range ct.Mounts {
+			if ct.Mounts[i].Name == vol && ct.Mounts[i].SubPath == want {
+				mt = &ct.Mounts[i]
+			}
+		}
+		switch {
+		case mt == nil:
+			add(fmt.Sprintf("the container does not mount secret %s from volume %s; take its mounts from %s.%s", want, vol, m.Addr, m.out("containerapp_volume_mounts")))
+		case mt.MountPath != p:
+			add(fmt.Sprintf("secret %s is mounted at %s, but the app reads it from %s", want, mt.MountPath, p))
+		}
+	}
+	return out
+}
+
 // The words of a message, for a Terraform module or a Pulumi component.
 
 func (m *Module) unit() string {
@@ -1083,6 +1210,7 @@ func (m *Module) out(tf string) string {
 	if m.Lang == "go" {
 		name = strings.ToUpper(name[:1]) + name[1:]
 		name = strings.Replace(name, "Cloudrun", "CloudRun", 1)
+		name = strings.Replace(name, "Containerapp", "ContainerApp", 1)
 	}
 	return name
 }
