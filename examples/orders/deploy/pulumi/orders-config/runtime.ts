@@ -910,3 +910,246 @@ export function kubernetes(
     checked: pulumi.all([...Object.values(checked), rendered]).apply(() => true),
   };
 }
+
+// ---- The ecs and cloudrun targets (spec/IAC.md 5.1, 5.2) ----
+//
+// A variable is a literal, a reference the platform resolves when the
+// task or instance starts, or injected. ECS mounts no files; Cloud Run
+// mounts a file input from a Secret Manager secret, one file per secret.
+// Neither expands $(VAR), so values are not escaped.
+
+export type Target = "ecs" | "cloudrun";
+
+const SM_ARN = /^arn:aws(-cn|-us-gov|-iso|-iso-b)?:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$/;
+const SSM_ARN = /^arn:aws(-cn|-us-gov|-iso|-iso-b)?:ssm:[a-z0-9-]+:[0-9]{12}:parameter\/[A-Za-z0-9/_.-]+$/;
+const BARE_REF = /^[A-Za-z0-9/_+=.@-]+$/;
+const GCP_SECRET = /^(projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/secrets\/)?[A-Za-z0-9_-]{1,255}$/;
+const GCP_VERSION = /^(latest|[1-9][0-9]*)$/;
+const TARGET_SOURCES = ["value", "secret", "injected"] as const;
+
+/** The sources a variable accepts on ecs and cloudrun. */
+export function targetVarSources(v: ContractVar): string[] {
+  // One variable per key: no single secret carries it, but an injector can set the variables.
+  if (isSecret(v) && v.encoding === "indexed") return ["injected"];
+  return isSecret(v) ? ["secret", "injected"] : ["value", "injected"];
+}
+
+/** The file inputs a target can deliver: none on ecs; on cloudrun, all but tls directories. */
+export function targetFiles(c: Contract, target: Target): [string, ContractFile][] {
+  if (target === "ecs") return [];
+  return Object.entries(c.files ?? {}).filter(([, f]) => f.type !== "tls");
+}
+
+/** secrets[].valueFrom as ECS takes it: the ARN, then any selectors (arn:json-key:stage:id). */
+function ecsValueFrom(s: Obj): string {
+  const sel = [s["jsonKey"], s["versionStage"], s["versionId"]];
+  if (sel.every((x) => x === undefined || x === null)) return s["valueFrom"] as string;
+  return `${s["valueFrom"]}:${sel.map((x) => (x === undefined || x === null ? "" : x)).join(":")}`;
+}
+
+function secretHint(target: Target, v: ContractVar, srcs: string[]): string {
+  const what = target === "ecs" ? "one ECS secret" : "one secret version";
+  if (isSecret(v) && !srcs.includes("secret")) return ` (an indexed key set is one variable per key, which ${what} cannot carry)`;
+  if (isSecret(v)) return " (a secret is never a literal value)";
+  return target === "ecs" ? " (ECS has no ConfigMaps or Downward API)" : " (Cloud Run has no ConfigMaps or Downward API)";
+}
+
+function gcpSecretProblems(n: string, s: Obj): string[] {
+  const out: string[] = [];
+  const secret = s["secret"];
+  if (!hasOutput(secret) && !GCP_SECRET.test(String(secret ?? ""))) {
+    out.push(`${n}: secret.secret ${JSON.stringify(secret)} is not a Secret Manager secret ID or projects/PROJECT/secrets/SECRET`);
+  }
+  const version = s["version"] ?? "latest";
+  if (!hasOutput(version) && !GCP_VERSION.test(String(version))) {
+    out.push(`${n}: secret.version ${JSON.stringify(version)} is not latest or a version number`);
+  }
+  return out;
+}
+
+/** The checks on ecs and cloudrun that need no resolved Input. */
+export function targetProblems(c: Contract, target: Target, args: Args): { problems: string[]; warnings: string[] } {
+  const problems: string[] = [];
+  const warnings: string[] = [];
+  const files = new Map(targetFiles(c, target));
+  for (const k of Object.keys(args)) {
+    if (args[k] !== undefined && !(k in c.vars) && !files.has(k)) {
+      problems.push(k in (c.files ?? {}) ? `${k}: the ${target} target cannot mount this file input` : `${k}: is not declared in the contract`);
+    }
+  }
+  for (const [n, v] of Object.entries(c.vars)) {
+    const a = args[n];
+    const srcs = targetVarSources(v);
+    if (a === undefined || a === null) {
+      if (v.required && !profileSupplies(c, n)) problems.push(`${n}: required, but not set (missing_required)`);
+      continue;
+    }
+    const kind = sourceOf(a, TARGET_SOURCES);
+    if (kind === undefined || !srcs.includes(kind)) {
+      problems.push(`${n}: set exactly one of ${orList(srcs)}${secretHint(target, v, srcs)}`);
+      continue;
+    }
+    const s = (a as Obj)[kind];
+    if (kind === "injected" && isObj(s)) {
+      if (!hasOutput(s["provider"]) && !PROVIDER.test(String(s["provider"] ?? ""))) {
+        problems.push(`${n}: injected.provider must name the injector as a lowercase label, such as bank-vaults`);
+      }
+      if (s["ref"] === "") problems.push(`${n}: injected.ref cannot be empty; leave it out when the injector sets the variable itself`);
+      if (s["ref"] !== undefined && (v.type === "list" || v.type === "keySet") && v.encoding === "indexed") {
+        problems.push(`${n}: an indexed list is spread over NAME__0, NAME__1, …, so one injected reference cannot carry it; let the injector set the variables, without ref`);
+      }
+    }
+    if (kind === "secret" && isObj(s)) {
+      if (target === "ecs") {
+        const vf = s["valueFrom"];
+        if (!hasOutput(vf)) {
+          const from = String(vf ?? "");
+          if (!SM_ARN.test(from) && !SSM_ARN.test(from) && !BARE_REF.test(from)) {
+            problems.push(`${n}: secret.valueFrom ${JSON.stringify(vf)} is not a Secrets Manager ARN, a Parameter Store ARN, or the name of a secret or parameter`);
+          } else if (["jsonKey", "versionStage", "versionId"].some((k) => s[k] !== undefined) && !SM_ARN.test(from)) {
+            problems.push(`${n}: secret.jsonKey, versionStage and versionId select from a Secrets Manager secret, so secret.valueFrom must be its full ARN`);
+          }
+        }
+        if (s["versionStage"] !== undefined && s["versionId"] !== undefined) problems.push(`${n}: set secret.versionStage or secret.versionId, not both`);
+      } else {
+        problems.push(...gcpSecretProblems(n, s));
+      }
+    }
+    if (v.deprecated && kind !== "value") warnings.push(deprecatedWarning(n, v.deprecated));
+    if (kind === "value" && !hasOutput(s)) {
+      const r = valueProblems(c, n, s);
+      problems.push(...r.problems);
+      warnings.push(...r.warnings);
+    }
+  }
+  for (const [n, f] of files) {
+    const a = args[n];
+    if (a === undefined || a === null) {
+      if (f.required) problems.push(`${n}: is a required file input; set one of secret or injected`);
+      continue;
+    }
+    const kind = sourceOf(a, ["secret", "injected"]);
+    if (kind === undefined) {
+      problems.push(`${n}: set exactly one of secret or injected (Cloud Run mounts files from Secret Manager)`);
+      continue;
+    }
+    const s = (a as Obj)[kind];
+    if (kind === "injected" && isObj(s) && !hasOutput(s["provider"]) && !PROVIDER.test(String(s["provider"] ?? ""))) {
+      problems.push(`${n}: injected.provider must name the injector as a lowercase label, such as bank-vaults`);
+    }
+    if (kind === "secret" && isObj(s)) problems.push(...gcpSecretProblems(n, s));
+    if (f.deprecated) warnings.push(deprecatedWarning(n, f.deprecated));
+  }
+  return { problems, warnings };
+}
+
+/** An ECS container definition's environment entry. */
+export interface EcsEnvironmentEntry {
+  name: string;
+  value: string;
+}
+/** An ECS container definition's secrets entry. */
+export interface EcsSecretEntry {
+  name: string;
+  valueFrom: string;
+}
+/** A Cloud Run (v2) container's env entry. */
+export interface CloudRunEnv {
+  name: string;
+  value?: string;
+  valueSource?: { secretKeyRef: { secret: string; version: string } };
+}
+/** A Cloud Run (v2) secret volume holding one file. */
+export interface CloudRunVolume {
+  name: string;
+  secret: { secret: string; defaultMode: number; items: { version: string; path: string }[] };
+}
+export interface CloudRunVolumeMount {
+  name: string;
+  mountPath: string;
+}
+
+export interface TargetRendered {
+  ecsEnvironment: EcsEnvironmentEntry[];
+  ecsSecrets: EcsSecretEntry[];
+  cloudrunEnv: CloudRunEnv[];
+  cloudrunVolumes: CloudRunVolume[];
+  cloudrunVolumeMounts: CloudRunVolumeMount[];
+}
+
+/** The ecs and cloudrun outputs, for arguments that passed the checks. */
+export function renderTarget(c: Contract, target: Target, args: Args): TargetRendered {
+  const out: TargetRendered = { ecsEnvironment: [], ecsSecrets: [], cloudrunEnv: [], cloudrunVolumes: [], cloudrunVolumeMounts: [] };
+  for (const [n, v] of Object.entries(c.vars)) {
+    const a = args[n];
+    if (!isObj(a)) continue;
+    const kind = sourceOf(a, TARGET_SOURCES)!;
+    const s = a[kind];
+    if (kind === "injected") {
+      const ref = (s as Obj)["ref"];
+      if (typeof ref === "string" && ref !== "") {
+        out.ecsEnvironment.push({ name: n, value: ref });
+        out.cloudrunEnv.push({ name: n, value: ref });
+      }
+    } else if (kind === "secret") {
+      const m = s as Obj;
+      out.ecsSecrets.push({ name: n, valueFrom: target === "ecs" ? ecsValueFrom(m) : "" });
+      out.cloudrunEnv.push({ name: n, valueSource: { secretKeyRef: { secret: m["secret"] as string, version: (m["version"] as string | undefined) ?? "latest" } } });
+    } else {
+      for (const e of wireEntries(n, v, s)) {
+        out.ecsEnvironment.push(e);
+        out.cloudrunEnv.push(e);
+      }
+    }
+  }
+  for (const [n, f] of targetFiles(c, target)) {
+    const a = args[n];
+    if (!isObj(a)) continue;
+    if (f.pathEnv) out.cloudrunEnv.push({ name: f.pathEnv, value: f.path });
+    const s = a["secret"];
+    if (!isObj(s)) continue;
+    out.cloudrunVolumes.push({
+      name: `dc-${n}`,
+      secret: { secret: s["secret"] as string, defaultMode: f.secret ? 0o400 : 0o444, items: [{ version: (s["version"] as string | undefined) ?? "latest", path: posix.basename(f.path) }] },
+    });
+    out.cloudrunVolumeMounts.push({ name: `dc-${n}`, mountPath: mountDir(f) });
+  }
+  return out;
+}
+
+export interface TargetOutputs {
+  rendered: pulumi.Output<TargetRendered>;
+  bindings: Bindings;
+  checked: pulumi.Output<boolean>;
+}
+
+/** Checks and renders a component's arguments on ecs or cloudrun, as kubernetes does for its target. */
+export function forTarget(self: pulumi.ComponentResource, c: Contract, target: Target, args: Args): TargetOutputs {
+  const component = `${c.metadata.name} config`;
+  const structure = targetProblems(c, target, args);
+  if (structure.problems.length > 0) throw new ConfigViolation(component, structure.problems, self);
+  for (const w of structure.warnings) pulumi.log.warn(w, self);
+  const checked: Record<string, pulumi.Output<unknown>> = {};
+  const names = [...Object.keys(c.vars), ...targetFiles(c, target).map(([n]) => n)];
+  for (const n of names) {
+    const a = args[n];
+    if (!isObj(a)) continue;
+    const kind = sourceOf(a, TARGET_SOURCES)!;
+    const later = kind === "value" && hasOutput(a[kind]);
+    checked[n] = (pulumi.output(a[kind] as pulumi.Input<unknown>) as pulumi.Output<unknown>).apply((x) => {
+      if (later) {
+        const r = valueProblems(c, n, x);
+        if (r.problems.length > 0) throw new ConfigViolation(component, r.problems, self);
+        for (const w of r.warnings) pulumi.log.warn(w, self);
+      }
+      return { [kind]: x };
+    });
+  }
+  const rendered = pulumi.all(checked).apply((resolved) => renderTarget(c, target, resolved as Args));
+  const b: Bindings = {};
+  for (const n of names) {
+    const kind = sourceOf(args[n], TARGET_SOURCES);
+    b[n] = { set: kind !== undefined, source: kind ?? null };
+  }
+  return { rendered, bindings: b, checked: rendered.apply(() => true) };
+}

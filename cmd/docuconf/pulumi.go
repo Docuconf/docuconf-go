@@ -19,7 +19,7 @@ func runPulumi(args []string, stdout, stderr io.Writer) error {
 	contract := fs.String("contract", "contract.cue", "the service's contract")
 	lang := fs.String("lang", "typescript", "the component's language: typescript or go")
 	pkg := fs.String("package", "", "a Go component's package name (default: the contract's name, then config)")
-	target := fs.String("target", "kubernetes", "the workload kind to render for: kubernetes")
+	target := fs.String("target", "kubernetes", "the workload kind to render for: kubernetes, ecs or cloudrun")
 	out := fs.String("out", "", "the component directory to write into")
 	check := fs.Bool("check", false, "compare with the component in -out instead of writing; exit 1 if it is out of date (generator.version is ignored)")
 	if err := fs.Parse(args); err != nil {
@@ -44,7 +44,8 @@ func runPulumi(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	files, err := pulumi.Generate(tc, pulumi.Options{Lang: *lang, Package: *pkg, Target: *target, GeneratorVersion: version})
+	files, err := pulumi.Generate(tc, pulumi.Options{Lang: *lang, Package: *pkg, Target: *target, GeneratorVersion: version,
+		Warn: func(w string) { fmt.Fprintf(stderr, "docuconf pulumi: warning: %s\n", w) }})
 	if err != nil {
 		return err
 	}

@@ -13,8 +13,19 @@ import (
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/terraform"
 )
 
-//go:embed gocomp/runtime.go.tmpl
-var runtimeGo string
+// The runtime every Go component shares, and each target's part of it.
+var (
+	//go:embed gocomp/runtime.go.tmpl
+	runtimeGo string
+	//go:embed gocomp/kubernetes.go.tmpl
+	kubernetesGo string
+	//go:embed gocomp/targets.go.tmpl
+	targetsGo string
+	//go:embed gocomp/ecs.go.tmpl
+	ecsGo string
+	//go:embed gocomp/cloudrun.go.tmpl
+	cloudrunGo string
+)
 
 // Versions of the modules a generated Go component imports.
 const (
@@ -114,7 +125,13 @@ func generateGo(c *terraform.Contract, opt Options, meta []byte, digest string) 
 	if err != nil {
 		return nil, err
 	}
-	g := &gen{c: c, class: className(c.Name)}
+	g := &gen{c: c, class: className(c.Name), target: opt.Target}
+	if err := g.targetFiles(nil); err != nil {
+		return nil, err
+	}
+	if g.target != "kubernetes" {
+		return g.generateGoTarget(pkg, meta, digest)
+	}
 	seen := map[string]string{}
 	field := func(input, f string) error {
 		if other, ok := seen[f]; ok {
@@ -256,9 +273,20 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 	if err != nil {
 		return nil, fmt.Errorf("formatting the generated component: %w\n%s", err, b.String())
 	}
-	runtime, err := format.Source([]byte(strings.Replace(runtimeGo, "package PACKAGE", "package "+pkg, 1)))
+	pkgFile := func(name, tmpl string) ([]byte, error) {
+		b, err := format.Source([]byte(strings.Replace(tmpl, "package PACKAGE", "package "+pkg, 1)))
+		if err != nil {
+			return nil, fmt.Errorf("the component's %s: %w", name, err)
+		}
+		return b, nil
+	}
+	runtime, err := pkgFile("runtime.go", runtimeGo)
 	if err != nil {
-		return nil, fmt.Errorf("the component's runtime: %w", err)
+		return nil, err
+	}
+	target, err := pkgFile("kubernetes.go", kubernetesGo)
+	if err != nil {
+		return nil, err
 	}
 	var indented bytes.Buffer
 	if err := json.Indent(&indented, c.JSON, "", "  "); err != nil {
@@ -268,6 +296,7 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 	return map[string][]byte{
 		"config.go":     config,
 		"runtime.go":    runtime,
+		"kubernetes.go": target,
 		"contract.json": indented.Bytes(),
 		"docuconf.json": meta,
 		"README.md":     []byte(g.readmeGo(pkg)),
