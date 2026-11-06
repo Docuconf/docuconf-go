@@ -10,9 +10,9 @@ jobs:
   cue:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - run: go install cuelang.org/go/cmd/cue@v0.17.1
       - run: spec/cue/test.sh

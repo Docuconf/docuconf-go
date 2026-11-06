@@ -90,7 +90,7 @@ jobs:
       - name: Release App token
         id: app
         if: env.HAVE_APP == 'true'
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -109,7 +109,7 @@ jobs:
 
       # Named after the repository: SwiftPM takes a package's identity from its directory.
       - name: Check out Docuconf/${{ matrix.repo }} at main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: Docuconf/${{ matrix.repo }}
           ref: main
@@ -118,7 +118,7 @@ jobs:
           persist-credentials: false
 
       - name: Check out this change
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: docuconf-go
           persist-credentials: false
@@ -147,17 +147,17 @@ jobs:
           sudo apt-get install -y -qq $APT
 
       - if: steps.script.outputs.run == 'true' && matrix.node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
 
       - if: steps.script.outputs.run == 'true' && matrix.dotnet
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ matrix.dotnet }}
 
       - if: steps.script.outputs.run == 'true' && matrix.python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
@@ -167,7 +167,7 @@ jobs:
           ruby-version: ${{ matrix.ruby }}
 
       - if: steps.script.outputs.run == 'true' && matrix.java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
@@ -195,7 +195,7 @@ jobs:
 
       # Go for cue (and, for COBOL, to build against this checkout).
       - if: steps.script.outputs.run == 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go || 'stable' }}
           cache: false

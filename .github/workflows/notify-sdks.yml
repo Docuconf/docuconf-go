@@ -43,7 +43,7 @@ jobs:
       - name: Release App token
         id: app
         if: env.HAVE_APP == 'true'
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
