@@ -14,6 +14,9 @@ import (
 // With -check it compares instead of writing, and exits 1 if the component
 // is out of date.
 func runPulumi(args []string, stdout, stderr io.Writer) error {
+	if len(args) > 0 && args[0] == "policy" {
+		return runPulumiPolicy(args[1:], stdout, stderr)
+	}
 	fs := flag.NewFlagSet("pulumi", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	contract := fs.String("contract", "contract.cue", "the service's contract")
@@ -51,4 +54,43 @@ func runPulumi(args []string, stdout, stderr io.Writer) error {
 	}
 	regen := fmt.Sprintf("docuconf pulumi -contract %s -lang %s -target %s -out %s", *contract, *lang, *target, *out)
 	return writeGenerated("docuconf pulumi", *out, files, *check, regen, terraform.MaskVersion, stdout, stderr)
+}
+
+// runPulumiPolicy generates a CrossGuard policy pack from a contract
+// (spec/IAC.md 6.3). With -check it compares instead of writing.
+func runPulumiPolicy(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("pulumi policy", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	contract := fs.String("contract", "contract.cue", "the service's contract")
+	target := fs.String("target", "kubernetes", "the workload kind to check: kubernetes, ecs or cloudrun")
+	out := fs.String("out", "", "the policy pack directory to write into")
+	check := fs.Bool("check", false, "compare with the policy pack in -out instead of writing; exit 1 if it is out of date (generator.version is ignored)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *out == "" {
+		return fmt.Errorf("-out is required")
+	}
+	p, err := platform.New()
+	if err != nil {
+		return err
+	}
+	c, err := p.LoadContract(*contract)
+	if err != nil {
+		return err
+	}
+	doc, err := p.ContractJSON(c)
+	if err != nil {
+		return err
+	}
+	tc, err := terraform.Parse(doc)
+	if err != nil {
+		return err
+	}
+	files, err := pulumi.GeneratePolicy(tc, pulumi.PolicyOptions{Target: *target, GeneratorVersion: version})
+	if err != nil {
+		return err
+	}
+	regen := fmt.Sprintf("docuconf pulumi policy -contract %s -target %s -out %s", *contract, *target, *out)
+	return writeGenerated("docuconf pulumi policy", *out, files, *check, regen, terraform.MaskVersion, stdout, stderr)
 }

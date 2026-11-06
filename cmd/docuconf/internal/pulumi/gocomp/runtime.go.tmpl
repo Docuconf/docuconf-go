@@ -745,9 +745,10 @@ type inputs map[string]source
 
 // recorded is the component's arguments as its inputs, in the sources'
 // vocabulary ({"secretKeyRef": {...}}), with its contract's name and
-// digest: a preview shows them, so docuconf lint pulumi can check what
-// the program set without running it.
-func recorded(args inputs, extra map[string]any) pulumi.Map {
+// digest and its target: a preview shows them, so docuconf lint pulumi
+// can check what the program set without running it. They are registered
+// as outputs too, for the policy pack.
+func recorded(target string, args inputs, extra map[string]any) pulumi.Map {
 	name := ""
 	if c, err := theContract(); err == nil {
 		name = c.name
@@ -760,7 +761,7 @@ func recorded(args inputs, extra map[string]any) pulumi.Map {
 		a[k] = pulumi.ToOutput(extra[k])
 	}
 	return pulumi.Map{
-		"contract":  pulumi.StringMap{"name": pulumi.String(name), "digest": pulumi.String(Digest)},
+		"contract":  pulumi.StringMap{"name": pulumi.String(name), "digest": pulumi.String(Digest), "target": pulumi.String(target), "language": pulumi.String("go")},
 		"arguments": a,
 	}
 }

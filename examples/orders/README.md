@@ -300,6 +300,28 @@ pulumi preview --json > preview.json
 docuconf lint pulumi preview.json -contract ../../contract.cue -explain
 ```
 
+[`deploy/pulumi-policy`](deploy/pulumi-policy) holds the same rules as
+CrossGuard policy packs, one per target, which Pulumi applies itself
+during `pulumi preview` and `pulumi up`, or Pulumi Cloud enforces on
+every stack:
+
+```sh
+docuconf pulumi policy -contract contract.cue -target kubernetes -out deploy/pulumi-policy/kubernetes
+(cd deploy/pulumi-policy/kubernetes && npm ci)
+cd deploy/pulumi && pulumi preview --policy-pack ../pulumi-policy/kubernetes
+```
+
+An env entry written into the Deployment by hand, such as `PORTT`, fails
+the preview:
+
+```
+[mandatory]  docuconf-orders-api  (kubernetes:apps/v1:Deployment: orders-api)
+  The orders-api contract's rules: each workload that takes a docuconf component's env gets what the contract declares, through the component (docuconf lint's errors).
+  PORTT: is not declared in the contract, and the component did not render it; did you mean PORT? (undeclared_input)
+```
+
+CI previews every program with its target's pack.
+
 [`deploy/pulumi-go`](deploy/pulumi-go) is the same program in Go,
 through the component `docuconf pulumi -lang go` generates:
 

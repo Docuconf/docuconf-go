@@ -158,8 +158,20 @@ func withEnv(env []any, extra ...any) []any {
 	return append(append([]any{}, env...), extra...)
 }
 
-func TestLintPulumi(t *testing.T) {
-	dir := pulumiProgram(t, "typescript", "kubernetes")
+// pulumiCase is a program's component arguments and workloads, and what
+// docuconf lint pulumi must find in its preview. The policy pack's tests
+// check the pack finds the same.
+type pulumiCase struct {
+	name   string
+	args   any
+	steps  []step
+	flags  []string
+	code   string // a finding that must be there ("" for none but notices)
+	msg    string
+	absent string // a code that must not be there
+}
+
+func pulumiCases() []pulumiCase {
 	deploy := func(in map[string]any) []step {
 		return []step{{"kubernetes:apps/v1:Deployment", "orders-api", in}}
 	}
@@ -169,15 +181,7 @@ func TestLintPulumi(t *testing.T) {
 		"podAnnotations": map[string]any{"vault.security.banzaicloud.io/vault-addr": "https://vault:8200"},
 	}}
 	vaultEnv := withEnv(ordersEnv(), map[string]any{"name": "PORT", "value": "vault:secret/data/orders#port"})
-	cases := []struct {
-		name   string
-		args   any
-		steps  []step
-		flags  []string
-		code   string // a finding that must be there ("" for none but notices)
-		msg    string
-		absent string // a code that must not be there
-	}{
+	return []pulumiCase{
 		{name: "clean", args: ordersArgs(), steps: deploy(clean)},
 		{name: "typo", args: ordersArgs(), steps: deploy(deployment(withEnv(ordersEnv(), map[string]any{"name": "PORTT", "value": "8080"}), discountsMount(), discountsVolume(), nil, nil)),
 			code: "undeclared_input", msg: "PORTT: is not declared in the contract, and the component did not render it; did you mean PORT?"},
@@ -224,6 +228,15 @@ func TestLintPulumi(t *testing.T) {
 			code:  "deferred", msg: "DATABASE_URL: is unknown at preview (from an Output known only during the update); it is checked during the update, by the component's checks, and at boot"},
 		{name: "unused", args: ordersArgs(), code: "module_unused", msg: "no workload in the preview takes orders's outputs"},
 	}
+}
+
+func TestLintPulumi(t *testing.T) {
+	dir := pulumiProgram(t, "typescript", "kubernetes")
+	cases := pulumiCases()
+	deploy := func(in map[string]any) []step {
+		return []step{{"kubernetes:apps/v1:Deployment", "orders-api", in}}
+	}
+	clean := deployment(ordersEnv(), discountsMount(), discountsVolume(), nil, nil)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fs, _ := lintPreview(t, dir, tc.args, tc.steps, tc.flags...)

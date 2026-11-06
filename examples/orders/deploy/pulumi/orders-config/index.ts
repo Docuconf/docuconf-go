@@ -156,7 +156,7 @@ export class OrdersApiConfig extends pulumi.ComponentResource {
   constructor(name: string, args: OrdersApiConfigArgs, opts?: pulumi.ComponentResourceOptions) {
     // The arguments are the component's inputs, so that a preview shows
     // them and docuconf lint pulumi can check them.
-    super("docuconf:orders-api:Config", name, { contract: { name: "orders-api", digest }, arguments: args }, opts);
+    super("docuconf:orders-api:Config", name, { contract: { name: "orders-api", digest, target: "kubernetes", language: "typescript" }, arguments: args }, opts);
     const { podMetadata, overlayValues, ...inputs } = args as OrdersApiConfigArgs & { overlayValues?: Record<string, unknown> };
     const out = runtime.kubernetes(this, contract, inputs as Record<string, unknown>, { podMetadata, overlayValues });
     this.kubernetesEnv = out.kubernetesEnv;
@@ -170,6 +170,14 @@ export class OrdersApiConfig extends pulumi.ComponentResource {
     this.checked = out.checked;
     // Registered so that a value that fails its checks when it resolves
     // fails the deployment, once, even if nothing uses the outputs.
-    this.registerOutputs({ bindings: out.bindings, kubernetesConfigMaps: out.kubernetesConfigMaps, checked: out.checked, contract: { name: "orders-api", digest } });
+    // The arguments again, for the policy pack: a stack policy sees a
+    // component's outputs, not its inputs.
+    this.registerOutputs({
+      bindings: out.bindings,
+      kubernetesConfigMaps: out.kubernetesConfigMaps,
+      checked: out.checked,
+      contract: { name: "orders-api", digest, target: "kubernetes", language: "typescript" },
+      arguments: args,
+    });
   }
 }

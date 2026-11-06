@@ -102,7 +102,8 @@ func NewOrdersApiConfig(ctx *pulumi.Context, name string, args *Args, opts ...pu
 	if args.PodMetadata != nil {
 		extra["podMetadata"] = map[string]any{"annotations": args.PodMetadata.Annotations, "labels": args.PodMetadata.Labels}
 	}
-	if err := ctx.RegisterComponentResourceV2("docuconf:orders-api:Config", name, recorded(in, extra), c, opts...); err != nil {
+	props := recorded("kubernetes", in, extra)
+	if err := ctx.RegisterComponentResourceV2("docuconf:orders-api:Config", name, props, c, opts...); err != nil {
 		return nil, err
 	}
 	out, err := build(ctx, c, in, nil, args.PodMetadata)
@@ -127,7 +128,10 @@ func NewOrdersApiConfig(ctx *pulumi.Context, name string, args *Args, opts ...pu
 	if err := ctx.RegisterResourceOutputs(c, pulumi.Map{
 		"bindings": bindings,
 		"checked":  out.checked,
-		"contract": pulumi.StringMap{"name": pulumi.String("orders-api"), "digest": pulumi.String(Digest)},
+		"contract": props["contract"],
+		// The arguments again, for the policy pack: a stack policy sees a
+		// component's outputs, not its inputs.
+		"arguments": props["arguments"],
 	}); err != nil {
 		return nil, err
 	}
