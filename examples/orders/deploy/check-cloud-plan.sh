@@ -10,13 +10,13 @@
 # state directory, with the provider configured without credentials (a
 # preview of new resources calls no cloud API), plans ../ecs or ../cloudrun
 # with its CI provider override, and checks that both plan the same
-# container configuration (check-cloud-plan.py), and lints the preview
-# (docuconf lint pulumi). Then it sets WORKER_COUNT to 100, which the
+# container configuration (check-cloud-plan.py), and that the preview passes
+# the target's policy pack (pulumi-policy) and docuconf lint pulumi. Then it sets WORKER_COUNT to 100, which the
 # contract forbids, and checks that the preview fails with the component's
 # message.
 #
-# Needs pulumi, terraform, docuconf, python3, and the program's toolchain
-# (node and npm, or go).
+# Needs pulumi, terraform, docuconf, python3, node and npm, and go for a Go
+# program.
 set -euo pipefail
 
 target="$1"
@@ -63,7 +63,8 @@ case "$target" in
     pulumi config set gcp:accessToken ci-preview-without-credentials
     ;;
 esac
-pulumi preview --json --non-interactive >"$work/preview.json"
+(cd "$here/pulumi-policy/$target" && npm ci --no-audit --no-fund >/dev/null)
+pulumi preview --json --non-interactive --policy-pack "$here/pulumi-policy/$target" >"$work/preview.json"
 "$here/check-cloud-plan.py" "$target" "$work/plan.json" "$work/preview.json"
 docuconf lint pulumi "$work/preview.json" -contract "$here/../contract.cue" -explain
 

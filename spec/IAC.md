@@ -337,7 +337,7 @@ docuconf lint pulumi preview.json -policy prod.cue
 
 The first generates a **component** in one language (`typescript`, `python`, `go`, `csharp` or `java`): a local package the program imports, with no provider plugin. The second generates a **CrossGuard policy pack** (TypeScript, which Pulumi runs against programs in every language). Both take `-check` as in section 4.1. The third applies an environment policy (section 7.3) to a preview: the policy pack checks the contract's rules, but does not evaluate CUE, so environment policy runs in `docuconf lint pulumi`, which reads the resource inputs of `pulumi preview --json` and applies sections 7.2 and 7.3 as for Terraform.
 
-Implemented so far: the TypeScript and Go components for the kubernetes, ecs and cloudrun targets (`-lang go` takes `-package`, by default the contract's name without separators, then `config`), and `docuconf lint pulumi` (section 6.4). The other languages and the policy pack are not.
+Implemented so far: the TypeScript and Go components for the kubernetes, ecs and cloudrun targets (`-lang go` takes `-package`, by default the contract's name without separators, then `config`), the policy pack for those targets (section 6.3), and `docuconf lint pulumi` (section 6.4). The other languages are not.
 
 ### 6.2 The component
 
@@ -379,17 +379,23 @@ Rules:
 - **Literals stay literals.** Inline file content and overlay values are written into the platform's code, so the component takes them as values, never `Output`s. That makes `kubernetesConfigMaps` known at construction, and the program can declare one ConfigMap for each in a plain loop.
 - **Pulumi secrets are not secret references.** A value wrapped in `pulumi.secret()` is encrypted in the state, but rendered as a plain env value it is plaintext in the pod spec or task definition. The component accepts a secret input only as the target's secret reference or as `injected`, never as a value, secret or not.
 - **On ecs and cloudrun**, a component carries what the Terraform module for the target does (sections 5.1 and 5.2), with the same sources and the same checks of their forms: a variable is `{ value }`, `{ secret }` or `{ injected }` with `ref`. On ecs, `secret` is `{ valueFrom, jsonKey?, versionStage?, versionId? }`, and the outputs are `ecsEnvironment` and `ecsSecrets`, ready for a container definition's JSON. On cloudrun, `secret` is `{ secret, version? }` for a variable or a file input, and the outputs are `cloudrunEnv`, `cloudrunVolumes` and `cloudrunVolumeMounts`, in the Cloud Run (v2) API's shapes; in Go they are the google provider's `cloudrunv2` types. File inputs and overlays the target cannot carry are left out with a warning, and a required one fails generation, as for the module. Values are not `$`-escaped. In Go, each target's sources (`Secret(...).WithJSONKey(...)`, `Secret(...).WithVersion(...)`, `SecretFile`, `InjectedFile`) are in the package for that target only, so a Kubernetes source does not compile in an ecs component.
-- The component is a `ComponentResource` of type `docuconf:<contract-name>:Config`, and registers `bindings`, `kubernetesConfigMaps`, `checked` and its contract's name and digest as outputs, so the policy pack can find it in the stack.
+- The component is a `ComponentResource` of type `docuconf:<contract-name>:Config`, and registers `bindings`, `kubernetesConfigMaps`, `checked`, its arguments and its contract's name and digest (with its target and language) as outputs, so the policy pack can find it in the stack: a stack policy sees a component's outputs, not its inputs.
 - **Its arguments are its inputs.** The component records `{ contract: { name, digest }, arguments }` as its Pulumi inputs (in Go, with `RegisterComponentResourceV2`), each argument as the program set it, in the sources' vocabulary. A preview shows a component's inputs but not its outputs, so this is what lets `docuconf lint pulumi` see how each input is set (section 6.4). Secret inputs are references, so no secret value is recorded; a value the program wrapped in `pulumi.secret()` stays a Pulumi secret in the state.
 
 ### 6.3 The policy pack
 
-The policy pack applies the rules of section 7 during `pulumi preview` and `pulumi up` (`--policy-pack policy/orders-config`, or enforced from Pulumi Cloud):
+```sh
+docuconf pulumi policy -contract contract.cue -target kubernetes -out policy/orders-config
+cd policy/orders-config && npm install
+pulumi preview --policy-pack policy/orders-config
+```
 
-- a **resource policy** for each workload type of the target, checking its containers' env, volumes and image;
-- a **stack policy** for the cross-resource rules: each bound container's env equals the component's rendered output, and every component instance is used by a workload.
+The policy pack applies the rules of section 7.2 during `pulumi preview` and `pulumi up` (`--policy-pack`, or published with `pulumi policy publish` and enforced from Pulumi Cloud), to every stack that uses a component of its contract, in any language. It is a TypeScript pack, one per contract and target, and holds the contract and the rules (`policy.ts`), which are those `docuconf lint pulumi` applies to a preview (section 6.4), with the same codes:
 
-Rules that fail on an error are `mandatory`; warnings are `advisory`. Inputs that are unknown in preview are checked by the component during `up` (section 6.2) and are reported as `deferred` notices.
+- `docuconf-<contract>`, **mandatory**, a stack policy: for each component of the contract and the target (by the type, digest and target it registers), the workloads that take its env (by env names, as in section 6.4) and their app containers get no undeclared name, no name twice, no secret as a plain value, every name the component renders, every required input, file inputs mounted where the app reads them, whole and read-only, and the pod metadata an injector asks for; `envFrom` is refused. A value written into a container by hand is checked with `@docuconf/core`, as the app would check it at boot (`invalid_value`, in the SDK's words). A component generated from another version of the contract fails (`stale_module`). Its settings, `unmanagedEnv` and `allowEnvFrom`, are a module's `docuconf_options`.
+- `docuconf-<contract>-advisory`: a component no workload takes (`module_unused`).
+
+CrossGuard gives a policy the stack's values, Pulumi secrets in plaintext, but a value unknown at preview cannot be read: a workload whose containers hold one is not checked, and an unknown argument is not compared, since the component checks those values when they resolve (section 6.2). `docuconf lint pulumi` and the pack check the same rules; the linter also applies environment policy (`-policy`), which needs CUE, and lists what it could not check.
 
 ### 6.4 The linter
 

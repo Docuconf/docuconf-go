@@ -246,7 +246,8 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 	if len(c.Overlays) > 0 {
 		b.WriteString("\tif args.OverlayValues != nil {\n\t\textra[\"overlayValues\"] = args.OverlayValues\n\t}\n")
 	}
-	fmt.Fprintf(&b, `	if err := ctx.RegisterComponentResourceV2(%q, name, recorded(in, extra), c, opts...); err != nil {
+	fmt.Fprintf(&b, `	props := recorded("kubernetes", in, extra)
+	if err := ctx.RegisterComponentResourceV2(%q, name, props, c, opts...); err != nil {
 		return nil, err
 	}
 `, "docuconf:"+c.Name+":Config")
@@ -272,13 +273,16 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 	if err := ctx.RegisterResourceOutputs(c, pulumi.Map{
 		"bindings": bindings,
 		"checked":  out.checked,
-		"contract": pulumi.StringMap{"name": pulumi.String(%q), "digest": pulumi.String(Digest)},
+		"contract": props["contract"],
+		// The arguments again, for the policy pack: a stack policy sees a
+		// component's outputs, not its inputs.
+		"arguments": props["arguments"],
 	}); err != nil {
 		return nil, err
 	}
 	return c, nil
 }
-`, overlays, c.Name)
+`, overlays)
 
 	config, err := format.Source([]byte(b.String()))
 	if err != nil {

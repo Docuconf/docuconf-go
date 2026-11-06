@@ -1,0 +1,153 @@
+{
+  "apiVersion": "docuconf.dev/v1alpha1",
+  "contract": {
+    "apiVersion": "docuconf.dev/v1alpha1",
+    "kind": "ConfigContract",
+    "metadata": {
+      "name": "orders-api",
+      "generator": {
+        "language": "go",
+        "sdk": "docuconf-go",
+        "version": "0.2.0"
+      }
+    },
+    "vars": {
+      "ALLOWED_ORIGINS": {
+        "name": "ALLOWED_ORIGINS",
+        "description": "Origins allowed to call the API from a browser",
+        "required": false,
+        "secret": false,
+        "separator": ",",
+        "type": "list",
+        "items": "string",
+        "encoding": "csv",
+        "minItems": 1,
+        "default": [
+          "http://localhost:3000"
+        ]
+      },
+      "DATABASE_URL": {
+        "name": "DATABASE_URL",
+        "description": "Postgres connection string for the orders database",
+        "required": true,
+        "secret": true,
+        "type": "url",
+        "schemes": [
+          "postgres"
+        ],
+        "maxLength": 2048
+      },
+      "LOG_LEVEL": {
+        "name": "LOG_LEVEL",
+        "description": "Minimum log level emitted",
+        "required": false,
+        "secret": false,
+        "type": "enum",
+        "values": [
+          "debug",
+          "info",
+          "warn",
+          "error"
+        ],
+        "default": "info"
+      },
+      "PORT": {
+        "name": "PORT",
+        "description": "HTTP listen port",
+        "required": false,
+        "secret": false,
+        "type": "int",
+        "default": 8080,
+        "min": 1,
+        "max": 65535
+      },
+      "REQUEST_TIMEOUT": {
+        "name": "REQUEST_TIMEOUT",
+        "description": "Time limit for handling one request",
+        "required": false,
+        "secret": false,
+        "type": "duration",
+        "encoding": "go",
+        "default": "30s",
+        "min": "1s",
+        "max": "5m"
+      },
+      "WEBHOOK_KEYS": {
+        "name": "WEBHOOK_KEYS",
+        "description": "Keys that verify the signature on incoming payment webhooks",
+        "details": "A webhook is accepted when it is signed with any key in the set, so the key can be rotated without turning webhooks away. Each key is 32 to 256 characters, so an empty or truncated key fails at boot. Without this variable, the service rejects every webhook.",
+        "required": false,
+        "separator": ",",
+        "type": "keySet",
+        "secret": true,
+        "encoding": "csv",
+        "minKeys": 1,
+        "maxKeys": 2,
+        "keyMinLength": 32,
+        "keyMaxLength": 256
+      },
+      "WORKER_COUNT": {
+        "name": "WORKER_COUNT",
+        "description": "Number of background workers processing orders",
+        "details": "Each worker holds one database connection, so keep it below the database's connection limit divided by the number of replicas. Raise it when the order queue grows faster than it drains.",
+        "required": false,
+        "secret": false,
+        "type": "int",
+        "default": 4,
+        "min": 1,
+        "max": 64
+      }
+    },
+    "files": {
+      "discounts": {
+        "name": "discounts",
+        "description": "Discount codes accepted at checkout",
+        "required": false,
+        "secret": false,
+        "path": "/etc/orders/discounts/discounts.yaml",
+        "reload": "restart",
+        "type": "config",
+        "format": "yaml",
+        "schema": {
+          "type": "object",
+          "required": [
+            "codes"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "codes": {
+              "type": "object",
+              "description": "Percent off for each discount code",
+              "additionalProperties": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "serving-tls": {
+        "name": "serving-tls",
+        "description": "Certificate to serve HTTPS with. Without it, the service serves HTTP",
+        "required": false,
+        "type": "tls",
+        "secret": true,
+        "dnsNames": [
+          "orders.example.com"
+        ],
+        "minRemaining": "720h",
+        "path": "/etc/orders/tls",
+        "reload": "watch",
+        "requireCA": false
+      }
+    }
+  },
+  "contractDigest": "sha256:4cb94f6f5dec96da303e9c811521563e6b2904232b3f76b1a2a0479cb121bdcb",
+  "generator": {
+    "name": "docuconf",
+    "version": "0.2.0"
+  },
+  "kind": "PulumiPolicyPack",
+  "targets": [
+    "kubernetes"
+  ]
+}

@@ -77,7 +77,8 @@ func NewOrdersApiConfig(ctx *pulumi.Context, name string, args *Args, opts ...pu
 	in.set("discounts", args.Discounts)
 	// The arguments are the component's inputs, so that a preview shows
 	// them and docuconf lint pulumi can check them.
-	if err := ctx.RegisterComponentResourceV2("docuconf:orders-api:Config", name, recorded(in, nil), c, opts...); err != nil {
+	props := recorded(target, in, nil)
+	if err := ctx.RegisterComponentResourceV2("docuconf:orders-api:Config", name, props, c, opts...); err != nil {
 		return nil, err
 	}
 	out, err := buildCloudRun(ctx, c, in)
@@ -98,7 +99,10 @@ func NewOrdersApiConfig(ctx *pulumi.Context, name string, args *Args, opts ...pu
 	if err := ctx.RegisterResourceOutputs(c, pulumi.Map{
 		"bindings": bindings,
 		"checked":  out.checked,
-		"contract": pulumi.StringMap{"name": pulumi.String("orders-api"), "digest": pulumi.String(Digest)},
+		"contract": props["contract"],
+		// The arguments again, for the policy pack: a stack policy sees a
+		// component's outputs, not its inputs.
+		"arguments": props["arguments"],
 	}); err != nil {
 		return nil, err
 	}

@@ -64,6 +64,7 @@ Usage:
   docuconf helm   -contract <contract.cue> -chart <chart directory>
   docuconf terraform -contract <contract.cue> -out <module directory> [-target kubernetes] [-check]
   docuconf pulumi -contract <contract.cue> -out <component directory> [-lang typescript|go] [-package name] [-target kubernetes|ecs|cloudrun] [-check]
+  docuconf pulumi policy -contract <contract.cue> -out <policy pack directory> [-target kubernetes|ecs|cloudrun] [-check]
   docuconf lint terraform <plan.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-explain] [-format text|json|sarif]
   docuconf lint pulumi <preview.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-unmanaged-env NAME,...] [-allow-env-from] [-explain] [-format text|json|sarif]
   docuconf check  -contract <contract.cue> [-env-file .env]
