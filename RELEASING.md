@@ -40,6 +40,16 @@ All of it uses only the workflow's own `GITHUB_TOKEN` (`contents: write`, `packa
 token (`id-token: write`, for signing): no accounts and no secrets. The only requirement is that the `Docuconf` organization lets `GITHUB_TOKEN` write packages, which it does
 unless package creation has been restricted under Organization settings > Packages.
 
+When release-please makes the release with `GITHUB_TOKEN` (no `RELEASE_APP_ID` secret), its tag push starts no
+workflow, so release-please starts `release.yml` with `gh workflow run --ref <tag>` instead. To publish a tag again, or
+one that was never published, run it from main with the tag as input:
+
+```sh
+gh workflow run release.yml --repo Docuconf/docuconf-go -f tag=cmd/docuconf/v0.2.0
+```
+
+Every job checks out the tag, and an existing GitHub Release keeps its notes: the assets are uploaded with `--clobber`.
+
 One step after the very first push of each: container images and OCI charts start out **private** on ghcr.io. Open
 the `docuconf` and `charts/docuconf` packages under the organization's Packages tab, link them to this repository if
 they are not already, and set their visibility to public (Package settings > Change visibility). Later versions keep
