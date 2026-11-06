@@ -143,8 +143,7 @@ export const contract: Contract = {
       "requireCA": false
     }
   }
-}
-;
+};
 
 /** The sha256 of the contract's compact JSON. */
 export const digest = "sha256:4cb94f6f5dec96da303e9c811521563e6b2904232b3f76b1a2a0479cb121bdcb";

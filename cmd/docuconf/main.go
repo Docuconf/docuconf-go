@@ -30,7 +30,9 @@
 // lint terraform checks a plan (terraform show -json) against the contracts
 // of the docuconf modules it uses: what each bound container receives,
 // rebuilt into values documents and checked with vet's engine, and the
-// wiring the module cannot see (spec/IAC.md section 7).
+// wiring the module cannot see (spec/IAC.md section 7). lint pulumi does
+// the same for a preview (pulumi preview --json) and the docuconf
+// components in it, from the arguments each records as its inputs.
 //
 // docuconf conformance regenerates conformance/cases.json from
 // conformance/load, for maintainers of the spec.
@@ -63,6 +65,7 @@ Usage:
   docuconf terraform -contract <contract.cue> -out <module directory> [-target kubernetes] [-check]
   docuconf pulumi -contract <contract.cue> -out <component directory> [-lang typescript|go] [-package name] [-target kubernetes|ecs|cloudrun] [-check]
   docuconf lint terraform <plan.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-explain] [-format text|json|sarif]
+  docuconf lint pulumi <preview.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-unmanaged-env NAME,...] [-allow-env-from] [-explain] [-format text|json|sarif]
   docuconf check  -contract <contract.cue> [-env-file .env]
   docuconf exec   -contract <contract.cue> [-env-file .env] [-no-defaults] -- <program> [args...]
   docuconf docs   <contract.cue | docs.json> [--format model|markdown|agents] [-o file | --check file]

@@ -337,7 +337,7 @@ docuconf lint pulumi preview.json -policy prod.cue
 
 The first generates a **component** in one language (`typescript`, `python`, `go`, `csharp` or `java`): a local package the program imports, with no provider plugin. The second generates a **CrossGuard policy pack** (TypeScript, which Pulumi runs against programs in every language). Both take `-check` as in section 4.1. The third applies an environment policy (section 7.3) to a preview: the policy pack checks the contract's rules, but does not evaluate CUE, so environment policy runs in `docuconf lint pulumi`, which reads the resource inputs of `pulumi preview --json` and applies sections 7.2 and 7.3 as for Terraform.
 
-Implemented so far: the TypeScript and Go components for the kubernetes, ecs and cloudrun targets (`-lang go` takes `-package`, by default the contract's name without separators, then `config`). The other languages, the policy pack and `docuconf lint pulumi` are not.
+Implemented so far: the TypeScript and Go components for the kubernetes, ecs and cloudrun targets (`-lang go` takes `-package`, by default the contract's name without separators, then `config`), and `docuconf lint pulumi` (section 6.4). The other languages and the policy pack are not.
 
 ### 6.2 The component
 
@@ -380,6 +380,7 @@ Rules:
 - **Pulumi secrets are not secret references.** A value wrapped in `pulumi.secret()` is encrypted in the state, but rendered as a plain env value it is plaintext in the pod spec or task definition. The component accepts a secret input only as the target's secret reference or as `injected`, never as a value, secret or not.
 - **On ecs and cloudrun**, a component carries what the Terraform module for the target does (sections 5.1 and 5.2), with the same sources and the same checks of their forms: a variable is `{ value }`, `{ secret }` or `{ injected }` with `ref`. On ecs, `secret` is `{ valueFrom, jsonKey?, versionStage?, versionId? }`, and the outputs are `ecsEnvironment` and `ecsSecrets`, ready for a container definition's JSON. On cloudrun, `secret` is `{ secret, version? }` for a variable or a file input, and the outputs are `cloudrunEnv`, `cloudrunVolumes` and `cloudrunVolumeMounts`, in the Cloud Run (v2) API's shapes; in Go they are the google provider's `cloudrunv2` types. File inputs and overlays the target cannot carry are left out with a warning, and a required one fails generation, as for the module. Values are not `$`-escaped. In Go, each target's sources (`Secret(...).WithJSONKey(...)`, `Secret(...).WithVersion(...)`, `SecretFile`, `InjectedFile`) are in the package for that target only, so a Kubernetes source does not compile in an ecs component.
 - The component is a `ComponentResource` of type `docuconf:<contract-name>:Config`, and registers `bindings`, `kubernetesConfigMaps`, `checked` and its contract's name and digest as outputs, so the policy pack can find it in the stack.
+- **Its arguments are its inputs.** The component records `{ contract: { name, digest }, arguments }` as its Pulumi inputs (in Go, with `RegisterComponentResourceV2`), each argument as the program set it, in the sources' vocabulary. A preview shows a component's inputs but not its outputs, so this is what lets `docuconf lint pulumi` see how each input is set (section 6.4). Secret inputs are references, so no secret value is recorded; a value the program wrapped in `pulumi.secret()` stays a Pulumi secret in the state.
 
 ### 6.3 The policy pack
 
@@ -389,6 +390,25 @@ The policy pack applies the rules of section 7 during `pulumi preview` and `pulu
 - a **stack policy** for the cross-resource rules: each bound container's env equals the component's rendered output, and every component instance is used by a workload.
 
 Rules that fail on an error are `mandatory`; warnings are `advisory`. Inputs that are unknown in preview are checked by the component during `up` (section 6.2) and are reported as `deferred` notices.
+
+### 6.4 The linter
+
+```sh
+pulumi preview --json > preview.json
+docuconf lint pulumi preview.json                    # in the program's directory, or -dir
+docuconf lint pulumi preview.json -policy prod.cue -contract contract.cue -explain
+```
+
+`docuconf lint pulumi` applies the rules of section 7.2, and the policy of section 7.3, to a preview, as `docuconf lint terraform` does to a plan, with the same codes, flags and output formats. It is offline: it reads the preview and the generated components' `docuconf.json`, found under `-dir` (the program's directory by default) by the contract digest each component records.
+
+- **Components** are the preview's resources of type `docuconf:<contract-name>:Config`, and their arguments are the inputs each records (section 6.2): what a Terraform module's arguments are to `lint terraform`.
+- **Workloads** are the preview's planned inputs of the target's resources: on kubernetes, `Deployment`, `StatefulSet`, `DaemonSet`, `ReplicaSet`, `Job`, `CronJob`, `ReplicationController` and `Pod`; on ecs, `aws:ecs/taskDefinition:TaskDefinition`'s `containerDefinitions`; on cloudrun, a `cloudrunv2` `Service`'s or `Job`'s template.
+- **Binding.** A preview records no references between resources, so a workload binds to the component whose contract its app container's env names match (section 7.1, as for a workload that references no module). Pulumi writes a container list that holds a secret as `"[secret]"`, which no name can match; such a workload binds to the one component for its target, if there is one, and only that component's arguments are checked (`deferred`).
+- **Unknown and secret values.** A value Pulumi knows only during the update, and a Pulumi secret, are `deferred`, as an unknown or sensitive value is in a plan: the component checks them when they resolve (section 6.2), and the app at boot.
+- **What a module's `docuconf_options` say** that a component has no argument for are flags: `-unmanaged-env NAME,…` and `-allow-env-from`.
+- **`stale_module`** regenerates each component from the contract its `docuconf.json` holds, in its language and for its target, and compares the files, as for a module.
+
+Messages name the component's outputs as the program reads them: `orders.kubernetesEnv` in TypeScript, `orders.KubernetesEnv` in Go.
 
 ## 7. The linter
 

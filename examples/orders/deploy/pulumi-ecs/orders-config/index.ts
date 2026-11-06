@@ -69,7 +69,9 @@ export class OrdersApiConfig extends pulumi.ComponentResource {
   readonly checked: pulumi.Output<boolean>;
 
   constructor(name: string, args: OrdersApiConfigArgs, opts?: pulumi.ComponentResourceOptions) {
-    super("docuconf:orders-api:Config", name, {}, opts);
+    // The arguments are the component's inputs, so that a preview shows
+    // them and docuconf lint pulumi can check them.
+    super("docuconf:orders-api:Config", name, { contract: { name: "orders-api", digest }, arguments: args }, opts);
     const out = runtime.forTarget(this, contract, "ecs", args as unknown as Record<string, unknown>);
     this.ecsEnvironment = out.rendered.ecsEnvironment;
     this.ecsSecrets = out.rendered.ecsSecrets;

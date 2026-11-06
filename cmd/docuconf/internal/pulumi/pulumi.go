@@ -317,9 +317,11 @@ export interface InjectedFile {
   readonly checked: pulumi.Output<boolean>;
 
   constructor(name: string, args: %[1]sArgs, opts?: pulumi.ComponentResourceOptions) {
-    super(%[2]s, name, {}, opts);
+    // The arguments are the component's inputs, so that a preview shows
+    // them and docuconf lint pulumi can check them.
+    super(%[2]s, name, { contract: { name: %[4]s, digest }, arguments: args }, opts);
     const out = runtime.forTarget(this, contract, %[3]q, args as unknown as Record<string, unknown>);
-`, g.class, tsString("docuconf:"+g.c.Name+":Config"), g.target)
+`, g.class, tsString("docuconf:"+g.c.Name+":Config"), g.target, tsString(g.c.Name))
 	if g.target == "ecs" {
 		b.WriteString("    this.ecsEnvironment = out.rendered.ecsEnvironment;\n    this.ecsSecrets = out.rendered.ecsSecrets;\n")
 	} else {
@@ -714,7 +716,9 @@ export class %[1]s extends pulumi.ComponentResource {
   readonly checked: pulumi.Output<boolean>;
 
   constructor(name: string, args: %[1]sArgs, opts?: pulumi.ComponentResourceOptions) {
-    super(%[3]s, name, {}, opts);
+    // The arguments are the component's inputs, so that a preview shows
+    // them and docuconf lint pulumi can check them.
+    super(%[3]s, name, { contract: { name: %[4]s, digest }, arguments: args }, opts);
     const { podMetadata, overlayValues, ...inputs } = args as %[1]sArgs & { overlayValues?: Record<string, unknown> };
     const out = runtime.kubernetes(this, contract, inputs as Record<string, unknown>, { podMetadata, overlayValues });
     this.kubernetesEnv = out.kubernetesEnv;
@@ -757,7 +761,7 @@ func describe(raw map[string]any) string {
 func (g *gen) contractTS(digest string) ([]byte, error) {
 	// Indented, keeping the contract's key order.
 	var ordered bytes.Buffer
-	if err := json.Indent(&ordered, g.c.JSON, "", "  "); err != nil {
+	if err := json.Indent(&ordered, bytes.TrimSpace(g.c.JSON), "", "  "); err != nil {
 		return nil, err
 	}
 	var b strings.Builder

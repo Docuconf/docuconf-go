@@ -10,12 +10,13 @@
 # state directory, with the provider configured without credentials (a
 # preview of new resources calls no cloud API), plans ../ecs or ../cloudrun
 # with its CI provider override, and checks that both plan the same
-# container configuration (check-cloud-plan.py). Then it sets WORKER_COUNT
-# to 100, which the contract forbids, and checks that the preview fails
-# with the component's message.
+# container configuration (check-cloud-plan.py), and lints the preview
+# (docuconf lint pulumi). Then it sets WORKER_COUNT to 100, which the
+# contract forbids, and checks that the preview fails with the component's
+# message.
 #
-# Needs pulumi, terraform, python3, and the program's toolchain (node and
-# npm, or go).
+# Needs pulumi, terraform, docuconf, python3, and the program's toolchain
+# (node and npm, or go).
 set -euo pipefail
 
 target="$1"
@@ -64,6 +65,7 @@ case "$target" in
 esac
 pulumi preview --json --non-interactive >"$work/preview.json"
 "$here/check-cloud-plan.py" "$target" "$work/plan.json" "$work/preview.json"
+docuconf lint pulumi "$work/preview.json" -contract "$here/../contract.cue" -explain
 
 echo "--- a forbidden value fails at preview"
 pulumi config set workerCount 100

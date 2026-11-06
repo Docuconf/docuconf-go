@@ -38,6 +38,13 @@ type Module struct {
 	// Unknown are the arguments whose validations Terraform could not
 	// evaluate at plan: their values are known only during apply.
 	Unknown map[string]bool
+	// Pulumi is set for a Pulumi component, read from a preview; Lang is
+	// "go" for a Go one. The rules word their messages for it.
+	Pulumi bool
+	Lang   string
+	// Raw are a component's arguments as the program set them, for
+	// -explain to print in the component's words.
+	Raw map[string]any
 }
 
 // Target is the module's target: kubernetes unless docuconf.json says.
@@ -56,7 +63,8 @@ type Meta struct {
 	Generator      struct {
 		Version string `json:"version"`
 	} `json:"generator"`
-	Targets []string `json:"targets"`
+	Targets  []string `json:"targets"`
+	Language string   `json:"language"` // a Pulumi component's
 }
 
 // Workload is a resource that runs the app: a Kubernetes resource that
@@ -111,6 +119,7 @@ type Mount struct {
 type Plan struct {
 	Modules   []*Module
 	Workloads []*Workload
+	Pulumi    bool // read from a Pulumi preview
 }
 
 type planJSON struct {
