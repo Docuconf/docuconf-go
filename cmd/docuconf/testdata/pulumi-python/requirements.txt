@@ -1,0 +1,10 @@
+# What the docuconf pulumi tests run generated Python components with:
+# python3 -m venv .venv && .venv/bin/pip install -r requirements.txt here,
+# or let the tests do it.
+pulumi==3.274.0
+pulumi-kubernetes==4.23.0
+PyYAML==6.0.3
+tomli-w==1.2.0
+typing-extensions==4.15.0
+mypy==1.18.2
+docuconf-pydantic[tls,yaml,jsonschema] @ git+https://github.com/docuconf/docuconf-python@132e88cd0ee139d2d0a17fd63659a8455e0ff931

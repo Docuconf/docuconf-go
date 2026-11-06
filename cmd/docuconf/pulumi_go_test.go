@@ -252,7 +252,14 @@ func goComponentResults(t *testing.T) map[string]goResult {
 }
 
 func TestPulumiGoMatchesRender(t *testing.T) {
-	got := goComponentResults(t)
+	checkMatchesRender(t, goComponentResults(t))
+}
+
+// checkMatchesRender compares a component's results for the render cases
+// with docuconf render: ConfigMap content by meaning, since a language's
+// encoders may order keys and quote strings differently, and each
+// content hash against the content it names.
+func checkMatchesRender(t *testing.T, got map[string]goResult) {
 	p, err := platform.New()
 	if err != nil {
 		t.Fatal(err)
@@ -308,7 +315,12 @@ func TestPulumiGoMatchesRender(t *testing.T) {
 }
 
 func TestPulumiGoRejectsWhatVetRejects(t *testing.T) {
-	got := goComponentResults(t)
+	checkRejects(t, goComponentResults(t))
+}
+
+// checkRejects checks a component rejects what docuconf vet rejects, and
+// names the same input.
+func checkRejects(t *testing.T, got map[string]goResult) {
 	for _, tc := range rejectCases {
 		t.Run(tc.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer

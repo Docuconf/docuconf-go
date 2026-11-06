@@ -58,8 +58,8 @@ func Generate(c *terraform.Contract, opt Options) (map[string][]byte, error) {
 	if opt.Target == "" {
 		opt.Target = "kubernetes"
 	}
-	if opt.Lang != "typescript" && opt.Lang != "go" {
-		return nil, fmt.Errorf("-lang %q is not supported yet; supported: typescript, go", opt.Lang)
+	if opt.Lang != "typescript" && opt.Lang != "go" && opt.Lang != "python" {
+		return nil, fmt.Errorf("-lang %q is not supported yet; supported: typescript, go, python", opt.Lang)
 	}
 	switch opt.Target {
 	case "kubernetes", "ecs", "cloudrun":
@@ -102,6 +102,9 @@ func Generate(c *terraform.Contract, opt Options) (map[string][]byte, error) {
 	}
 	if opt.Lang == "go" {
 		return generateGo(c, opt, append(meta, '\n'), digest)
+	}
+	if opt.Lang == "python" {
+		return g.generatePython(opt, append(meta, '\n'), digest)
 	}
 	contractTS, err := g.contractTS(digest)
 	if err != nil {

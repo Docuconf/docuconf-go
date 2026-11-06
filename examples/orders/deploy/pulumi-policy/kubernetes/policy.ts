@@ -288,6 +288,7 @@ function mountDir(f: { type: string; path: string }): string {
 }
 
 function output(comp: Component, ts: string): string {
+  if (comp.lang === "python") return ts.replace(/[A-Z]/g, (c) => "_" + c.toLowerCase());
   if (comp.lang !== "go") return ts;
   return (ts[0]!.toUpperCase() + ts.slice(1)).replace("Cloudrun", "CloudRun");
 }

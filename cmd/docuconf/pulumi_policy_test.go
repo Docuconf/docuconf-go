@@ -212,6 +212,11 @@ func TestPulumiPolicy(t *testing.T) {
 		// An unknown value hides the workload: the component checks it later.
 		"unknown_workload": {Target: "kubernetes", Resources: stackOf(t, comp, ordersArgs(), []step{{"kubernetes:apps/v1:Deployment", "orders-api", unknownEnv}})},
 		"unknown_argument": {Target: "kubernetes", Resources: stackOf(t, comp, withArgs(map[string]any{"LOG_LEVEL": map[string]any{"value": unknown}}), clean)},
+		"python_names": {Target: "kubernetes", Resources: func() []map[string]any {
+			s := stackOf(t, comp, ordersArgs(), []step{{"kubernetes:apps/v1:Deployment", "orders-api", deployment(ordersEnv()[1:], discountsMount(), discountsVolume(), nil, nil)}})
+			s[0]["props"].(map[string]any)["contract"].(map[string]any)["language"] = "python"
+			return s
+		}()},
 		"go_names": {Target: "kubernetes", Resources: func() []map[string]any {
 			s := stackOf(t, comp, ordersArgs(), []step{{"kubernetes:apps/v1:Deployment", "orders-api", deployment(ordersEnv()[1:], discountsMount(), discountsVolume(), nil, nil)}})
 			s[0]["props"].(map[string]any)["contract"].(map[string]any)["language"] = "go"
@@ -242,6 +247,7 @@ func TestPulumiPolicy(t *testing.T) {
 	none("unknown_workload")
 	none("unknown_argument")
 	expect("go_names", "unbound_container", "take the container's env from orders.KubernetesEnv")
+	expect("python_names", "unbound_container", "take the container's env from orders.kubernetes_env")
 
 	t.Run("ecs", func(t *testing.T) {
 		comp := pulumiProgram(t, "typescript", "ecs")
