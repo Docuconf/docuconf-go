@@ -67,17 +67,20 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 		args = &Args{}
 	}
 	c := &%[1]s{}
-	if err := ctx.RegisterComponentResource(%[2]q, name, c, opts...); err != nil {
-		return nil, err
-	}
 	in := inputs{}
-`, g.class, "docuconf:"+c.Name+":Config")
+`, g.class)
 	for _, v := range c.Vars {
 		fmt.Fprintf(&b, "\tin.set(%q, args.%s)\n", v.Name, v.Name)
 	}
 	for _, f := range g.files {
 		fmt.Fprintf(&b, "\tin.set(%q, args.%s)\n", f.Name, goField(f.Name))
 	}
+	fmt.Fprintf(&b, `	// The arguments are the component's inputs, so that a preview shows
+	// them and docuconf lint pulumi can check them.
+	if err := ctx.RegisterComponentResourceV2(%q, name, recorded(in, nil), c, opts...); err != nil {
+		return nil, err
+	}
+`, "docuconf:"+c.Name+":Config")
 	if g.target == "ecs" {
 		b.WriteString("\tout, err := buildECS(ctx, c, in)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tc.EcsEnvironment = out.environment\n\tc.EcsSecrets = out.secrets\n")
 	} else {
@@ -124,7 +127,7 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 		}
 	}
 	var indented bytes.Buffer
-	if err := json.Indent(&indented, c.JSON, "", "  "); err != nil {
+	if err := json.Indent(&indented, bytes.TrimSpace(c.JSON), "", "  "); err != nil {
 		return nil, err
 	}
 	indented.WriteByte('\n')

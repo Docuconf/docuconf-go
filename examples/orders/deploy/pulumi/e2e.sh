@@ -8,7 +8,7 @@
 #
 #   1. A value the contract forbids fails at preview, before the cluster
 #      sees it.
-#   2. pulumi up rolls out.
+#   2. The preview passes docuconf lint pulumi; pulumi up rolls out.
 #   3. The service serves HTTPS with the cert-manager certificate, and its
 #      /config shows the values set in index.ts, with the secrets redacted.
 #      /discounts serves the inline file, and a webhook signed with either
@@ -17,7 +17,7 @@
 #      served.
 #   5. A renewed certificate is served without a restart.
 #
-# Needs docker, kind, kubectl, pulumi, curl, openssl, and npm or go. The cluster is
+# Needs docker, kind, kubectl, pulumi, docuconf, curl, openssl, and npm or go. The cluster is
 # as for ../terraform/e2e/e2e.sh: $KIND_CLUSTER (default orders-e2e),
 # created and deleted unless it exists, KEEP_CLUSTER=1 to keep it. The
 # stack's state is local and temporary. The shared steps are in
@@ -28,7 +28,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 program="$(cd "${1:-$here}" && pwd)"
 # shellcheck source=SCRIPTDIR/../e2e/lib.sh
 . "$here/../e2e/lib.sh"
-need pulumi
+need pulumi docuconf
 
 export PULUMI_CONFIG_PASSPHRASE="" PULUMI_SKIP_UPDATE_CHECK=1 PULUMI_BACKEND_URL="file://$tmp/state"
 teardown() { (cd "$tmp/pulumi" && pulumi destroy --yes --non-interactive); }
@@ -71,7 +71,11 @@ deploy() { # pulumi up, and wait for the rollout
   rolled_out
 }
 
-step "2. pulumi up"
+step "2. the preview passes docuconf lint pulumi; pulumi up"
+pulumi preview --json --non-interactive >"$tmp/preview.json" 2>"$tmp/preview.err" ||
+  { cat "$tmp/preview.err" "$tmp/preview.json" >&2; fail "pulumi preview failed"; }
+docuconf lint pulumi "$tmp/preview.json" -contract "$orders/contract.cue" ||
+  fail "docuconf lint pulumi found problems"
 deploy
 
 step "3. the service received what the component rendered"

@@ -86,9 +86,6 @@ func NewOrdersApiConfig(ctx *pulumi.Context, name string, args *Args, opts ...pu
 		args = &Args{}
 	}
 	c := &OrdersApiConfig{}
-	if err := ctx.RegisterComponentResource("docuconf:orders-api:Config", name, c, opts...); err != nil {
-		return nil, err
-	}
 	in := inputs{}
 	in.set("ALLOWED_ORIGINS", args.ALLOWED_ORIGINS)
 	in.set("DATABASE_URL", args.DATABASE_URL)
@@ -99,6 +96,15 @@ func NewOrdersApiConfig(ctx *pulumi.Context, name string, args *Args, opts ...pu
 	in.set("WORKER_COUNT", args.WORKER_COUNT)
 	in.set("discounts", args.Discounts)
 	in.set("serving-tls", args.ServingTLS)
+	// The arguments are the component's inputs, so that a preview shows
+	// them and docuconf lint pulumi can check them.
+	extra := map[string]any{}
+	if args.PodMetadata != nil {
+		extra["podMetadata"] = map[string]any{"annotations": args.PodMetadata.Annotations, "labels": args.PodMetadata.Labels}
+	}
+	if err := ctx.RegisterComponentResourceV2("docuconf:orders-api:Config", name, recorded(in, extra), c, opts...); err != nil {
+		return nil, err
+	}
 	out, err := build(ctx, c, in, nil, args.PodMetadata)
 	if err != nil {
 		return nil, err

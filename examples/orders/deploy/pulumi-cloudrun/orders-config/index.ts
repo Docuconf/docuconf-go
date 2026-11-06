@@ -72,7 +72,9 @@ export class OrdersApiConfig extends pulumi.ComponentResource {
   readonly checked: pulumi.Output<boolean>;
 
   constructor(name: string, args: OrdersApiConfigArgs, opts?: pulumi.ComponentResourceOptions) {
-    super("docuconf:orders-api:Config", name, {}, opts);
+    // The arguments are the component's inputs, so that a preview shows
+    // them and docuconf lint pulumi can check them.
+    super("docuconf:orders-api:Config", name, { contract: { name: "orders-api", digest }, arguments: args }, opts);
     const out = runtime.forTarget(this, contract, "cloudrun", args as unknown as Record<string, unknown>);
     this.cloudrunEnv = out.rendered.cloudrunEnv;
     this.cloudrunVolumes = out.rendered.cloudrunVolumes;

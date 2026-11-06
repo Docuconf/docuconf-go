@@ -288,6 +288,18 @@ directory, and checks that the manifests match `docuconf render` of
 [`deploy/values.yaml`](deploy/values.yaml) and
 [`deploy/files.yaml`](deploy/files.yaml).
 
+`docuconf lint pulumi` checks a preview as `docuconf lint terraform`
+checks a plan: what each workload's containers get, against the contract
+and the component's arguments, which it records as its inputs. It catches
+what the component cannot see, such as an env entry written into the
+Deployment by hand, and applies an environment policy with `-policy`:
+
+```sh
+cd deploy/pulumi
+pulumi preview --json > preview.json
+docuconf lint pulumi preview.json -contract ../../contract.cue -explain
+```
+
 [`deploy/pulumi-go`](deploy/pulumi-go) is the same program in Go,
 through the component `docuconf pulumi -lang go` generates:
 
@@ -325,8 +337,9 @@ definition, and `cloudrunEnv`, `cloudrunVolumeMounts` and
 
 [`deploy/check-cloud-plan.sh`](deploy/check-cloud-plan.sh) previews a
 program without a cloud account, and checks that it plans the same
-container configuration as the Terraform root of its target and that a
-forbidden value fails at preview. CI runs it for all four on every change:
+container configuration as the Terraform root of its target, that the
+preview passes `docuconf lint pulumi`, and that a forbidden value fails at
+preview. CI runs it for all four on every change:
 
 ```sh
 deploy/check-cloud-plan.sh ecs deploy/pulumi-ecs
@@ -339,6 +352,6 @@ deploy/check-cloud-plan.sh cloudrun deploy/pulumi-go-cloudrun
 above for the Pulumi programs (`deploy/pulumi/e2e.sh deploy/pulumi-go`
 for the Go one): it deploys to a kind cluster with `pulumi
 up`, and checks the running service the same way, with a forbidden value
-failing at preview and a discount code added through stack config rolling
-out. Both tests share [`deploy/e2e`](deploy/e2e): the cluster's fixtures
+failing at preview, the preview passing `docuconf lint pulumi`, and a
+discount code added through stack config rolling out. Both tests share [`deploy/e2e`](deploy/e2e): the cluster's fixtures
 and the checks.

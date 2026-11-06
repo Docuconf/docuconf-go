@@ -66,9 +66,6 @@ func NewOrdersApiConfig(ctx *pulumi.Context, name string, args *Args, opts ...pu
 		args = &Args{}
 	}
 	c := &OrdersApiConfig{}
-	if err := ctx.RegisterComponentResource("docuconf:orders-api:Config", name, c, opts...); err != nil {
-		return nil, err
-	}
 	in := inputs{}
 	in.set("ALLOWED_ORIGINS", args.ALLOWED_ORIGINS)
 	in.set("DATABASE_URL", args.DATABASE_URL)
@@ -78,6 +75,11 @@ func NewOrdersApiConfig(ctx *pulumi.Context, name string, args *Args, opts ...pu
 	in.set("WEBHOOK_KEYS", args.WEBHOOK_KEYS)
 	in.set("WORKER_COUNT", args.WORKER_COUNT)
 	in.set("discounts", args.Discounts)
+	// The arguments are the component's inputs, so that a preview shows
+	// them and docuconf lint pulumi can check them.
+	if err := ctx.RegisterComponentResourceV2("docuconf:orders-api:Config", name, recorded(in, nil), c, opts...); err != nil {
+		return nil, err
+	}
 	out, err := buildCloudRun(ctx, c, in)
 	if err != nil {
 		return nil, err

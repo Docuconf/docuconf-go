@@ -187,8 +187,9 @@ jobs:
 
   # The orders service deployed from Pulumi (deploy/pulumi): the committed
   # component is what docuconf pulumi generates from the contract, the
-  # program type-checks, `pulumi up` renders manifests that match docuconf
-  # render of the same inputs, and a forbidden value fails at preview. The
+  # program type-checks, its preview passes docuconf lint pulumi, `pulumi
+  # up` renders manifests that match docuconf render of the same inputs,
+  # and a forbidden value fails at preview. The
   # kubernetes provider renders YAML to a directory, so no cluster is needed.
   orders-pulumi:
     runs-on: ubuntu-latest
@@ -224,6 +225,8 @@ jobs:
           pulumi login "file://$RUNNER_TEMP/pulumi-state"
           pulumi stack init ci
           pulumi config set renderDir "$RUNNER_TEMP/rendered"
+          pulumi preview --json --non-interactive > "$RUNNER_TEMP/preview.json"
+          docuconf lint pulumi "$RUNNER_TEMP/preview.json" -contract ../../contract.cue -explain
           pulumi up --yes --non-interactive
           docuconf render -contract ../../contract.cue -values ../values.yaml -files ../files.yaml > "$RUNNER_TEMP/render.yaml"
           ./check-rendered.py "$RUNNER_TEMP/render.yaml" "$RUNNER_TEMP/rendered"
@@ -239,7 +242,8 @@ jobs:
 
   # The same program in Go (deploy/pulumi-go), through docuconf pulumi
   # -lang go: the committed component is up to date and formatted, the
-  # program builds, its manifests match docuconf render (ConfigMap content
+  # program builds, its preview passes docuconf lint pulumi, its manifests
+  # match docuconf render (ConfigMap content
   # by meaning: a Go map has no key order), and a forbidden value fails at
   # preview.
   orders-pulumi-go:
@@ -272,6 +276,8 @@ jobs:
           pulumi login "file://$RUNNER_TEMP/pulumi-state"
           pulumi stack init ci
           pulumi config set renderDir "$RUNNER_TEMP/rendered"
+          pulumi preview --json --non-interactive > "$RUNNER_TEMP/preview.json"
+          docuconf lint pulumi "$RUNNER_TEMP/preview.json" -contract ../../contract.cue -explain
           pulumi up --yes --non-interactive
           docuconf render -contract ../../contract.cue -values ../values.yaml -files ../files.yaml > "$RUNNER_TEMP/render.yaml"
           ../pulumi/check-rendered.py --by-meaning "$RUNNER_TEMP/render.yaml" "$RUNNER_TEMP/rendered"
@@ -287,9 +293,9 @@ jobs:
 
   # The ECS and Cloud Run programs (deploy/pulumi-ecs, pulumi-cloudrun,
   # pulumi-go-ecs, pulumi-go-cloudrun): the committed component is what
-  # docuconf pulumi -target generates, and the program plans what the
-  # Terraform root of its target plans, with a forbidden value failing at
-  # preview. Previews need no cloud account: see deploy/check-cloud-plan.sh.
+  # docuconf pulumi -target generates, the program plans what the
+  # Terraform root of its target plans, its preview passes docuconf lint
+  # pulumi, and a forbidden value fails at preview. Previews need no cloud account: see deploy/check-cloud-plan.sh.
   orders-pulumi-cloud:
     runs-on: ubuntu-latest
     strategy:
@@ -354,6 +360,9 @@ jobs:
       - uses: helm/kind-action@v1
         with:
           cluster_name: orders-e2e
+      - name: Install the docuconf CLI
+        working-directory: cmd/docuconf
+        run: go install .
       - name: End-to-end test
         env:
           KIND_CLUSTER: orders-e2e
