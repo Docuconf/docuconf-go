@@ -301,6 +301,40 @@ sources its input allows: `DATABASE_URL` is a `SecretVar`, which
 `ordersapiconfig.String(...)` does not, so a literal secret does not
 compile. Values are checked with the Go SDK.
 
+### ECS and Cloud Run, from Pulumi
+
+[`deploy/pulumi-ecs`](deploy/pulumi-ecs) and
+[`deploy/pulumi-cloudrun`](deploy/pulumi-cloudrun) are the Terraform roots
+above, `deploy/ecs` and `deploy/cloudrun`, as Pulumi programs in
+TypeScript; [`deploy/pulumi-go-ecs`](deploy/pulumi-go-ecs) and
+[`deploy/pulumi-go-cloudrun`](deploy/pulumi-go-cloudrun) are the same in
+Go. Each sets the same inputs through a component generated for its
+target:
+
+```sh
+docuconf pulumi -contract contract.cue -target ecs -out deploy/pulumi-ecs/orders-config
+docuconf pulumi -contract contract.cue -target cloudrun -out deploy/pulumi-cloudrun/orders-config
+docuconf pulumi -contract contract.cue -target ecs -lang go -out deploy/pulumi-go-ecs/ordersapiconfig
+docuconf pulumi -contract contract.cue -target cloudrun -lang go -out deploy/pulumi-go-cloudrun/ordersapiconfig
+```
+
+The component's outputs go straight into the resource:
+`ecsEnvironment` and `ecsSecrets` into the task definition's container
+definition, and `cloudrunEnv`, `cloudrunVolumeMounts` and
+`cloudrunVolumes` into the Cloud Run service's template.
+
+[`deploy/check-cloud-plan.sh`](deploy/check-cloud-plan.sh) previews a
+program without a cloud account, and checks that it plans the same
+container configuration as the Terraform root of its target and that a
+forbidden value fails at preview. CI runs it for all four on every change:
+
+```sh
+deploy/check-cloud-plan.sh ecs deploy/pulumi-ecs
+deploy/check-cloud-plan.sh cloudrun deploy/pulumi-go-cloudrun
+```
+
+### End-to-end test, from Pulumi
+
 [`deploy/pulumi/e2e.sh`](deploy/pulumi/e2e.sh) is the end-to-end test
 above for the Pulumi programs (`deploy/pulumi/e2e.sh deploy/pulumi-go`
 for the Go one): it deploys to a kind cluster with `pulumi
