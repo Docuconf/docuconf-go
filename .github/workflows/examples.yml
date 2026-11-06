@@ -304,6 +304,68 @@ jobs:
           cat "$RUNNER_TEMP/preview.txt"
           grep -q "WORKER_COUNT: 100 is above max 64" "$RUNNER_TEMP/preview.txt"
 
+  # The same program in Python (deploy/pulumi-python), through docuconf
+  # pulumi -lang python: the committed component is up to date, the preview
+  # passes the policy pack and docuconf lint pulumi, the manifests match
+  # docuconf render (ConfigMap content by meaning: PyYAML writes YAML its
+  # own way), and a forbidden value fails at preview.
+  orders-pulumi-python:
+    runs-on: ubuntu-latest
+    env:
+      PULUMI_CONFIG_PASSPHRASE: ""
+      PULUMI_SKIP_UPDATE_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            examples/orders/deploy/pulumi-python/requirements.txt
+            examples/orders/deploy/pulumi-python/orders_api_config/requirements.txt
+      # The policy pack runs on node.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: examples/orders/deploy/pulumi-policy/kubernetes/package-lock.json
+      - uses: pulumi/actions@v6
+        with:
+          pulumi-version: 3.274.0
+      - run: pip install pyyaml
+      - name: Install the docuconf CLI
+        working-directory: cmd/docuconf
+        run: go install .
+      - name: Component is up to date
+        working-directory: examples/orders
+        run: docuconf pulumi -contract contract.cue -lang python -out deploy/pulumi-python/orders_api_config -check
+      - name: Render and compare with docuconf render
+        working-directory: examples/orders/deploy/pulumi-python
+        run: |
+          pulumi install
+          mkdir -p "$RUNNER_TEMP/pulumi-state"
+          pulumi login "file://$RUNNER_TEMP/pulumi-state"
+          pulumi stack init ci
+          pulumi config set renderDir "$RUNNER_TEMP/rendered"
+          (cd ../pulumi-policy/kubernetes && npm ci --no-audit --no-fund)
+          pulumi preview --json --non-interactive --policy-pack ../pulumi-policy/kubernetes > "$RUNNER_TEMP/preview.json"
+          docuconf lint pulumi "$RUNNER_TEMP/preview.json" -contract ../../contract.cue -explain
+          pulumi up --yes --non-interactive
+          docuconf render -contract ../../contract.cue -values ../values.yaml -files ../files.yaml > "$RUNNER_TEMP/render.yaml"
+          ../pulumi/check-rendered.py --by-meaning "$RUNNER_TEMP/render.yaml" "$RUNNER_TEMP/rendered"
+      - name: A forbidden value fails at preview
+        working-directory: examples/orders/deploy/pulumi-python
+        run: |
+          pulumi config set workerCount 100
+          if pulumi preview --non-interactive > "$RUNNER_TEMP/preview.txt" 2>&1; then
+            cat "$RUNNER_TEMP/preview.txt"; echo "the preview accepted WORKER_COUNT = 100"; exit 1
+          fi
+          cat "$RUNNER_TEMP/preview.txt"
+          grep -q "WORKER_COUNT: Input should be less than or equal to 64" "$RUNNER_TEMP/preview.txt"
+
   # The ECS and Cloud Run programs (deploy/pulumi-ecs, pulumi-cloudrun,
   # pulumi-go-ecs, pulumi-go-cloudrun): the committed component is what
   # docuconf pulumi -target generates, the program plans what the
@@ -350,16 +412,17 @@ jobs:
       - name: Plan, compare with Terraform, and refuse a forbidden value
         run: examples/orders/deploy/check-cloud-plan.sh ${{ matrix.target }} examples/orders/deploy/${{ matrix.program }}
 
-  # deploy/pulumi and deploy/pulumi-go deployed to a kind cluster, and the
-  # running service checked against what the component rendered, as
-  # orders-e2e does for Terraform: see deploy/pulumi/e2e.sh.
+  # deploy/pulumi, deploy/pulumi-go and deploy/pulumi-python deployed to a
+  # kind cluster, and the running service checked against what the
+  # component rendered, as orders-e2e does for Terraform: see
+  # deploy/pulumi/e2e.sh.
   orders-pulumi-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        program: [pulumi, pulumi-go]
+        program: [pulumi, pulumi-go, pulumi-python]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -371,6 +434,9 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: examples/orders/deploy/pulumi/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - uses: pulumi/actions@v6
         with:
           pulumi-version: 3.274.0

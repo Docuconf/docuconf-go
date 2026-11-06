@@ -84,6 +84,9 @@ func pulumiProgram(t *testing.T, lang, target string) string {
 	t.Helper()
 	dir := t.TempDir()
 	out := filepath.Join(dir, "orders-config")
+	if lang == "python" {
+		out = filepath.Join(dir, "orders_config") // a Python package's name
+	}
 	var stdout, stderr bytes.Buffer
 	if err := runPulumi([]string{"-contract", ordersContract, "-lang", lang, "-target", target, "-out", out}, &stdout, &stderr); err != nil {
 		t.Fatalf("docuconf pulumi: %v\n%s", err, stderr.String())
@@ -94,6 +97,9 @@ func pulumiProgram(t *testing.T, lang, target string) string {
 func componentDigest(t *testing.T, dir string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(dir, "orders-config", "docuconf.json"))
+	if os.IsNotExist(err) {
+		b, err = os.ReadFile(filepath.Join(dir, "orders_config", "docuconf.json"))
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,6 +332,17 @@ func TestLintPulumiTargets(t *testing.T) {
 		fs, _ := lintPreview(t, dir, ordersArgs(), []step{{"kubernetes:apps/v1:Deployment", "orders-api", deployment(ordersEnv()[1:], discountsMount(), discountsVolume(), nil, nil)}})
 		if !hasFinding(fs, "unbound_container", "take the container's env from orders.KubernetesEnv") {
 			t.Errorf("want the Go output's name, got:\n%s", describeFindings(fs))
+		}
+	})
+
+	t.Run("python", func(t *testing.T) {
+		dir := pulumiProgram(t, "python", "kubernetes")
+		fs, _ := lintPreview(t, dir, ordersArgs(), []step{{"kubernetes:apps/v1:Deployment", "orders-api", deployment(ordersEnv()[1:], discountsMount(), discountsVolume(), nil, nil)}})
+		if !hasFinding(fs, "unbound_container", "take the container's env from orders.kubernetes_env") {
+			t.Errorf("want the Python output's name, got:\n%s", describeFindings(fs))
+		}
+		if hasLevel(fs, lint.Error, "stale_module") {
+			t.Errorf("the Python component is reported stale:\n%s", describeFindings(fs))
 		}
 	})
 

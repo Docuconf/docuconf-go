@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/platform"
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/pulumi"
@@ -20,8 +21,8 @@ func runPulumi(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("pulumi", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	contract := fs.String("contract", "contract.cue", "the service's contract")
-	lang := fs.String("lang", "typescript", "the component's language: typescript or go")
-	pkg := fs.String("package", "", "a Go component's package name (default: the contract's name, then config)")
+	lang := fs.String("lang", "typescript", "the component's language: typescript, go or python")
+	pkg := fs.String("package", "", "a Go component's package name (default: the contract's name, then config); a Python one's is the -out directory's name")
 	target := fs.String("target", "kubernetes", "the workload kind to render for: kubernetes, ecs or cloudrun")
 	out := fs.String("out", "", "the component directory to write into")
 	check := fs.Bool("check", false, "compare with the component in -out instead of writing; exit 1 if it is out of date (generator.version is ignored)")
@@ -46,6 +47,10 @@ func runPulumi(args []string, stdout, stderr io.Writer) error {
 	tc, err := terraform.Parse(doc)
 	if err != nil {
 		return err
+	}
+	if *lang == "python" && *pkg == "" {
+		// A Python package is imported by its directory's name.
+		*pkg = filepath.Base(filepath.Clean(*out))
 	}
 	files, err := pulumi.Generate(tc, pulumi.Options{Lang: *lang, Package: *pkg, Target: *target, GeneratorVersion: version,
 		Warn: func(w string) { fmt.Fprintf(stderr, "docuconf pulumi: warning: %s\n", w) }})

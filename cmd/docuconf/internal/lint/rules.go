@@ -1076,8 +1076,8 @@ func (m *Module) unit() string {
 // out is an output's name: kubernetes_env, or the component's
 // kubernetesEnv (KubernetesEnv in Go).
 func (m *Module) out(tf string) string {
-	if !m.Pulumi {
-		return tf
+	if !m.Pulumi || m.Lang == "python" {
+		return tf // Python's outputs are snake_case, as a module's
 	}
 	name := camel(tf)
 	if m.Lang == "go" {

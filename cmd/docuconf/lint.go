@@ -285,8 +285,11 @@ func staleComponents(plan *lint.Plan) []lint.Finding {
 		}
 		seen[m.Dir] = true
 		opt := pulumi.Options{Lang: m.Meta.Language, Target: m.Target(), GeneratorVersion: m.Meta.Generator.Version}
-		if opt.Lang == "go" {
+		switch opt.Lang {
+		case "go":
 			opt.Package = goPackageOf(m.Dir)
+		case "python":
+			opt.Package = filepath.Base(m.Dir)
 		}
 		files, err := pulumi.Generate(m.Contract, opt)
 		if err != nil {

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # End-to-end test: deploys the orders service to a kind cluster with a
 # Pulumi program, the TypeScript one in this directory or the one given
-# (../pulumi-go, in Go), then checks that the running service received
-# what the component rendered:
+# (../pulumi-go, in Go, or ../pulumi-python, in Python), then checks that
+# the running service received what the component rendered:
 #
 #   e2e.sh [program directory]
 #
@@ -17,7 +17,8 @@
 #      served.
 #   5. A renewed certificate is served without a restart.
 #
-# Needs docker, kind, kubectl, pulumi, docuconf, curl, openssl, and npm or go. The cluster is
+# Needs docker, kind, kubectl, pulumi, docuconf, curl, openssl, and npm, go
+# or python3. The cluster is
 # as for ../terraform/e2e/e2e.sh: $KIND_CLUSTER (default orders-e2e),
 # created and deleted unless it exists, KEEP_CLUSTER=1 to keep it. The
 # stack's state is local and temporary. The shared steps are in
@@ -45,6 +46,12 @@ if [ -f "$program/go.mod" ]; then
   cd "$tmp/pulumi"
   # The program builds against the SDK in this checkout.
   go mod edit -replace "github.com/docuconf/docuconf-go=$repo"
+elif [ -f "$program/__main__.py" ]; then
+  need python3
+  cp -r "$program"/__main__.py "$program"/requirements.txt "$program"/Pulumi.yaml "$program"/orders_api_config "$tmp/pulumi/"
+  cd "$tmp/pulumi"
+  python3 -m venv venv
+  venv/bin/pip install -q -r requirements.txt
 else
   need npm
   cp -r "$program"/index.ts "$program"/package.json "$program"/package-lock.json "$program"/tsconfig.json "$program"/Pulumi.yaml "$program"/orders-config "$tmp/pulumi/"
@@ -60,8 +67,9 @@ if pulumi preview --non-interactive >"$tmp/preview.txt" 2>&1; then
   fail "the preview accepted WORKER_COUNT = 100"
 fi
 # Each SDK words it its own way: "must be at most 64 (got 100)" in
-# TypeScript, "100 is above max 64" in Go.
-grep -E "WORKER_COUNT: .*(at most 64|above max 64)" "$tmp/preview.txt" ||
+# TypeScript, "100 is above max 64" in Go, "less than or equal to 64" in
+# Python.
+grep -E "WORKER_COUNT: .*(at most 64|above max 64|less than or equal to 64)" "$tmp/preview.txt" ||
   { cat "$tmp/preview.txt" >&2; fail "the preview failed, but not on WORKER_COUNT"; }
 pulumi config set workerCount 8
 

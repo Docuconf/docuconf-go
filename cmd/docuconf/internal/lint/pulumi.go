@@ -167,8 +167,9 @@ func previewModule(name, contractName string, inputs map[string]any, comps map[s
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	m := &Module{Addr: name, Name: name, Dir: comp.dir, Meta: comp.meta, Contract: c, Args: map[string]Expr{}, Unknown: map[string]bool{}, Pulumi: true, Raw: map[string]any{}}
-	if comp.meta.Language == "go" {
-		m.Lang = "go"
+	switch comp.meta.Language {
+	case "go", "python":
+		m.Lang = comp.meta.Language
 	}
 	args, _ := inputs["arguments"].(map[string]any)
 	if args == nil && inputs["arguments"] != nil {

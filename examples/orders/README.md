@@ -335,6 +335,25 @@ sources its input allows: `DATABASE_URL` is a `SecretVar`, which
 `ordersapiconfig.String(...)` does not, so a literal secret does not
 compile. Values are checked with the Go SDK.
 
+[`deploy/pulumi-python`](deploy/pulumi-python) is the same program in
+Python, through the component `docuconf pulumi -lang python` generates:
+
+```sh
+docuconf pulumi -contract contract.cue -lang python -out deploy/pulumi-python/orders_api_config
+```
+
+Each argument is a `TypedDict` in the same vocabulary, so mypy or pyright
+refuses `{"value": ...}` for `DATABASE_URL`, and values are checked with
+the docuconf Python SDK, in its words:
+
+```
+error: orders-api config: 1 configuration problem:
+  WORKER_COUNT: Input should be less than or equal to 64 (got '100') (out_of_range)
+```
+
+The outputs are snake_case, as the kubernetes provider's Python arguments
+are: `env=orders.kubernetes_env`.
+
 ### ECS and Cloud Run, from Pulumi
 
 [`deploy/pulumi-ecs`](deploy/pulumi-ecs) and
@@ -372,7 +391,8 @@ deploy/check-cloud-plan.sh cloudrun deploy/pulumi-go-cloudrun
 
 [`deploy/pulumi/e2e.sh`](deploy/pulumi/e2e.sh) is the end-to-end test
 above for the Pulumi programs (`deploy/pulumi/e2e.sh deploy/pulumi-go`
-for the Go one): it deploys to a kind cluster with `pulumi
+for the Go one, `deploy/pulumi/e2e.sh deploy/pulumi-python` for the
+Python one): it deploys to a kind cluster with `pulumi
 up`, and checks the running service the same way, with a forbidden value
 failing at preview, the preview passing `docuconf lint pulumi`, and a
 discount code added through stack config rolling out. Both tests share [`deploy/e2e`](deploy/e2e): the cluster's fixtures

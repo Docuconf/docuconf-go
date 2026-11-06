@@ -1,0 +1,3 @@
+pulumi==3.274.0
+pulumi-kubernetes==4.23.0
+-r orders_api_config/requirements.txt

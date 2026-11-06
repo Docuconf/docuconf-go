@@ -25,8 +25,10 @@ jobs:
       - name: CLI
         working-directory: cmd/docuconf
         env:
-          # The pulumi-go job runs them, with the Pulumi Go modules cached.
+          # The pulumi-go and pulumi-python jobs run them, with their
+          # dependencies cached.
           DOCUCONF_SKIP_PULUMI_GO: "1"
+          DOCUCONF_SKIP_PULUMI_PYTHON: "1"
         run: |
           go build ./...
           go vet ./...
@@ -72,6 +74,7 @@ jobs:
       - working-directory: cmd/docuconf
         env:
           DOCUCONF_SKIP_PULUMI_GO: "1"
+          DOCUCONF_SKIP_PULUMI_PYTHON: "1"
         run: go test -count=1 -v -run Pulumi .
 
   # docuconf pulumi -lang go: the generated component passes go vet, renders
@@ -90,6 +93,26 @@ jobs:
             cmd/docuconf/testdata/pulumi-go/go.sum
       - working-directory: cmd/docuconf
         run: go test -count=1 -v -run PulumiGo .
+
+  # docuconf pulumi -lang python: the generated component type-checks with
+  # mypy, renders what docuconf render does for every render case, rejects
+  # what vet rejects, and renders the ecs and cloudrun targets, with the
+  # Pulumi Python SDK's mocks (cmd/docuconf/pulumi_python_test.go).
+  # testdata/pulumi-python/requirements.txt pins what it runs with.
+  pulumi-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: cmd/docuconf/testdata/pulumi-python/requirements.txt
+      - working-directory: cmd/docuconf
+        run: go test -count=1 -v -run PulumiPython .
 
   # docuconf terraform: generated modules are applied and compared with
   # docuconf render, on the oldest Terraform they support, the latest, and
