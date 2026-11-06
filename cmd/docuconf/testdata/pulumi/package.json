@@ -4,6 +4,7 @@
   "description": "What the docuconf pulumi tests run generated TypeScript components with: npm ci here, or let the tests do it.",
   "devDependencies": {
     "@docuconf/core": "0.1.0",
+    "@pulumi/policy": "1.21.0",
     "@pulumi/pulumi": "3.274.0",
     "@types/node": "22.20.5",
     "smol-toml": "1.8.0",

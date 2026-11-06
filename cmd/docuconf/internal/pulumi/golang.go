@@ -224,9 +224,6 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 		args = &Args{}
 	}
 	c := &%[1]s{}
-	if err := ctx.RegisterComponentResource(%[3]q, name, c, opts...); err != nil {
-		return nil, err
-	}
 	in := inputs{}
 `, g.class, c.Name, "docuconf:"+c.Name+":Config")
 	for _, v := range c.Vars {
@@ -239,6 +236,21 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 	if len(c.Overlays) > 0 {
 		overlays = "args.OverlayValues"
 	}
+	fmt.Fprintf(&b, `	// The arguments are the component's inputs, so that a preview shows
+	// them and docuconf lint pulumi can check them.
+	extra := map[string]any{}
+	if args.PodMetadata != nil {
+		extra["podMetadata"] = map[string]any{"annotations": args.PodMetadata.Annotations, "labels": args.PodMetadata.Labels}
+	}
+`)
+	if len(c.Overlays) > 0 {
+		b.WriteString("\tif args.OverlayValues != nil {\n\t\textra[\"overlayValues\"] = args.OverlayValues\n\t}\n")
+	}
+	fmt.Fprintf(&b, `	props := recorded("kubernetes", in, extra)
+	if err := ctx.RegisterComponentResourceV2(%q, name, props, c, opts...); err != nil {
+		return nil, err
+	}
+`, "docuconf:"+c.Name+":Config")
 	fmt.Fprintf(&b, `	out, err := build(ctx, c, in, %s, args.PodMetadata)
 	if err != nil {
 		return nil, err
@@ -261,13 +273,16 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 	if err := ctx.RegisterResourceOutputs(c, pulumi.Map{
 		"bindings": bindings,
 		"checked":  out.checked,
-		"contract": pulumi.StringMap{"name": pulumi.String(%q), "digest": pulumi.String(Digest)},
+		"contract": props["contract"],
+		// The arguments again, for the policy pack: a stack policy sees a
+		// component's outputs, not its inputs.
+		"arguments": props["arguments"],
 	}); err != nil {
 		return nil, err
 	}
 	return c, nil
 }
-`, overlays, c.Name)
+`, overlays)
 
 	config, err := format.Source([]byte(b.String()))
 	if err != nil {
@@ -289,7 +304,7 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 		return nil, err
 	}
 	var indented bytes.Buffer
-	if err := json.Indent(&indented, c.JSON, "", "  "); err != nil {
+	if err := json.Indent(&indented, bytes.TrimSpace(c.JSON), "", "  "); err != nil {
 		return nil, err
 	}
 	indented.WriteByte('\n')

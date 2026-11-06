@@ -74,6 +74,16 @@ func Check(p *Plan) ([]Finding, []Docs) {
 				matches = append(matches, m)
 			}
 		}
+		if p.Pulumi && w.Unknown && len(refd) == 0 {
+			// A preview hides the whole container list when anything in it
+			// is secret or unknown, so no env names match: such a workload
+			// binds to the one component for its target, if there is one.
+			for _, m := range p.Modules {
+				if m.Target() == w.Target {
+					matches = append(matches, m)
+				}
+			}
+		}
 		switch {
 		case len(refd) > 0:
 			for _, m := range refd {
@@ -87,40 +97,43 @@ func Check(p *Plan) ([]Finding, []Docs) {
 				names = append(names, m.Addr)
 			}
 			out = append(out, Finding{Code: "binding_ambiguous", Level: Notice, Where: w.Addr,
-				Message: fmt.Sprintf("%s sets env from one of %s, and the plan does not say which, so it is not checked; reference the module outside a dynamic block, for example in the pod template's annotations", w.Addr, strings.Join(names, ", "))})
+				Message: fmt.Sprintf("%s sets env from one of %s, and the %s does not say which, so it is not checked; %s", w.Addr, strings.Join(names, ", "), p.noun(), bindHint(p))})
 		}
 	}
 	for _, m := range p.Modules {
 		c := m.Contract
 		if t := m.Target(); t != "kubernetes" && t != "ecs" && t != "cloudrun" {
 			out = append(out, Finding{Code: "target_unchecked", Level: Notice, Module: m.Addr,
-				Message: fmt.Sprintf("the linter does not check the %s target yet; the module's own validations and preconditions still run at plan and apply", t)})
+				Message: fmt.Sprintf("the linter does not check the %s target yet; the %s's own checks still run", t, m.unit())})
 			continue
 		}
 		out = append(out, Finding{Code: "image_unverified", Level: Notice, Module: m.Addr,
-			Message: "the module records no image digest, so the linter cannot check that the bound container runs the image the contract describes"})
+			Message: fmt.Sprintf("the %s records no image digest, so the linter cannot check that the bound container runs the image the contract describes", m.unit())})
 		for _, w := range bound[m] {
 			_, attrs := refersTo(w.Config, "module."+m.Name)
 			if w.Unknown {
 				// What the containers get is known only during apply: the
 				// module's preconditions check it then; here, its arguments.
-				out = append(out, Finding{Code: "deferred", Level: Notice, Module: m.Addr, Where: w.Addr,
-					Message: fmt.Sprintf("%s's container definitions are unknown at plan, so the linter checks only %s's arguments; the module's preconditions check the values at apply", w.Addr, m.Addr)})
+				msg := fmt.Sprintf("%s's container definitions are unknown at plan, so the linter checks only %s's arguments; the module's preconditions check the values at apply", w.Addr, m.Addr)
+				if m.Pulumi {
+					msg = fmt.Sprintf("%s's containers are unknown or secret at preview, so the linter checks only %s's arguments; the values are checked during the update, by the component's checks", w.Addr, m.Addr)
+				}
+				out = append(out, Finding{Code: "deferred", Level: Notice, Module: m.Addr, Where: w.Addr, Message: msg})
 				docs = append(docs, constantDocs(m, w.Addr))
 				continue
 			}
 			app := appContainer(w, c)
 			if app < 0 {
 				if len(renderedNames(m)) > 0 {
-					output := "kubernetes_env output in the app container's env"
+					output := m.out("kubernetes_env") + " output in the app container's env"
 					switch m.Target() {
 					case "ecs":
-						output = "ecs_environment and ecs_secrets outputs in the app's container definition"
+						output = m.out("ecs_environment") + " and " + m.out("ecs_secrets") + " outputs in the app's container definition"
 					case "cloudrun":
-						output = "cloudrun_env output in the app container's env"
+						output = m.out("cloudrun_env") + " output in the app container's env"
 					}
 					out = append(out, Finding{Code: "unbound_container", Level: Error, Module: m.Addr, Where: w.Addr,
-						Message: fmt.Sprintf("%s reads %s, but none of its containers takes the env the module renders; use its %s", w.Addr, m.Addr, output)})
+						Message: fmt.Sprintf("%s reads %s, but none of its containers takes the env the %s renders; use its %s", w.Addr, m.Addr, m.unit(), output)})
 				}
 				continue
 			}
@@ -138,7 +151,7 @@ func Check(p *Plan) ([]Finding, []Docs) {
 		}
 		if len(bound[m]) == 0 {
 			out = append(out, Finding{Code: "module_unused", Level: Warning, Module: m.Addr,
-				Message: fmt.Sprintf("no workload in the plan takes %s's outputs, so only its arguments are checked", m.Addr)})
+				Message: fmt.Sprintf("no workload in the %s takes %s's outputs, so only its arguments are checked", p.noun(), m.Addr)})
 			docs = append(docs, constantDocs(m, m.Addr))
 		}
 	}
@@ -271,15 +284,15 @@ func checkContainer(m *Module, w *Workload, ct Container, where string) ([]Findi
 	sort.Strings(names)
 	for _, n := range names {
 		if seen[n] > 1 {
-			add("duplicate_env", Error, n, fmt.Sprintf("%s: is set %d times in the container's env; Kubernetes keeps the last, so set it once, through the module", n, seen[n]))
+			add("duplicate_env", Error, n, fmt.Sprintf("%s: is set %d times in the container's env; Kubernetes keeps the last, so set it once, through the %s", n, seen[n], m.unit()))
 		}
 		v := varOf(c, n)
 		if v == nil && !declared[n] {
-			msg := fmt.Sprintf("%s: is not declared in the contract, and the module did not render it", n)
+			msg := fmt.Sprintf("%s: is not declared in the contract, and the %s did not render it", n, m.unit())
 			if s := closest(c, n); s != "" {
 				msg += fmt.Sprintf("; did you mean %s?", s)
 			} else {
-				msg += "; if the platform sets it on purpose, list it in docuconf_options.unmanaged_env"
+				msg += "; if the platform sets it on purpose, list it in " + m.option("unmanaged_env")
 			}
 			add("undeclared_input", Error, n, msg)
 			continue
@@ -287,18 +300,18 @@ func checkContainer(m *Module, w *Workload, ct Container, where string) ([]Findi
 		if v != nil && v.Secret {
 			e := env[n]
 			if _, set := m.Args[v.Name]; !set && e.Value != nil && e.ValueFrom == nil {
-				add("secret_as_value", Error, n, fmt.Sprintf("%s: is secret, but the container sets it to a plain value; take it from the module, as a secret reference", n))
+				add("secret_as_value", Error, n, fmt.Sprintf("%s: is secret, but the container sets it to a plain value; take it from the %s, as a secret reference", n, m.unit()))
 			}
 		}
 	}
 	for _, n := range renderedNames(m) {
 		if seen[n] == 0 {
-			from := m.Addr + ".kubernetes_env"
+			from := m.Addr + "." + m.out("kubernetes_env")
 			switch w.Target {
 			case "ecs":
-				from = m.Addr + ".ecs_environment and .ecs_secrets"
+				from = m.Addr + "." + m.out("ecs_environment") + " and ." + m.out("ecs_secrets")
 			case "cloudrun":
-				from = m.Addr + ".cloudrun_env"
+				from = m.Addr + "." + m.out("cloudrun_env")
 			}
 			add("unbound_container", Error, strings.TrimSuffix(n, "__0"), fmt.Sprintf("%s: %s renders it, but the container does not set it; take the container's env from %s", strings.TrimSuffix(n, "__0"), m.Addr, from))
 		}
@@ -309,9 +322,9 @@ func checkContainer(m *Module, w *Workload, ct Container, where string) ([]Findi
 			level = Warning
 		}
 		if w.Target == "ecs" {
-			add("env_from_unchecked", Error, "", "the container takes environmentFiles, whose keys the linter cannot see before apply; set each input through the module instead")
+			add("env_from_unchecked", Error, "", "the container takes environmentFiles, whose keys the linter cannot see before apply; set each input through the "+m.unit()+" instead")
 		} else {
-			add("env_from_unchecked", level, "", "the container takes env_from a whole ConfigMap or Secret, whose keys the linter cannot see before apply; set each input through the module instead, or set docuconf_options.allow_env_from")
+			add("env_from_unchecked", level, "", "the container takes "+m.term("env_from")+" a whole ConfigMap or Secret, whose keys the linter cannot see before apply; set each input through the "+m.unit()+" instead, or set "+m.option("allow_env_from"))
 		}
 	}
 	if w.Target == "kubernetes" || w.Target == "cloudrun" {
@@ -328,11 +341,14 @@ func checkContainer(m *Module, w *Workload, ct Container, where string) ([]Findi
 		}
 		checked := "at boot"
 		if _, ok := m.Args[n]; ok {
-			checked = "at apply, by the module's preconditions, and at boot"
+			checked = m.when() + ", by " + m.applyChecks() + ", and at boot"
 		}
 		why := "is unknown at plan"
+		if m.Pulumi {
+			why = "is unknown at preview"
+		}
 		if e, ok := env[n]; ok && e.Sensitive && !e.Unknown {
-			why = "is sensitive in the plan, so the linter does not read it"
+			why = "is " + m.sensitive() + ", so the linter does not read it"
 		}
 		out = append(out, Finding{Code: "deferred", Level: Notice, Module: m.Addr, Where: where, Input: n,
 			Message: fmt.Sprintf("%s: %s (from %s); it is checked %s", n, why, origin, checked)})
@@ -360,12 +376,16 @@ func checkMounts(m *Module, w *Workload, ct Container) []Finding {
 			vols[n] = true
 		}
 	}
+	volumes, mounts := m.out("kubernetes_volumes"), m.out("kubernetes_volume_mounts")
+	if w.Target == "cloudrun" {
+		volumes, mounts = m.out("cloudrun_volumes"), m.out("cloudrun_volume_mounts")
+	}
 	check := func(input, vol, dir string) {
 		add := func(msg string) {
 			out = append(out, Finding{Code: "mount_mismatch", Level: Error, Module: m.Addr, Input: input, Message: input + ": " + msg})
 		}
 		if !vols[vol] {
-			add(fmt.Sprintf("the pod has no volume %s; take its volumes from %s.kubernetes_volumes", vol, m.Addr))
+			add(fmt.Sprintf("the pod has no volume %s; take its volumes from %s.%s", vol, m.Addr, volumes))
 		}
 		var mt *Mount
 		for i := range ct.Mounts {
@@ -375,11 +395,11 @@ func checkMounts(m *Module, w *Workload, ct Container) []Finding {
 		}
 		switch {
 		case mt == nil:
-			add(fmt.Sprintf("the container does not mount volume %s; take its mounts from %s.kubernetes_volume_mounts", vol, m.Addr))
+			add(fmt.Sprintf("the container does not mount volume %s; take its mounts from %s.%s", vol, m.Addr, mounts))
 		case mt.MountPath != dir:
 			add(fmt.Sprintf("volume %s is mounted at %s, but the app reads it from %s", vol, mt.MountPath, dir))
 		case mt.SubPath != "":
-			add(fmt.Sprintf("volume %s is mounted with sub_path %s, which the kubelet never updates; mount the directory", vol, mt.SubPath))
+			add(fmt.Sprintf("volume %s is mounted with %s %s, which the kubelet never updates; mount the directory", vol, m.term("sub_path"), mt.SubPath))
 		case !mt.ReadOnly:
 			add(fmt.Sprintf("volume %s is mounted writable; mount it read-only", vol))
 		}
@@ -429,7 +449,7 @@ func checkPodMeta(m *Module, w *Workload, where string, attrs []string) []Findin
 		for _, k := range sortedStrings(kv.want) {
 			if g, _ := kv.got[k].(string); g != kv.want[k] {
 				out = append(out, Finding{Code: "pod_metadata_missing", Level: Error, Module: m.Addr, Where: where,
-					Message: fmt.Sprintf("the pod template lacks %s %s=%s, which an injector needs; set its metadata from %s.pod_%ss", kv.kind, k, kv.want[k], m.Addr, kv.kind)})
+					Message: fmt.Sprintf("the pod template lacks %s %s=%s, which an injector needs; set its metadata from %s.%s", kv.kind, k, kv.want[k], m.Addr, m.out("pod_"+kv.kind+"s"))})
 			}
 		}
 	}
@@ -923,6 +943,23 @@ func bindings(m *Module, d *Docs) []Binding {
 				b.Origin = string(j)
 			}
 		}
+		if raw, ok := m.Raw[name].(map[string]any); ok && set && b.Source != "by hand" {
+			// In the component's words: secretKeyRef, not secret.
+			for k, v := range raw {
+				b.Source = k
+				if !x.IsConstant {
+					break
+				}
+				if k != "value" || isSecret {
+					j, _ := json.Marshal(v)
+					b.Origin = string(j)
+				}
+				if k == "injected" {
+					p, _ := at(v, "provider").(string)
+					b.Origin = p
+				}
+			}
+		}
 		_, inDoc := d.Values[name]
 		if !inDoc {
 			_, inDoc = d.Files[name]
@@ -930,6 +967,9 @@ func bindings(m *Module, d *Docs) []Binding {
 		switch {
 		case d.Deferred[name]:
 			b.AtPlan = "unknown: checked at apply"
+			if m.Pulumi {
+				b.AtPlan = "unknown: checked during the update"
+			}
 		case b.Source == "injected":
 			b.AtPlan = "checked at boot"
 		case inDoc:
@@ -1022,4 +1062,81 @@ func ParseGCPSecret(secret, version string) map[string]any {
 		f["project"], f["secret"] = m[1], m[2]
 	}
 	return map[string]any{"gcpSecretManager": f}
+}
+
+// The words of a message, for a Terraform module or a Pulumi component.
+
+func (m *Module) unit() string {
+	if m.Pulumi {
+		return "component"
+	}
+	return "module"
+}
+
+// out is an output's name: kubernetes_env, or the component's
+// kubernetesEnv (KubernetesEnv in Go).
+func (m *Module) out(tf string) string {
+	if !m.Pulumi {
+		return tf
+	}
+	name := camel(tf)
+	if m.Lang == "go" {
+		name = strings.ToUpper(name[:1]) + name[1:]
+		name = strings.Replace(name, "Cloudrun", "CloudRun", 1)
+	}
+	return name
+}
+
+// option is where a docuconf_options setting goes: a component has none,
+// so docuconf lint pulumi takes it as a flag.
+func (m *Module) option(name string) string {
+	if !m.Pulumi {
+		return "docuconf_options." + name
+	}
+	return "docuconf lint pulumi -" + strings.ReplaceAll(name, "_", "-")
+}
+
+// term is a Kubernetes field as the platform writes it.
+func (m *Module) term(tf string) string {
+	if !m.Pulumi {
+		return tf
+	}
+	return camel(tf)
+}
+
+func (m *Module) applyChecks() string {
+	if m.Pulumi {
+		return "the component's checks"
+	}
+	return "the module's preconditions"
+}
+
+// when is when an unknown value is checked: at apply, or during the
+// Pulumi update.
+func (m *Module) when() string {
+	if m.Pulumi {
+		return "during the update"
+	}
+	return "at apply"
+}
+
+func (m *Module) sensitive() string {
+	if m.Pulumi {
+		return "a Pulumi secret"
+	}
+	return "sensitive in the plan"
+}
+
+func bindHint(p *Plan) string {
+	if p.Pulumi {
+		return "give each workload's containers the env of one component"
+	}
+	return "reference the module outside a dynamic block, for example in the pod template's annotations"
+}
+
+func (p *Plan) noun() string {
+	if p.Pulumi {
+		return "preview"
+	}
+	return "plan"
 }

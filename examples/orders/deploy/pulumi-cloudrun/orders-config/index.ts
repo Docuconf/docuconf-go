@@ -72,7 +72,9 @@ export class OrdersApiConfig extends pulumi.ComponentResource {
   readonly checked: pulumi.Output<boolean>;
 
   constructor(name: string, args: OrdersApiConfigArgs, opts?: pulumi.ComponentResourceOptions) {
-    super("docuconf:orders-api:Config", name, {}, opts);
+    // The arguments are the component's inputs, so that a preview shows
+    // them and docuconf lint pulumi can check them.
+    super("docuconf:orders-api:Config", name, { contract: { name: "orders-api", digest, target: "cloudrun", language: "typescript" }, arguments: args }, opts);
     const out = runtime.forTarget(this, contract, "cloudrun", args as unknown as Record<string, unknown>);
     this.cloudrunEnv = out.rendered.cloudrunEnv;
     this.cloudrunVolumes = out.rendered.cloudrunVolumes;
@@ -81,6 +83,8 @@ export class OrdersApiConfig extends pulumi.ComponentResource {
     this.checked = out.checked;
     // Registered so that a value that fails its checks when it resolves
     // fails the deployment, once, even if nothing uses the outputs.
-    this.registerOutputs({ bindings: out.bindings, checked: out.checked, contract: { name: "orders-api", digest } });
+    // The arguments again, for the policy pack: a stack policy sees a
+    // component's outputs, not its inputs.
+    this.registerOutputs({ bindings: out.bindings, checked: out.checked, contract: { name: "orders-api", digest, target: "cloudrun", language: "typescript" }, arguments: args });
   }
 }

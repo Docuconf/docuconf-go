@@ -317,9 +317,11 @@ export interface InjectedFile {
   readonly checked: pulumi.Output<boolean>;
 
   constructor(name: string, args: %[1]sArgs, opts?: pulumi.ComponentResourceOptions) {
-    super(%[2]s, name, {}, opts);
+    // The arguments are the component's inputs, so that a preview shows
+    // them and docuconf lint pulumi can check them.
+    super(%[2]s, name, { contract: { name: %[4]s, digest, target: %[3]q, language: "typescript" }, arguments: args }, opts);
     const out = runtime.forTarget(this, contract, %[3]q, args as unknown as Record<string, unknown>);
-`, g.class, tsString("docuconf:"+g.c.Name+":Config"), g.target)
+`, g.class, tsString("docuconf:"+g.c.Name+":Config"), g.target, tsString(g.c.Name))
 	if g.target == "ecs" {
 		b.WriteString("    this.ecsEnvironment = out.rendered.ecsEnvironment;\n    this.ecsSecrets = out.rendered.ecsSecrets;\n")
 	} else {
@@ -329,10 +331,12 @@ export interface InjectedFile {
     this.checked = out.checked;
     // Registered so that a value that fails its checks when it resolves
     // fails the deployment, once, even if nothing uses the outputs.
-    this.registerOutputs({ bindings: out.bindings, checked: out.checked, contract: { name: %s, digest } });
+    // The arguments again, for the policy pack: a stack policy sees a
+    // component's outputs, not its inputs.
+    this.registerOutputs({ bindings: out.bindings, checked: out.checked, contract: { name: %s, digest, target: %q, language: "typescript" }, arguments: args });
   }
 }
-`, tsString(g.c.Name))
+`, tsString(g.c.Name), g.target)
 	return b.String()
 }
 
@@ -714,7 +718,9 @@ export class %[1]s extends pulumi.ComponentResource {
   readonly checked: pulumi.Output<boolean>;
 
   constructor(name: string, args: %[1]sArgs, opts?: pulumi.ComponentResourceOptions) {
-    super(%[3]s, name, {}, opts);
+    // The arguments are the component's inputs, so that a preview shows
+    // them and docuconf lint pulumi can check them.
+    super(%[3]s, name, { contract: { name: %[4]s, digest, target: "kubernetes", language: "typescript" }, arguments: args }, opts);
     const { podMetadata, overlayValues, ...inputs } = args as %[1]sArgs & { overlayValues?: Record<string, unknown> };
     const out = runtime.kubernetes(this, contract, inputs as Record<string, unknown>, { podMetadata, overlayValues });
     this.kubernetesEnv = out.kubernetesEnv;
@@ -728,7 +734,15 @@ export class %[1]s extends pulumi.ComponentResource {
     this.checked = out.checked;
     // Registered so that a value that fails its checks when it resolves
     // fails the deployment, once, even if nothing uses the outputs.
-    this.registerOutputs({ bindings: out.bindings, kubernetesConfigMaps: out.kubernetesConfigMaps, checked: out.checked, contract: { name: %[4]s, digest } });
+    // The arguments again, for the policy pack: a stack policy sees a
+    // component's outputs, not its inputs.
+    this.registerOutputs({
+      bindings: out.bindings,
+      kubernetesConfigMaps: out.kubernetesConfigMaps,
+      checked: out.checked,
+      contract: { name: %[4]s, digest, target: "kubernetes", language: "typescript" },
+      arguments: args,
+    });
   }
 }
 `, g.class, g.c.Name, tsString("docuconf:"+g.c.Name+":Config"), tsString(g.c.Name))
@@ -757,7 +771,7 @@ func describe(raw map[string]any) string {
 func (g *gen) contractTS(digest string) ([]byte, error) {
 	// Indented, keeping the contract's key order.
 	var ordered bytes.Buffer
-	if err := json.Indent(&ordered, g.c.JSON, "", "  "); err != nil {
+	if err := json.Indent(&ordered, bytes.TrimSpace(g.c.JSON), "", "  "); err != nil {
 		return nil, err
 	}
 	var b strings.Builder

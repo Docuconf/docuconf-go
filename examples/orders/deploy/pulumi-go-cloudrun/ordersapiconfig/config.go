@@ -66,9 +66,6 @@ func NewOrdersApiConfig(ctx *pulumi.Context, name string, args *Args, opts ...pu
 		args = &Args{}
 	}
 	c := &OrdersApiConfig{}
-	if err := ctx.RegisterComponentResource("docuconf:orders-api:Config", name, c, opts...); err != nil {
-		return nil, err
-	}
 	in := inputs{}
 	in.set("ALLOWED_ORIGINS", args.ALLOWED_ORIGINS)
 	in.set("DATABASE_URL", args.DATABASE_URL)
@@ -78,6 +75,12 @@ func NewOrdersApiConfig(ctx *pulumi.Context, name string, args *Args, opts ...pu
 	in.set("WEBHOOK_KEYS", args.WEBHOOK_KEYS)
 	in.set("WORKER_COUNT", args.WORKER_COUNT)
 	in.set("discounts", args.Discounts)
+	// The arguments are the component's inputs, so that a preview shows
+	// them and docuconf lint pulumi can check them.
+	props := recorded(target, in, nil)
+	if err := ctx.RegisterComponentResourceV2("docuconf:orders-api:Config", name, props, c, opts...); err != nil {
+		return nil, err
+	}
 	out, err := buildCloudRun(ctx, c, in)
 	if err != nil {
 		return nil, err
@@ -96,7 +99,10 @@ func NewOrdersApiConfig(ctx *pulumi.Context, name string, args *Args, opts ...pu
 	if err := ctx.RegisterResourceOutputs(c, pulumi.Map{
 		"bindings": bindings,
 		"checked":  out.checked,
-		"contract": pulumi.StringMap{"name": pulumi.String("orders-api"), "digest": pulumi.String(Digest)},
+		"contract": props["contract"],
+		// The arguments again, for the policy pack: a stack policy sees a
+		// component's outputs, not its inputs.
+		"arguments": props["arguments"],
 	}); err != nil {
 		return nil, err
 	}
