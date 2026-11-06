@@ -23,23 +23,41 @@ name: release
 # from Sigstore's Fulcio for the job's GitHub OIDC identity (hence
 # `id-token: write`), and the signature is logged in Rekor. RELEASING.md
 # shows how to verify. Every archive and the image also get an SPDX SBOM.
+#
+# release-please starts it with `gh workflow run release.yml --ref <tag>`
+# when it releases with the workflow's GITHUB_TOKEN, whose tag pushes start
+# no workflows; that needs workflow_dispatch. To publish an existing tag
+# again, from this file on main: gh workflow run release.yml -f
+# tag=cmd/docuconf/v0.2.0. Every job checks out the tag, not the ref the
+# workflow runs from.
 on:
   push:
     tags: ["cmd/docuconf/v*", "chart-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The tag to publish (cmd/docuconf/v<semver> or chart-v<semver>); empty: the ref the workflow runs from"
+        required: false
+        default: ""
 
 permissions:
   contents: read
 
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
 jobs:
   # The CLI checks from go.yml, on the tagged commit.
   cli-test:
-    if: startsWith(github.ref_name, 'cmd/docuconf/v')
+    if: startsWith(inputs.tag || github.ref_name, 'cmd/docuconf/v')
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.25"
@@ -47,9 +65,9 @@ jobs:
       - name: Version from the tag
         id: version
         run: |
-          version="${GITHUB_REF_NAME#cmd/docuconf/v}"
+          version="${TAG#cmd/docuconf/v}"
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Tag $GITHUB_REF_NAME is not cmd/docuconf/v<semver>" >&2
+            echo "Tag $TAG is not cmd/docuconf/v<semver>" >&2
             exit 1
           fi
           {
@@ -77,6 +95,8 @@ jobs:
       PRERELEASE: ${{ needs.cli-test.outputs.prerelease }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.25"
@@ -120,14 +140,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
             flags=()
             if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
             # shellcheck disable=SC2016 # the backticks are Markdown
             notes=$(printf 'docuconf CLI %s.\n\nInstall with `go install github.com/docuconf/docuconf-go/cmd/docuconf@v%s`, download a binary below (checked against `SHA256SUMS`), or use the image `ghcr.io/docuconf/docuconf:%s`.\n' "$VERSION" "$VERSION" "$VERSION")
-            gh release create "$GITHUB_REF_NAME" --verify-tag --title "docuconf CLI $VERSION" --notes "$notes" "${flags[@]}"
+            gh release create "$TAG" --verify-tag --title "docuconf CLI $VERSION" --notes "$notes" "${flags[@]}"
           fi
-          gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          gh release upload "$TAG" dist/* --clobber
 
   cli-image:
     needs: cli-test
@@ -140,6 +160,8 @@ jobs:
       VERSION: ${{ needs.cli-test.outputs.version }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
@@ -195,7 +217,7 @@ jobs:
 
   # The Helm library chart. Gated by the checks from helm.yml.
   chart:
-    if: startsWith(github.ref_name, 'chart-v')
+    if: startsWith(inputs.tag || github.ref_name, 'chart-v')
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the GitHub Release and upload its assets
@@ -203,6 +225,8 @@ jobs:
       id-token: write # keyless cosign signing
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: stable
@@ -212,8 +236,8 @@ jobs:
       - name: Check the tag matches Chart.yaml
         run: |
           version=$(sed -n 's/^version: *//p' helm/docuconf/Chart.yaml)
-          if [ "chart-v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match helm/docuconf/Chart.yaml version $version" >&2
+          if [ "chart-v$version" != "$TAG" ]; then
+            echo "Tag $TAG does not match helm/docuconf/Chart.yaml version $version" >&2
             exit 1
           fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
@@ -249,12 +273,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
             flags=()
             case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
             # shellcheck disable=SC2016 # the backticks are Markdown
             notes=$(printf 'docuconf Helm library chart %s.\n\n```yaml\ndependencies:\n  - name: docuconf\n    version: %s\n    repository: oci://ghcr.io/docuconf/charts\n```\n' "$VERSION" "$VERSION")
-            gh release create "$GITHUB_REF_NAME" --verify-tag --latest=false --title "docuconf Helm chart $VERSION" --notes "$notes" "${flags[@]}"
+            gh release create "$TAG" --verify-tag --latest=false --title "docuconf Helm chart $VERSION" --notes "$notes" "${flags[@]}"
           fi
           (cd dist && sha256sum "docuconf-$VERSION.tgz" > "docuconf-$VERSION.tgz.sha256")
-          gh release upload "$GITHUB_REF_NAME" "dist/docuconf-$VERSION.tgz" "dist/docuconf-$VERSION.tgz.sha256" --clobber
+          gh release upload "$TAG" "dist/docuconf-$VERSION.tgz" "dist/docuconf-$VERSION.tgz.sha256" --clobber
