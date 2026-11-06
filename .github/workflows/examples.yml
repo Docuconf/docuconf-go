@@ -101,17 +101,17 @@ jobs:
           terraform show -json plan.out > plan.json
           docuconf lint terraform plan.json -contract ../../contract.cue -explain
 
-  # The same service on ECS and Cloud Run (deploy/ecs, deploy/cloudrun):
-  # the committed module is what docuconf terraform -target generates, and
-  # the plan passes docuconf lint. Planning needs no cloud account: the
-  # job copies in an override file that configures the provider without
-  # credentials.
+  # The same service on ECS, Cloud Run and Azure Container Apps
+  # (deploy/ecs, deploy/cloudrun, deploy/containerapps): the committed
+  # module is what docuconf terraform -target generates, and the plan
+  # passes docuconf lint. Planning needs no cloud account: the job copies
+  # in an override file that configures the provider without credentials.
   orders-cloud:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        target: [ecs, cloudrun]
+        target: [ecs, cloudrun, containerapps]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -133,6 +133,16 @@ jobs:
           cp ci/provider_override.tf .
           terraform init -input=false
           terraform validate
+          # azurerm needs a token before it plans: ci/fakeazure serves one.
+          # Its certificate is trusted only from here on, after init has
+          # downloaded the providers.
+          if [ -d ci/fakeazure ]; then
+            (cd ../.. && go build -o "$RUNNER_TEMP/fakeazure" ./deploy/${{ matrix.target }}/ci/fakeazure)
+            "$RUNNER_TEMP/fakeazure" -ca "$RUNNER_TEMP/fakeazure-ca.pem" > "$RUNNER_TEMP/fakeazure-host" &
+            for _ in $(seq 50); do [ -s "$RUNNER_TEMP/fakeazure-host" ] && break; sleep 0.1; done
+            ARM_METADATA_HOSTNAME=$(cat "$RUNNER_TEMP/fakeazure-host")
+            export ARM_METADATA_HOSTNAME SSL_CERT_FILE="$RUNNER_TEMP/fakeazure-ca.pem"
+          fi
           terraform plan -refresh=false -out plan.out
           terraform show -json plan.out > plan.json
           docuconf lint terraform plan.json -contract ../../contract.cue -explain
