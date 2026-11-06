@@ -12,9 +12,10 @@ import (
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/platform"
 )
 
-// The ecs and cloudrun components, in TypeScript and Go, against the same
-// cases as the Terraform modules for those targets: the literal render
-// cases must give docuconf render's env without the kubelet's $ escaping,
+// The ecs, cloudrun and containerapps components, in TypeScript and Go,
+// against the same cases as the Terraform modules for those targets: the
+// literal render cases must give docuconf render's env, without the
+// kubelet's $ escaping except on containerapps, which expands $(VAR) too;
 // references must render as the target takes them, and what the target
 // cannot carry must be rejected.
 
@@ -28,6 +29,11 @@ var targetBase = map[string]map[string]any{
 	"cloudrun": {
 		"API_TOKEN":    map[string]any{"secret": map[string]any{"secret": "kitchen-token"}},
 		"DATABASE_URL": map[string]any{"secret": map[string]any{"secret": "projects/acme-prod/secrets/kitchen-db", "version": "4"}},
+		"TENANT":       map[string]any{"value": "acme"},
+	},
+	"containerapps": {
+		"API_TOKEN":    map[string]any{"secret": map[string]any{"keyVaultSecretId": kvToken}},
+		"DATABASE_URL": map[string]any{"secret": map[string]any{"keyVaultSecretId": kvDB, "identity": uaiID}},
 		"TENANT":       map[string]any{"value": "acme"},
 	},
 }
@@ -89,6 +95,22 @@ func targetCases(target string) []targetCase {
 			reject("stage_and_id", map[string]any{"API_TOKEN": map[string]any{"secret": map[string]any{"valueFrom": tokenARN, "versionStage": "AWSCURRENT", "versionId": "x"}}}, "API_TOKEN: set secret.versionStage or secret.versionId, not both"),
 			reject("file", map[string]any{"settings": map[string]any{"secret": map[string]any{"secret": "s"}}}, "settings: the ecs target cannot mount this file input"),
 		)
+	} else if target == "containerapps" {
+		cases = append(cases,
+			targetCase{name: "files", args: with(map[string]any{
+				"settings": map[string]any{"secret": map[string]any{"keyVaultSecretId": "https://kitchen-kv.vault.azure.net/secrets/settings"}},
+				"keystore": map[string]any{"secret": map[string]any{"keyVaultSecretId": "https://kitchen-kv.vault.azure.net/secrets/ks", "identity": uaiID}},
+			})},
+			targetCase{name: "injected_ref", args: with(map[string]any{
+				"GREETING": map[string]any{"injected": map[string]any{"provider": "op", "ref": "op://vault/item/$greeting"}},
+			})},
+			reject("field", map[string]any{"NODE_NAME": map[string]any{"fieldRef": map[string]any{"fieldPath": "spec.nodeName"}}}, "NODE_NAME: set exactly one of value or injected (Container Apps has no ConfigMaps or Downward API)"),
+			reject("secret_id", map[string]any{"API_TOKEN": map[string]any{"secret": map[string]any{"keyVaultSecretId": "api-token"}}}, `API_TOKEN: secret.keyVaultSecretId "api-token" is not a Key Vault secret ID`),
+			reject("identity", map[string]any{"API_TOKEN": map[string]any{"secret": map[string]any{"keyVaultSecretId": kvToken, "identity": "kitchen-app"}}}, `API_TOKEN: secret.identity "kitchen-app" is not System or a user-assigned identity's resource ID`),
+			reject("file_inline", map[string]any{"settings": map[string]any{"inline": "a: 1"}}, "settings: set exactly one of secret or injected (Container Apps mounts files from Key Vault secrets)"),
+			reject("file_secret_id", map[string]any{"settings": map[string]any{"secret": map[string]any{"keyVaultSecretId": "https://kitchen-kv.vault.azure.net/keys/settings"}}}, `settings: secret.keyVaultSecretId "https://kitchen-kv.vault.azure.net/keys/settings" is not a Key Vault secret ID`),
+			reject("tls", map[string]any{"serving-tls": map[string]any{"secret": map[string]any{"keyVaultSecretId": kvToken}}}, "serving-tls: the containerapps target cannot mount this file input"),
+		)
 	} else {
 		cases = append(cases,
 			targetCase{name: "files", args: with(map[string]any{
@@ -115,6 +137,7 @@ type targetResult struct {
 	Env         []map[string]any `json:"env"`
 	Volumes     []map[string]any `json:"volumes"`
 	Mounts      []map[string]any `json:"mounts"`
+	AppSecrets  []map[string]any `json:"appSecrets"`
 }
 
 const tsTargetHarness = `import * as pulumi from "@pulumi/pulumi";
@@ -135,7 +158,9 @@ async function main() {
       await value(x.checked);
       out[c.name] = target === "ecs"
         ? { environment: await value(x.ecsEnvironment), secrets: await value(x.ecsSecrets) }
-        : { env: await value(x.cloudrunEnv), volumes: await value(x.cloudrunVolumes), mounts: await value(x.cloudrunVolumeMounts) };
+        : target === "containerapps"
+          ? { env: await value(x.containerappEnv), appSecrets: await value(x.containerappSecrets), volumes: await value(x.containerappVolumes), mounts: await value(x.containerappVolumeMounts) }
+          : { env: await value(x.cloudrunEnv), volumes: await value(x.cloudrunVolumes), mounts: await value(x.cloudrunVolumeMounts) };
     } catch (e) {
       out[c.name] = { error: (e as Error).message };
     }
@@ -228,7 +253,7 @@ func TestHarness(t *testing.T) {
 			ctx.Export("r", all.ApplyT(func(x any) error {
 				r := x.(targetRendered)
 				res["environment"], res["secrets"] = r.ecsEnvironment, r.ecsSecrets
-				res["env"], res["volumes"], res["mounts"] = r.env, r.volumes, r.volumeMounts
+				res["env"], res["volumes"], res["mounts"], res["appSecrets"] = r.env, r.volumes, r.volumeMounts, r.appSecrets
 				return nil
 			}))
 			return nil
@@ -312,10 +337,10 @@ func checkTarget(t *testing.T, target string, got map[string]targetResult) {
 			}
 			env := g.Environment
 			var refs []map[string]any
-			if target == "cloudrun" {
+			if target != "ecs" {
 				env = nil
 				for _, e := range g.Env {
-					if e["valueSource"] != nil {
+					if e["valueSource"] != nil || e["secretRef"] != nil {
 						refs = append(refs, e)
 					} else {
 						env = append(env, e)
@@ -327,23 +352,40 @@ func checkTarget(t *testing.T, target string, got map[string]targetResult) {
 					continue
 				}
 				// #Render's env for the same values, less the secrets, with
-				// the kubelet's $$ back to $.
+				// the kubelet's $$ back to $, but on containerapps, which
+				// expands $(VAR) as the kubelet does.
 				var want []any
 				for _, e := range renderDoc(t, p, c, rc.doc).Env {
 					m := e.(map[string]any)
 					if v, ok := m["value"].(string); ok {
-						want = append(want, map[string]any{"name": m["name"], "value": strings.ReplaceAll(v, "$$", "$")})
+						if target != "containerapps" {
+							v = strings.ReplaceAll(v, "$$", "$")
+						}
+						want = append(want, map[string]any{"name": m["name"], "value": v})
 					}
 				}
 				if gj, wj := canon(t, env), canon(t, want); gj != wj {
 					t.Errorf("env differs from docuconf render:\n component: %s\n render:    %s", gj, wj)
 				}
-				if target == "ecs" {
+				switch target {
+				case "ecs":
 					want := []map[string]any{{"name": "API_TOKEN", "valueFrom": tokenARN}, {"name": "DATABASE_URL", "valueFrom": dbParam}}
 					if gj, wj := canon(t, g.Secrets), canon(t, want); gj != wj {
 						t.Errorf("secrets: %s, want %s", gj, wj)
 					}
-				} else {
+				case "containerapps":
+					want := []map[string]any{{"name": "API_TOKEN", "secretRef": "dc-api-token"}, {"name": "DATABASE_URL", "secretRef": "dc-database-url"}}
+					if gj, wj := canon(t, refs), canon(t, want); gj != wj {
+						t.Errorf("secret env: %s, want %s", gj, wj)
+					}
+					secrets := []map[string]any{
+						{"name": "dc-api-token", "keyVaultUrl": kvToken, "identity": "System"},
+						{"name": "dc-database-url", "keyVaultUrl": kvDB, "identity": uaiID},
+					}
+					if gj, wj := canon(t, g.AppSecrets), canon(t, secrets); gj != wj {
+						t.Errorf("app secrets: %s, want %s", gj, wj)
+					}
+				default:
 					want := []map[string]any{
 						{"name": "API_TOKEN", "valueSource": map[string]any{"secretKeyRef": map[string]any{"secret": "kitchen-token", "version": "latest"}}},
 						{"name": "DATABASE_URL", "valueSource": map[string]any{"secretKeyRef": map[string]any{"secret": "projects/acme-prod/secrets/kitchen-db", "version": "4"}}},
@@ -372,7 +414,45 @@ func checkTarget(t *testing.T, target string, got map[string]targetResult) {
 				if !found {
 					t.Errorf("no GREETING entry with the injected reference, unescaped: %v", g.Environment)
 				}
+			case "injected_ref":
+				found := false
+				for _, e := range g.Env {
+					found = found || (e["name"] == "GREETING" && e["value"] == "op://vault/item/$$greeting")
+				}
+				if !found {
+					t.Errorf("no GREETING entry with the injected reference, escaped: %v", g.Env)
+				}
 			case "files":
+				if target == "containerapps" {
+					wantVols := []any{
+						map[string]any{"name": "dc-settings", "storageType": "Secret", "secrets": []any{map[string]any{"secretRef": "dc-file-settings", "path": "settings.yaml"}}},
+						map[string]any{"name": "dc-keystore", "storageType": "Secret", "secrets": []any{map[string]any{"secretRef": "dc-file-keystore", "path": "client.p12"}}},
+					}
+					wantMounts := []any{
+						map[string]any{"volumeName": "dc-settings", "mountPath": "/etc/kitchen/settings"},
+						map[string]any{"volumeName": "dc-keystore", "mountPath": "/etc/kitchen/ks"},
+					}
+					if gj, wj := canon(t, g.Volumes), canon(t, wantVols); gj != wj {
+						t.Errorf("volumes:\n component %s\n want      %s", gj, wj)
+					}
+					if gj, wj := canon(t, g.Mounts), canon(t, wantMounts); gj != wj {
+						t.Errorf("mounts:\n component %s\n want      %s", gj, wj)
+					}
+					var fileSecrets []map[string]any
+					for _, s := range g.AppSecrets {
+						if strings.HasPrefix(s["name"].(string), "dc-file-") {
+							fileSecrets = append(fileSecrets, s)
+						}
+					}
+					want := []map[string]any{
+						{"name": "dc-file-settings", "keyVaultUrl": "https://kitchen-kv.vault.azure.net/secrets/settings", "identity": "System"},
+						{"name": "dc-file-keystore", "keyVaultUrl": "https://kitchen-kv.vault.azure.net/secrets/ks", "identity": uaiID},
+					}
+					if gj, wj := canon(t, fileSecrets), canon(t, want); gj != wj {
+						t.Errorf("file secrets: %s, want %s", gj, wj)
+					}
+					break
+				}
 				wantVols := []any{
 					map[string]any{"name": "dc-settings", "secret": map[string]any{"secret": "kitchen-settings", "defaultMode": 292, "items": []any{map[string]any{"version": "latest", "path": "settings.yaml"}}}},
 					map[string]any{"name": "dc-keystore", "secret": map[string]any{"secret": "projects/acme-prod/secrets/kitchen-ks", "defaultMode": 256, "items": []any{map[string]any{"version": "2", "path": "client.p12"}}}},
@@ -400,7 +480,7 @@ func checkTarget(t *testing.T, target string, got map[string]targetResult) {
 }
 
 func TestPulumiTargets(t *testing.T) {
-	for _, target := range []string{"ecs", "cloudrun"} {
+	for _, target := range []string{"ecs", "cloudrun", "containerapps"} {
 		t.Run("typescript/"+target, func(t *testing.T) {
 			checkTarget(t, target, runTSTarget(t, target, targetCases(target)))
 		})
@@ -408,7 +488,7 @@ func TestPulumiTargets(t *testing.T) {
 }
 
 func TestPulumiGoTargets(t *testing.T) {
-	for _, target := range []string{"ecs", "cloudrun"} {
+	for _, target := range []string{"ecs", "cloudrun", "containerapps"} {
 		t.Run(target, func(t *testing.T) {
 			checkTarget(t, target, runGoTarget(t, target, targetCases(target)))
 		})
@@ -428,7 +508,7 @@ func TestPulumiTargetFiles(t *testing.T) {
 		t.Fatal("no serving-tls input in the kitchen contract")
 	}
 	os.WriteFile(contract, []byte(marked), 0o644)
-	for target, want := range map[string]string{"ecs": "the ecs target mounts no files", "cloudrun": "requires tls inputs serving-tls"} {
+	for target, want := range map[string]string{"ecs": "the ecs target mounts no files", "cloudrun": "requires tls inputs serving-tls", "containerapps": "requires tls inputs serving-tls"} {
 		var stdout, stderr bytes.Buffer
 		if code := run([]string{"pulumi", "-contract", contract, "-target", target, "-out", filepath.Join(dir, target)}, &stdout, &stderr); code == 0 || !strings.Contains(stderr.String(), want) {
 			t.Errorf("-target %s with a required tls input: exit %d, %s", target, code, stderr.String())

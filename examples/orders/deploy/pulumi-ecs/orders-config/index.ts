@@ -9,7 +9,18 @@ import { contract, digest } from "./contract";
 import * as runtime from "./runtime";
 
 export { ConfigViolation } from "./runtime";
-export type { Bindings, CloudRunEnv, CloudRunVolume, CloudRunVolumeMount, EcsEnvironmentEntry, EcsSecretEntry } from "./runtime";
+export type {
+  Bindings,
+  CloudRunEnv,
+  CloudRunVolume,
+  CloudRunVolumeMount,
+  ContainerAppEnv,
+  ContainerAppSecret,
+  ContainerAppVolume,
+  ContainerAppVolumeMount,
+  EcsEnvironmentEntry,
+  EcsSecretEntry,
+} from "./runtime";
 
 type In<T> = pulumi.Input<T>;
 export type Json = null | boolean | number | string | Json[] | JsonObject;

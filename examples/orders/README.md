@@ -360,37 +360,46 @@ error: orders-api config: 1 configuration problem:
 The outputs are snake_case, as the kubernetes provider's Python arguments
 are: `env=orders.kubernetes_env`.
 
-### ECS and Cloud Run, from Pulumi
+### ECS, Cloud Run and Container Apps, from Pulumi
 
 [`deploy/pulumi-ecs`](deploy/pulumi-ecs) and
 [`deploy/pulumi-cloudrun`](deploy/pulumi-cloudrun) are the Terraform roots
 above, `deploy/ecs` and `deploy/cloudrun`, as Pulumi programs in
 TypeScript; [`deploy/pulumi-go-ecs`](deploy/pulumi-go-ecs) and
 [`deploy/pulumi-go-cloudrun`](deploy/pulumi-go-cloudrun) are the same in
-Go. Each sets the same inputs through a component generated for its
-target:
+Go, and [`deploy/pulumi-go-containerapps`](deploy/pulumi-go-containerapps)
+is `deploy/containerapps` in Go, on azure-native. Each sets the same
+inputs through a component generated for its target:
 
 ```sh
 docuconf pulumi -contract contract.cue -target ecs -out deploy/pulumi-ecs/orders-config
 docuconf pulumi -contract contract.cue -target cloudrun -out deploy/pulumi-cloudrun/orders-config
 docuconf pulumi -contract contract.cue -target ecs -lang go -out deploy/pulumi-go-ecs/ordersapiconfig
 docuconf pulumi -contract contract.cue -target cloudrun -lang go -out deploy/pulumi-go-cloudrun/ordersapiconfig
+docuconf pulumi -contract contract.cue -target containerapps -lang go -out deploy/pulumi-go-containerapps/ordersapiconfig
 ```
 
 The component's outputs go straight into the resource:
 `ecsEnvironment` and `ecsSecrets` into the task definition's container
-definition, and `cloudrunEnv`, `cloudrunVolumeMounts` and
-`cloudrunVolumes` into the Cloud Run service's template.
+definition, `cloudrunEnv`, `cloudrunVolumeMounts` and `cloudrunVolumes`
+into the Cloud Run service's template, and `ContainerAppSecrets` into the
+container app's configuration, `ContainerAppEnv`,
+`ContainerAppVolumeMounts` and `ContainerAppVolumes` into its template.
+The Terraform module mounts files from one Secret volume with `sub_path`,
+which is all azurerm can express; the component gives each file its own
+volume, which azure-native can, and the check below compares which secret
+each path holds.
 
 [`deploy/check-cloud-plan.sh`](deploy/check-cloud-plan.sh) previews a
 program without a cloud account, and checks that it plans the same
 container configuration as the Terraform root of its target, that the
 preview passes `docuconf lint pulumi`, and that a forbidden value fails at
-preview. CI runs it for all four on every change:
+preview. CI runs it for all five on every change:
 
 ```sh
 deploy/check-cloud-plan.sh ecs deploy/pulumi-ecs
 deploy/check-cloud-plan.sh cloudrun deploy/pulumi-go-cloudrun
+deploy/check-cloud-plan.sh containerapps deploy/pulumi-go-containerapps
 ```
 
 ### End-to-end test, from Pulumi

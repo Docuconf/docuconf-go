@@ -304,12 +304,57 @@ func TestPulumiPolicy(t *testing.T) {
 			t.Errorf("no_mount: got %v", got["no_mount"])
 		}
 	})
+
+	t.Run("containerapps", func(t *testing.T) {
+		comp := pulumiProgram(t, "typescript", "containerapps")
+		pack := policyPack(t, "containerapps")
+		const kv = "https://orders-kv.vault.azure.net/secrets/"
+		args := map[string]any{
+			"LOG_LEVEL":    map[string]any{"value": "warn"},
+			"DATABASE_URL": map[string]any{"secret": map[string]any{"keyVaultSecretId": kv + "orders-db"}},
+			"discounts":    map[string]any{"secret": map[string]any{"keyVaultSecretId": kv + "orders-discounts"}},
+		}
+		app := func(extra []any, mounts []any) []step {
+			env := append([]any{
+				map[string]any{"name": "LOG_LEVEL", "value": "warn"},
+				map[string]any{"name": "DATABASE_URL", "secretRef": "dc-database-url"},
+			}, extra...)
+			return []step{{"azure-native:app:ContainerApp", "orders", map[string]any{
+				"configuration": map[string]any{"secrets": []any{map[string]any{"name": "dc-database-url", "keyVaultUrl": kv + "orders-db", "identity": "System"}}},
+				"template": map[string]any{
+					"containers": []any{map[string]any{"name": "orders-api", "env": env, "volumeMounts": mounts}},
+					"volumes":    []any{map[string]any{"name": "dc-discounts", "storageType": "Secret"}},
+				},
+			}}}
+		}
+		mounted := []any{map[string]any{"volumeName": "dc-discounts", "mountPath": "/etc/orders/discounts"}}
+		got := runPolicy(t, pack, map[string]policyCase{
+			"clean":    {Target: "containerapps", Resources: stackOf(t, comp, args, app(nil, mounted))},
+			"no_mount": {Target: "containerapps", Resources: stackOf(t, comp, args, app(nil, []any{}))},
+			// A value written by hand, escaped as Container Apps reads it:
+			// $$ is $ to the app, so the escaped URL is a valid one.
+			"escaped":    {Target: "containerapps", Resources: stackOf(t, comp, args, app([]any{map[string]any{"name": "ALLOWED_ORIGINS", "value": "https://shop.example.com/$$(x)"}}, mounted))},
+			"hand_value": {Target: "containerapps", Resources: stackOf(t, comp, args, app([]any{map[string]any{"name": "REQUEST_TIMEOUT", "value": "10m"}}, mounted))},
+		})
+		if len(got["clean"]) != 0 {
+			t.Errorf("clean: want nothing, got %v", got["clean"])
+		}
+		if len(got["escaped"]) != 0 {
+			t.Errorf("escaped: want nothing, got %v", got["escaped"])
+		}
+		if len(got["no_mount"]) != 1 || !strings.Contains(got["no_mount"][0].Message, "take its mounts from orders.containerappVolumeMounts") {
+			t.Errorf("no_mount: got %v", got["no_mount"])
+		}
+		if len(got["hand_value"]) != 1 || !strings.Contains(got["hand_value"][0].Message, "REQUEST_TIMEOUT: must be at most 5m") {
+			t.Errorf("hand_value: got %v", got["hand_value"])
+		}
+	})
 }
 
 // The pack type-checks, and docuconf pulumi policy -check passes on what it
 // wrote.
 func TestPulumiPolicyGenerated(t *testing.T) {
-	for _, target := range []string{"kubernetes", "ecs", "cloudrun"} {
+	for _, target := range []string{"kubernetes", "ecs", "cloudrun", "containerapps"} {
 		pack := policyPack(t, target)
 		cmd := exec.Command(filepath.Join(pack, "node_modules", ".bin", "tsc"), "--noEmit", "-p", ".")
 		cmd.Dir = pack

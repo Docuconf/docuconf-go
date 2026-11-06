@@ -17,8 +17,8 @@ const policyVersion = "^1.0.0"
 
 // PolicyOptions configure a generated policy pack.
 type PolicyOptions struct {
-	// Target is the workload kind the pack checks: kubernetes, ecs or
-	// cloudrun.
+	// Target is the workload kind the pack checks: kubernetes, ecs,
+	// cloudrun or containerapps.
 	Target string
 	// GeneratorVersion is the docuconf CLI's version, recorded in
 	// docuconf.json.
@@ -34,9 +34,9 @@ func GeneratePolicy(c *terraform.Contract, opt PolicyOptions) (map[string][]byte
 		opt.Target = "kubernetes"
 	}
 	switch opt.Target {
-	case "kubernetes", "ecs", "cloudrun":
+	case "kubernetes", "ecs", "cloudrun", "containerapps":
 	default:
-		return nil, fmt.Errorf("-target %q is not supported by docuconf pulumi policy yet; supported: kubernetes, ecs, cloudrun", opt.Target)
+		return nil, fmt.Errorf("-target %q is not supported by docuconf pulumi policy yet; supported: kubernetes, ecs, cloudrun, containerapps", opt.Target)
 	}
 	if c.Name == "" {
 		return nil, fmt.Errorf("the contract has no metadata.name")

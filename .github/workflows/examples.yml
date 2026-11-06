@@ -376,8 +376,9 @@ jobs:
           cat "$RUNNER_TEMP/preview.txt"
           grep -q "WORKER_COUNT: Input should be less than or equal to 64" "$RUNNER_TEMP/preview.txt"
 
-  # The ECS and Cloud Run programs (deploy/pulumi-ecs, pulumi-cloudrun,
-  # pulumi-go-ecs, pulumi-go-cloudrun): the committed component is what
+  # The ECS, Cloud Run and Container Apps programs (deploy/pulumi-ecs,
+  # pulumi-cloudrun, pulumi-go-ecs, pulumi-go-cloudrun,
+  # pulumi-go-containerapps): the committed component is what
   # docuconf pulumi -target generates, the program plans what the
   # Terraform root of its target plans, its preview passes the target's
   # policy pack and docuconf lint pulumi, and a forbidden value fails at
@@ -392,6 +393,7 @@ jobs:
           - { program: pulumi-cloudrun, target: cloudrun, lang: typescript, out: orders-config }
           - { program: pulumi-go-ecs, target: ecs, lang: go, out: ordersapiconfig }
           - { program: pulumi-go-cloudrun, target: cloudrun, lang: go, out: ordersapiconfig }
+          - { program: pulumi-go-containerapps, target: containerapps, lang: go, out: ordersapiconfig }
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6

@@ -8,7 +8,8 @@ import (
 	"strings"
 )
 
-// generateGoTarget writes a Go component for the ecs or cloudrun target:
+// generateGoTarget writes a Go component for the ecs, cloudrun or
+// containerapps target:
 // the typed Args of the inputs the target carries, and the component with
 // the target's outputs.
 func (g *gen) generateGoTarget(pkg string, meta []byte, digest string) (map[string][]byte, error) {
@@ -23,14 +24,17 @@ func (g *gen) generateGoTarget(pkg string, meta []byte, digest string) (map[stri
 		}
 		seen[goField(f.Name)] = f.Name
 	}
-	name := map[string]string{"ecs": "Amazon ECS", "cloudrun": "Cloud Run"}[g.target]
+	name := platformName[g.target]
 
 	var b strings.Builder
 	b.WriteString(Header)
 	fmt.Fprintf(&b, "\n// Package %s is the %s contract as a Pulumi component for the %s\n// target (spec/IAC.md section 6). See README.md.\npackage %s\n\n", pkg, c.Name, g.target, pkg)
 	b.WriteString("import (\n\t_ \"embed\"\n\n")
-	if g.target == "cloudrun" {
+	switch g.target {
+	case "cloudrun":
 		b.WriteString("\tcloudrunv2 \"github.com/pulumi/pulumi-gcp/sdk/v8/go/gcp/cloudrunv2\"\n")
+	case "containerapps":
+		b.WriteString("\tapp \"github.com/pulumi/pulumi-azure-native-sdk/app/v3\"\n")
 	}
 	b.WriteString("\t\"github.com/pulumi/pulumi/sdk/v3/go/pulumi\"\n)\n\n")
 	b.WriteString("// contractJSON is the contract this component was generated from.\n//\n//go:embed contract.json\nvar contractJSON []byte\n\n")
@@ -51,6 +55,11 @@ func (g *gen) generateGoTarget(pkg string, meta []byte, digest string) (map[stri
 	if g.target == "ecs" {
 		b.WriteString("\t// EcsEnvironment is the container definition's environment, each {name, value}.\n\tEcsEnvironment pulumi.StringMapArrayOutput\n")
 		b.WriteString("\t// EcsSecrets is the container definition's secrets, each {name, valueFrom}.\n\tEcsSecrets pulumi.StringMapArrayOutput\n")
+	} else if g.target == "containerapps" {
+		b.WriteString("\t// ContainerAppEnv is the container's env entries: a value, or one of the\n\t// app's secrets by name.\n\tContainerAppEnv app.EnvironmentVarArrayOutput\n")
+		b.WriteString("\t// ContainerAppSecrets is the app's secrets for secret inputs, for\n\t// Configuration.Secrets.\n\tContainerAppSecrets app.SecretArrayOutput\n")
+		b.WriteString("\t// ContainerAppVolumes is the template's Secret volumes for file inputs.\n\tContainerAppVolumes app.VolumeArrayOutput\n")
+		b.WriteString("\t// ContainerAppVolumeMounts is the container's volume mounts.\n\tContainerAppVolumeMounts app.VolumeMountArrayOutput\n")
 	} else {
 		b.WriteString("\t// CloudRunEnv is the container's env entries.\n\tCloudRunEnv cloudrunv2.ServiceTemplateContainerEnvArrayOutput\n")
 		b.WriteString("\t// CloudRunVolumes is the revision's secret volumes for file inputs.\n\tCloudRunVolumes cloudrunv2.ServiceTemplateVolumeArrayOutput\n")
@@ -84,6 +93,8 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 `, "docuconf:"+c.Name+":Config")
 	if g.target == "ecs" {
 		b.WriteString("\tout, err := buildECS(ctx, c, in)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tc.EcsEnvironment = out.environment\n\tc.EcsSecrets = out.secrets\n")
+	} else if g.target == "containerapps" {
+		b.WriteString("\tout, err := buildContainerApps(ctx, c, in)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tc.ContainerAppEnv = out.env\n\tc.ContainerAppSecrets = out.secrets\n\tc.ContainerAppVolumes = out.volumes\n\tc.ContainerAppVolumeMounts = out.volumeMounts\n")
 	} else {
 		b.WriteString("\tout, err := buildCloudRun(ctx, c, in)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tc.CloudRunEnv = out.env\n\tc.CloudRunVolumes = out.volumes\n\tc.CloudRunVolumeMounts = out.volumeMounts\n")
 	}
@@ -121,10 +132,7 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 		return out, nil
 	}
 	files := map[string][]byte{"config.go": config, "docuconf.json": meta, "README.md": []byte(g.readmeFor("go"))}
-	own := ecsGo
-	if g.target == "cloudrun" {
-		own = cloudrunGo
-	}
+	own := map[string]string{"ecs": ecsGo, "cloudrun": cloudrunGo, "containerapps": containerappsGo}[g.target]
 	for file, tmpl := range map[string]string{"runtime.go": runtimeGo, "targets.go": targetsGo, g.target + ".go": own} {
 		if files[file], err = pkgFile(file, tmpl); err != nil {
 			return nil, err
