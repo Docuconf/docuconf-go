@@ -83,16 +83,27 @@ current_pod() {
 
 # port_forward forwards a local $port to the current pod, as $pod.
 port_forward() {
-  [ -n "$pf" ] && { kill "$pf" 2>/dev/null; wait "$pf" 2>/dev/null || true; }
-  pod="$(current_pod)"
-  port=$((20000 + RANDOM % 20000))
-  kubectl -n orders port-forward "pod/$pod" "$port:8080" >"$tmp/pf.txt" 2>&1 &
-  pf=$!
-  for _ in $(seq 50); do
-    get /healthz >/dev/null 2>&1 && return 0
-    sleep 0.2
+  # kubectl can take a while to start forwarding to a pod that has just
+  # rolled out, and exits if the pod goes away first: start it again until
+  # the service answers. It listens on 127.0.0.1 only, which is where get
+  # connects, so that a port it cannot bind there is an error.
+  for attempt in 1 2 3; do
+    [ -n "$pf" ] && { kill "$pf" 2>/dev/null; wait "$pf" 2>/dev/null || true; }
+    pod="$(current_pod)"
+    port=$((20000 + RANDOM % 20000))
+    kubectl -n orders port-forward --address 127.0.0.1 "pod/$pod" "$port:8080" >"$tmp/pf.txt" 2>&1 &
+    pf=$!
+    for _ in $(seq 75); do
+      get /healthz >/dev/null 2>&1 && return 0
+      kill -0 "$pf" 2>/dev/null || break
+      sleep 0.2
+    done
+    echo "port-forward to $pod, attempt $attempt:" >&2
+    cat "$tmp/pf.txt" >&2
   done
-  cat "$tmp/pf.txt" >&2
+  # The state now, before the exit trap tears the deployment down.
+  kubectl -n orders get pods -o wide >&2 || true
+  kubectl -n orders logs "pod/$pod" --tail=50 >&2 || true
   fail "no answer from the service"
 }
 
