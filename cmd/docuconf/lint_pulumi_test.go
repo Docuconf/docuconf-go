@@ -469,4 +469,40 @@ func TestLintPulumiTargets(t *testing.T) {
 			t.Errorf("hidden secrets: got:\n%s", describeFindings(fs))
 		}
 	})
+
+	t.Run("lambda", func(t *testing.T) {
+		const db = "arn:aws:secretsmanager:us-east-1:123456789012:secret:orders/db-AbCdEf"
+		args := map[string]any{
+			"DATABASE_URL": map[string]any{"injected": map[string]any{"provider": "aws-parameters-and-secrets", "ref": db}},
+			"LOG_LEVEL":    map[string]any{"value": "warn"},
+		}
+		fn := func(vars map[string]any) []step {
+			return []step{{"aws:lambda/function:Function", "orders", map[string]any{"name": "orders-api", "environment": map[string]any{"variables": vars}}}}
+		}
+		vars := map[string]any{"DATABASE_URL": db, "LOG_LEVEL": "warn"}
+		for _, lang := range []string{"typescript", "go"} {
+			dir := pulumiProgram(t, lang, "lambda")
+			fs, _ := lintPreview(t, dir, args, fn(vars))
+			for _, f := range fs {
+				if f.Level != lint.Notice || f.Code == "deferred" {
+					t.Errorf("%s clean: unexpected finding: %s", lang, textLine(f))
+				}
+			}
+			out := map[string]string{"typescript": "orders.lambdaEnvironment", "go": "orders.LambdaEnvironment"}[lang]
+			fs, _ = lintPreview(t, dir, args, fn(map[string]any{"DATABASE_URL": db, "LOG_LEVL": "warn"}))
+			if !hasFinding(fs, "undeclared_input", "LOG_LEVL: is not declared in the contract, and the component did not render it; did you mean LOG_LEVEL?") ||
+				!hasFinding(fs, "unbound_container", "LOG_LEVEL: orders renders it, but the container does not set it; take the container's env from "+out) {
+				t.Errorf("%s typo: got:\n%s", lang, describeFindings(fs))
+			}
+		}
+		dir := pulumiProgram(t, "typescript", "lambda")
+		fs, _ := lintPreview(t, dir, args, fn(map[string]any{"DATABASE_URL": db, "LOG_LEVEL": "warn", "WEBHOOK_KEYS": "k1,k2"}))
+		if !hasFinding(fs, "secret_as_value", "WEBHOOK_KEYS: is secret, but the container sets it to a plain value") {
+			t.Errorf("hand secret: got:\n%s", describeFindings(fs))
+		}
+		fs, _ = lintPreview(t, dir, args, []step{{"aws:lambda/function:Function", "orders", map[string]any{"environment": map[string]any{"variables": unknown}}}})
+		if !hasFinding(fs, "deferred", "containers are unknown or secret at preview") {
+			t.Errorf("unknown variables: got:\n%s", describeFindings(fs))
+		}
+	})
 }

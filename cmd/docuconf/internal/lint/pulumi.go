@@ -94,6 +94,8 @@ func ReadPreview(previewFile, dir string, opt PulumiOptions) (*Plan, error) {
 			w = pulumiCloudRun(ns.Type, ns.Inputs)
 		case ns.Type == "azure-native:app:ContainerApp":
 			w = pulumiContainerApp(ns.Inputs)
+		case ns.Type == "aws:lambda/function:Function":
+			w = pulumiLambda(ns.Inputs)
 		default:
 			continue
 		}
@@ -441,6 +443,37 @@ func tfValueFrom(vf map[string]any) map[string]any {
 		out[snake(k)] = []any{snakeKeys(v)}
 	}
 	return out
+}
+
+// pulumiLambda reads a Lambda function's environment variables, in name
+// order, as one container's env.
+func pulumiLambda(in map[string]any) *Workload {
+	w := &Workload{Type: "aws:lambda/function:Function", Target: "lambda"}
+	vars := at(in, "environment", "variables")
+	if s, whole := vars.(string); whole && hidden(s) {
+		w.Unknown = true
+		return w
+	}
+	ct := Container{}
+	ct.Name, _ = at(in, "name").(string)
+	ct.Image, _ = at(in, "imageUri").(string)
+	m, _ := vars.(map[string]any)
+	names := make([]string, 0, len(m))
+	for n := range m {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		env := Env{Name: n}
+		if s, ok := m[n].(string); ok && !hidden(s) {
+			env.Value = &s
+		}
+		env.Unknown = m[n] == pulumiUnknown
+		env.Sensitive = containsSecret(m[n])
+		ct.Env = append(ct.Env, env)
+	}
+	w.Containers = []Container{ct}
+	return w
 }
 
 // pulumiContainerApp reads an azure-native container app: its template's

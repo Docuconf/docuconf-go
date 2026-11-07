@@ -101,8 +101,8 @@ jobs:
           terraform show -json plan.out > plan.json
           docuconf lint terraform plan.json -contract ../../contract.cue -explain
 
-  # The same service on ECS, Cloud Run and Azure Container Apps
-  # (deploy/ecs, deploy/cloudrun, deploy/containerapps): the committed
+  # The same service on ECS, Cloud Run, Azure Container Apps and Lambda
+  # (deploy/ecs, deploy/cloudrun, deploy/containerapps, deploy/lambda): the committed
   # module is what docuconf terraform -target generates, and the plan
   # passes docuconf lint. Planning needs no cloud account: the job copies
   # in an override file that configures the provider without credentials.
@@ -111,7 +111,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [ecs, cloudrun, containerapps]
+        target: [ecs, cloudrun, containerapps, lambda]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -376,9 +376,9 @@ jobs:
           cat "$RUNNER_TEMP/preview.txt"
           grep -q "WORKER_COUNT: Input should be less than or equal to 64" "$RUNNER_TEMP/preview.txt"
 
-  # The ECS, Cloud Run and Container Apps programs (deploy/pulumi-ecs,
-  # pulumi-cloudrun, pulumi-go-ecs, pulumi-go-cloudrun,
-  # pulumi-go-containerapps): the committed component is what
+  # The ECS, Cloud Run, Container Apps and Lambda programs
+  # (deploy/pulumi-ecs, pulumi-cloudrun, pulumi-go-ecs, pulumi-go-cloudrun,
+  # pulumi-go-containerapps, pulumi-go-lambda): the committed component is what
   # docuconf pulumi -target generates, the program plans what the
   # Terraform root of its target plans, its preview passes the target's
   # policy pack and docuconf lint pulumi, and a forbidden value fails at
@@ -394,6 +394,7 @@ jobs:
           - { program: pulumi-go-ecs, target: ecs, lang: go, out: ordersapiconfig }
           - { program: pulumi-go-cloudrun, target: cloudrun, lang: go, out: ordersapiconfig }
           - { program: pulumi-go-containerapps, target: containerapps, lang: go, out: ordersapiconfig }
+          - { program: pulumi-go-lambda, target: lambda, lang: go, out: ordersapiconfig }
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6

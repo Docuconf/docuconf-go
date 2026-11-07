@@ -1,0 +1,20 @@
+name: orders-go-lambda
+description: The orders service on AWS Lambda, from a Pulumi program in Go, through the component docuconf pulumi -lang go -target lambda generates from the contract.
+runtime: go
+config:
+  aws:region:
+    value: us-east-1
+  orders-go-lambda:image:
+    default: 123456789012.dkr.ecr.us-east-1.amazonaws.com/orders-api:2.3.0
+  orders-go-lambda:environment:
+    default: prod
+  orders-go-lambda:workerCount:
+    default: 8
+  # Where the secrets live. The function's execution role must be allowed
+  # to read them (secretsmanager:GetSecretValue, ssm:GetParameter).
+  orders-go-lambda:databaseUrlSecretArn:
+    default: arn:aws:secretsmanager:us-east-1:123456789012:secret:orders/prod/db-AbCdEf
+  orders-go-lambda:webhookKeysParameterArn:
+    default: arn:aws:ssm:us-east-1:123456789012:parameter/orders/prod/webhook-keys
+  orders-go-lambda:roleArn:
+    default: arn:aws:iam::123456789012:role/orders-api

@@ -2,7 +2,7 @@
 """Check that a Pulumi program plans the same container configuration as
 the Terraform root of the same target, for the same inputs.
 
-    check-cloud-plan.py ecs|cloudrun|containerapps TERRAFORM_PLAN.json PULUMI_PREVIEW.json
+    check-cloud-plan.py ecs|cloudrun|containerapps|lambda TERRAFORM_PLAN.json PULUMI_PREVIEW.json
 
 TERRAFORM_PLAN.json is `terraform show -json` of a plan of ../ecs,
 ../cloudrun or ../containerapps; PULUMI_PREVIEW.json is `pulumi preview
@@ -10,7 +10,7 @@ TERRAFORM_PLAN.json is `terraform show -json` of a plan of ../ecs,
 definitions must be equal; on Cloud Run the container's env and volume
 mounts and the revision's volumes, once both are in one shape: Terraform
 writes a nested block as a list of one, in snake_case, and leaves unset
-attributes null. On Container Apps, the env, the app's secrets, and which
+attributes null. On Lambda, the function's environment variables. On Container Apps, the env, the app's secrets, and which
 secret each file path holds: the module mounts files from one Secret
 volume with sub_path, which is all the azurerm provider can express, and
 the component mounts each file's own volume at its directory.
@@ -84,6 +84,9 @@ def main():
             "volumes": tmpl.get("volumes", []),
         }
         want, got = pick(t, "env"), pick(p, "envs")
+    elif target == "lambda":
+        want = terraform(plan, "aws_lambda_function")["environment"][0]["variables"]
+        got = pulumi(preview, "aws:lambda/function:Function")["environment"]["variables"]
     elif target == "containerapps":
         t = terraform(plan, "azurerm_container_app")
         p = pulumi(preview, "azure-native:app:ContainerApp")

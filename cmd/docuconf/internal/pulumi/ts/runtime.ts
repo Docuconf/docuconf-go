@@ -920,7 +920,7 @@ export function kubernetes(
 // expand $(VAR); Container Apps runs on Kubernetes and does, so its values
 // are escaped as the kubernetes target's are.
 
-export type Target = "ecs" | "cloudrun" | "containerapps";
+export type Target = "ecs" | "cloudrun" | "containerapps" | "lambda";
 
 const SM_ARN = /^arn:aws(-cn|-us-gov|-iso|-iso-b)?:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$/;
 const SSM_ARN = /^arn:aws(-cn|-us-gov|-iso|-iso-b)?:ssm:[a-z0-9-]+:[0-9]{12}:parameter\/[A-Za-z0-9/_.-]+$/;
@@ -931,8 +931,9 @@ const KEY_VAULT_SECRET_ID = /^https:\/\/[0-9A-Za-z-]{3,24}\.vault\.[0-9a-z.-]+\/
 const AZURE_IDENTITY = /^(System|\/subscriptions\/[^/]+\/resourceGroups\/[^/]+\/providers\/Microsoft\.ManagedIdentity\/userAssignedIdentities\/[^/]+)$/i;
 const TARGET_SOURCES = ["value", "secret", "injected"] as const;
 
-/** The sources a variable accepts on ecs, cloudrun and containerapps. */
-export function targetVarSources(v: ContractVar): string[] {
+/** The sources a variable accepts on ecs, cloudrun and containerapps; on lambda, which resolves no secret references, a secret is injected. */
+export function targetVarSources(v: ContractVar, target?: Target): string[] {
+  if (target === "lambda" && isSecret(v)) return ["injected"];
   // One variable per key: no single secret carries it, but an injector can set the variables.
   if (isSecret(v) && v.encoding === "indexed") return ["injected"];
   return isSecret(v) ? ["secret", "injected"] : ["value", "injected"];
@@ -940,7 +941,7 @@ export function targetVarSources(v: ContractVar): string[] {
 
 /** The file inputs a target can deliver: none on ecs; on cloudrun and containerapps, all but tls directories. */
 export function targetFiles(c: Contract, target: Target): [string, ContractFile][] {
-  if (target === "ecs") return [];
+  if (target === "ecs" || target === "lambda") return [];
   return Object.entries(c.files ?? {}).filter(([, f]) => f.type !== "tls");
 }
 
@@ -951,10 +952,21 @@ function ecsValueFrom(s: Obj): string {
   return `${s["valueFrom"]}:${sel.map((x) => (x === undefined || x === null ? "" : x)).join(":")}`;
 }
 
-const PLATFORM: Record<Target, string> = { ecs: "ECS", cloudrun: "Cloud Run", containerapps: "Container Apps" };
+const PLATFORM: Record<Target, string> = { ecs: "ECS", cloudrun: "Cloud Run", containerapps: "Container Apps", lambda: "Lambda" };
+
+/** The variables Lambda sets itself, and refuses in a function's configuration. */
+export const LAMBDA_RESERVED = new Set([
+  "_HANDLER", "_X_AMZN_TRACE_ID", "AWS_DEFAULT_REGION", "AWS_REGION", "AWS_EXECUTION_ENV", "AWS_LAMBDA_FUNCTION_NAME",
+  "AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "AWS_LAMBDA_FUNCTION_VERSION", "AWS_LAMBDA_INITIALIZATION_TYPE", "AWS_LAMBDA_LOG_GROUP_NAME",
+  "AWS_LAMBDA_LOG_STREAM_NAME", "AWS_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+  "AWS_LAMBDA_RUNTIME_API", "LAMBDA_TASK_ROOT", "LAMBDA_RUNTIME_DIR",
+]);
+/** The size Lambda allows a function's environment variables, keys and values together. */
+export const LAMBDA_ENV_LIMIT = 4096;
 
 function secretHint(target: Target, v: ContractVar, srcs: string[]): string {
-  const what = { ecs: "one ECS secret", cloudrun: "one secret version", containerapps: "one secret" }[target];
+  const what = { ecs: "one ECS secret", cloudrun: "one secret version", containerapps: "one secret", lambda: "" }[target];
+  if (target === "lambda" && isSecret(v)) return " (Lambda resolves no secret references, so a secret is injected: give the secret's ARN as ref, and the function reads it)";
   if (isSecret(v) && !srcs.includes("secret")) return ` (an indexed key set is one variable per key, which ${what} cannot carry)`;
   if (isSecret(v)) return " (a secret is never a literal value)";
   return ` (${PLATFORM[target]} has no ConfigMaps or Downward API)`;
@@ -1008,7 +1020,7 @@ export function targetProblems(c: Contract, target: Target, args: Args): { probl
   }
   for (const [n, v] of Object.entries(c.vars)) {
     const a = args[n];
-    const srcs = targetVarSources(v);
+    const srcs = targetVarSources(v, target);
     if (a === undefined || a === null) {
       if (v.required && !profileSupplies(c, n)) problems.push(`${n}: required, but not set (missing_required)`);
       continue;
@@ -1133,6 +1145,7 @@ export interface TargetRendered {
   containerappSecrets: ContainerAppSecret[];
   containerappVolumes: ContainerAppVolume[];
   containerappVolumeMounts: ContainerAppVolumeMount[];
+  lambdaEnvironment: Record<string, string>;
 }
 
 /** The ecs, cloudrun and containerapps outputs, for arguments that passed the checks. */
@@ -1147,6 +1160,7 @@ export function renderTarget(c: Contract, target: Target, args: Args): TargetRen
     containerappSecrets: [],
     containerappVolumes: [],
     containerappVolumeMounts: [],
+    lambdaEnvironment: {},
   };
   for (const [n, v] of Object.entries(c.vars)) {
     const a = args[n];
@@ -1179,6 +1193,7 @@ export function renderTarget(c: Contract, target: Target, args: Args): TargetRen
       }
     }
   }
+  for (const e of out.ecsEnvironment) out.lambdaEnvironment[e.name] = e.value;
   for (const [n, f] of targetFiles(c, target)) {
     const a = args[n];
     if (!isObj(a)) continue;
@@ -1232,7 +1247,18 @@ export function forTarget(self: pulumi.ComponentResource, c: Contract, target: T
       return { [kind]: x };
     });
   }
-  const rendered = pulumi.all(checked).apply((resolved) => renderTarget(c, target, resolved as Args));
+  const sized = (r: TargetRendered): TargetRendered => {
+    if (target === "lambda") {
+      const size = Object.entries(r.lambdaEnvironment).reduce((n, [k, v]) => n + k.length + v.length, 0);
+      if (size > LAMBDA_ENV_LIMIT) {
+        throw new ConfigViolation(component, [`the environment variables are ${size} bytes, and Lambda allows ${LAMBDA_ENV_LIMIT}; move large values to files the function reads, or to Parameter Store`], self);
+      }
+    }
+    return r;
+  };
+  // Every value known: refuse now, not when the outputs resolve.
+  if (target === "lambda" && !hasOutput(args)) sized(renderTarget(c, target, args));
+  const rendered = pulumi.all(checked).apply((resolved) => sized(renderTarget(c, target, resolved as Args)));
   const b: Bindings = {};
   for (const n of names) {
     const kind = sourceOf(args[n], TARGET_SOURCES);

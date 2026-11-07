@@ -305,6 +305,33 @@ func TestPulumiPolicy(t *testing.T) {
 		}
 	})
 
+	t.Run("lambda", func(t *testing.T) {
+		comp := pulumiProgram(t, "typescript", "lambda")
+		pack := policyPack(t, "lambda")
+		const db = "arn:aws:secretsmanager:us-east-1:123456789012:secret:orders/db-AbCdEf"
+		args := map[string]any{
+			"LOG_LEVEL":    map[string]any{"value": "warn"},
+			"DATABASE_URL": map[string]any{"injected": map[string]any{"provider": "aws-parameters-and-secrets", "ref": db}},
+		}
+		fn := func(vars map[string]any) []step {
+			return []step{{"aws:lambda/function:Function", "orders", map[string]any{"environment": map[string]any{"variables": vars}}}}
+		}
+		got := runPolicy(t, pack, map[string]policyCase{
+			"clean":      {Target: "lambda", Resources: stackOf(t, comp, args, fn(map[string]any{"LOG_LEVEL": "warn", "DATABASE_URL": db}))},
+			"dropped":    {Target: "lambda", Resources: stackOf(t, comp, args, fn(map[string]any{"DATABASE_URL": db}))},
+			"hand_value": {Target: "lambda", Resources: stackOf(t, comp, args, fn(map[string]any{"LOG_LEVEL": "warn", "DATABASE_URL": db, "REQUEST_TIMEOUT": "10m"}))},
+		})
+		if len(got["clean"]) != 0 {
+			t.Errorf("clean: want nothing, got %v", got["clean"])
+		}
+		if len(got["dropped"]) != 1 || !strings.Contains(got["dropped"][0].Message, "take the container's env from orders.lambdaEnvironment") {
+			t.Errorf("dropped: got %v", got["dropped"])
+		}
+		if len(got["hand_value"]) != 1 || !strings.Contains(got["hand_value"][0].Message, "REQUEST_TIMEOUT: must be at most 5m") {
+			t.Errorf("hand_value: got %v", got["hand_value"])
+		}
+	})
+
 	t.Run("containerapps", func(t *testing.T) {
 		comp := pulumiProgram(t, "typescript", "containerapps")
 		pack := policyPack(t, "containerapps")
@@ -354,7 +381,7 @@ func TestPulumiPolicy(t *testing.T) {
 // The pack type-checks, and docuconf pulumi policy -check passes on what it
 // wrote.
 func TestPulumiPolicyGenerated(t *testing.T) {
-	for _, target := range []string{"kubernetes", "ecs", "cloudrun", "containerapps"} {
+	for _, target := range []string{"kubernetes", "ecs", "cloudrun", "containerapps", "lambda"} {
 		pack := policyPack(t, target)
 		cmd := exec.Command(filepath.Join(pack, "node_modules", ".bin", "tsc"), "--noEmit", "-p", ".")
 		cmd.Dir = pack
@@ -371,7 +398,7 @@ func TestPulumiPolicyGenerated(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	if err := runPulumi([]string{"policy", "-contract", ordersContract, "-target", "lambda", "-out", t.TempDir()}, &stdout, &stderr); err == nil || !strings.Contains(err.Error(), `-target "lambda" is not supported by docuconf pulumi policy yet`) {
+	if err := runPulumi([]string{"policy", "-contract", ordersContract, "-target", "nomad", "-out", t.TempDir()}, &stdout, &stderr); err == nil || !strings.Contains(err.Error(), `-target "nomad" is not supported by docuconf pulumi policy yet`) {
 		t.Errorf("want an unsupported target error, got %v", err)
 	}
 }
