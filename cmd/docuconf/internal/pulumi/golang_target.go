@@ -40,7 +40,11 @@ func (g *gen) generateGoTarget(pkg string, meta []byte, digest string) (map[stri
 	b.WriteString("// contractJSON is the contract this component was generated from.\n//\n//go:embed contract.json\nvar contractJSON []byte\n\n")
 	fmt.Fprintf(&b, "// Digest is the sha256 of the contract's compact JSON.\nconst Digest = %q\n\n", digest)
 
-	fmt.Fprintf(&b, "// Args are the arguments of %s: one per input of the %s contract the\n// %s target carries. A nil field is not set. A secret is a SecretVar:\n// Secret or Injected, never a literal.\ntype Args struct {\n", g.class, c.Name, g.target)
+	secretDoc := "Secret or Injected, never a literal"
+	if g.target == "lambda" {
+		secretDoc = "Injected, with the secret's ARN as ref, since Lambda resolves no\n// secret references"
+	}
+	fmt.Fprintf(&b, "// Args are the arguments of %s: one per input of the %s contract the\n// %s target carries. A nil field is not set. A secret is a SecretVar:\n// %s.\ntype Args struct {\n", g.class, c.Name, g.target, secretDoc)
 	for _, v := range c.Vars {
 		goComment(&b, "\t", describe(v.Raw))
 		fmt.Fprintf(&b, "\t%s %s\n", v.Name, goVarType(v))
@@ -55,6 +59,8 @@ func (g *gen) generateGoTarget(pkg string, meta []byte, digest string) (map[stri
 	if g.target == "ecs" {
 		b.WriteString("\t// EcsEnvironment is the container definition's environment, each {name, value}.\n\tEcsEnvironment pulumi.StringMapArrayOutput\n")
 		b.WriteString("\t// EcsSecrets is the container definition's secrets, each {name, valueFrom}.\n\tEcsSecrets pulumi.StringMapArrayOutput\n")
+	} else if g.target == "lambda" {
+		b.WriteString("\t// LambdaEnvironment is the function's environment variables, for its\n\t// Environment's Variables.\n\tLambdaEnvironment pulumi.StringMapOutput\n")
 	} else if g.target == "containerapps" {
 		b.WriteString("\t// ContainerAppEnv is the container's env entries: a value, or one of the\n\t// app's secrets by name.\n\tContainerAppEnv app.EnvironmentVarArrayOutput\n")
 		b.WriteString("\t// ContainerAppSecrets is the app's secrets for secret inputs, for\n\t// Configuration.Secrets.\n\tContainerAppSecrets app.SecretArrayOutput\n")
@@ -93,6 +99,8 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 `, "docuconf:"+c.Name+":Config")
 	if g.target == "ecs" {
 		b.WriteString("\tout, err := buildECS(ctx, c, in)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tc.EcsEnvironment = out.environment\n\tc.EcsSecrets = out.secrets\n")
+	} else if g.target == "lambda" {
+		b.WriteString("\tout, err := buildLambda(ctx, c, in)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tc.LambdaEnvironment = out.environment\n")
 	} else if g.target == "containerapps" {
 		b.WriteString("\tout, err := buildContainerApps(ctx, c, in)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tc.ContainerAppEnv = out.env\n\tc.ContainerAppSecrets = out.secrets\n\tc.ContainerAppVolumes = out.volumes\n\tc.ContainerAppVolumeMounts = out.volumeMounts\n")
 	} else {
@@ -132,7 +140,7 @@ func New%[1]s(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.Resou
 		return out, nil
 	}
 	files := map[string][]byte{"config.go": config, "docuconf.json": meta, "README.md": []byte(g.readmeFor("go"))}
-	own := map[string]string{"ecs": ecsGo, "cloudrun": cloudrunGo, "containerapps": containerappsGo}[g.target]
+	own := map[string]string{"ecs": ecsGo, "cloudrun": cloudrunGo, "containerapps": containerappsGo, "lambda": lambdaGo}[g.target]
 	for file, tmpl := range map[string]string{"runtime.go": runtimeGo, "targets.go": targetsGo, g.target + ".go": own} {
 		if files[file], err = pkgFile(file, tmpl); err != nil {
 			return nil, err

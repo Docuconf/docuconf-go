@@ -3,13 +3,13 @@
 # Pulumi program, and checks it against the Terraform root of the same
 # target, with no cloud account:
 #
-#   check-cloud-plan.sh ecs|cloudrun|containerapps PROGRAM_DIR
+#   check-cloud-plan.sh ecs|cloudrun|containerapps|lambda PROGRAM_DIR
 #
 # PROGRAM_DIR is pulumi-ecs, pulumi-go-ecs, pulumi-cloudrun,
-# pulumi-go-cloudrun or pulumi-go-containerapps. The script previews the
+# pulumi-go-cloudrun, pulumi-go-containerapps or pulumi-go-lambda. The script previews the
 # program against a local state directory, with the provider configured
 # without credentials (a preview of new resources calls no cloud API),
-# plans ../ecs, ../cloudrun or ../containerapps with its CI provider
+# plans ../ecs, ../cloudrun, ../containerapps or ../lambda with its CI provider
 # override (azurerm, which wants a token first, against ci/fakeazure), and
 # checks that both plan the same
 # container configuration (check-cloud-plan.py), and that the preview passes
@@ -62,7 +62,7 @@ stack="check-$$"
 pulumi stack init "$stack" --non-interactive
 trap 'pulumi stack rm "$stack" --yes --force --non-interactive >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 case "$target" in
-  ecs)
+  ecs | lambda)
     pulumi config set aws:accessKey ci
     pulumi config set aws:secretKey ci
     pulumi config set aws:skipCredentialsValidation true

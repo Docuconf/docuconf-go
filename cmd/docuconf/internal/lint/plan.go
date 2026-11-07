@@ -73,7 +73,7 @@ type Workload struct {
 	Addr   string // the full address, module path included
 	Scope  string // the module the resource is declared in
 	Type   string
-	Target string // kubernetes, ecs, cloudrun or containerapps
+	Target string // kubernetes, ecs, cloudrun, containerapps or lambda
 	// Unknown is set when the plan does not know what the containers get,
 	// such as container_definitions built from an ARN created in the same
 	// apply.
@@ -264,6 +264,8 @@ func Read(planFile, root string) (*Plan, error) {
 			w = readCloudRun(rc.Type, rc.Change.After, rc.Change.AfterUnknown, rc.Change.AfterSensitive)
 		case rc.Type == "azurerm_container_app":
 			w = readContainerApp(rc.Change.After, rc.Change.AfterUnknown)
+		case rc.Type == "aws_lambda_function":
+			w = readLambda(rc.Change.After, rc.Change.AfterUnknown, rc.Change.AfterSensitive)
 		default:
 			continue
 		}
@@ -549,6 +551,46 @@ func readContainerApp(after, unknown any) *Workload {
 			w.Volumes = append(w.Volumes, m)
 		}
 	}
+	return w
+}
+
+// readLambda reads a Lambda function's environment variables as one
+// container's env, in name order: a map has no other.
+func readLambda(after, unknown, sensitive any) *Workload {
+	w := &Workload{Type: "aws_lambda_function", Target: "lambda"}
+	ct := Container{}
+	ct.Name, _ = at(after, "function_name").(string)
+	ct.Image, _ = at(after, "image_uri").(string)
+	if at(unknown, "environment") == true || at(unknown, "environment", 0) == true || at(unknown, "environment", 0, "variables") == true {
+		w.Unknown = true
+		return w
+	}
+	vars, _ := at(after, "environment", 0, "variables").(map[string]any)
+	names := make([]string, 0, len(vars))
+	for n := range vars {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	vu := at(unknown, "environment", 0, "variables")
+	vs := at(sensitive, "environment", 0, "variables")
+	for _, n := range names {
+		env := Env{Name: n}
+		if s, ok := vars[n].(string); ok {
+			env.Value = &s
+		}
+		env.Unknown = at(vu, n) == true
+		env.Sensitive = vs == true || at(vs, n) == true || at(sensitive, "environment") == true
+		ct.Env = append(ct.Env, env)
+	}
+	// Unknown variables are absent from after: their keys are in after_unknown.
+	if m, ok := vu.(map[string]any); ok {
+		for n, u := range m {
+			if _, known := vars[n]; !known && u == true {
+				ct.Env = append(ct.Env, Env{Name: n, Unknown: true})
+			}
+		}
+	}
+	w.Containers = []Container{ct}
 	return w
 }
 

@@ -126,6 +126,10 @@ def run():
             res = {}
             results[name] = res
             waits.append(pulumi.Output.all(comp.ecs_environment, comp.ecs_secrets, comp.checked).apply(lambda xs, res=res: res.update(environment=xs[0], secrets=xs[1])))
+        elif target == "lambda":
+            res = {}
+            results[name] = res
+            waits.append(pulumi.Output.all(comp.lambda_environment, comp.checked).apply(lambda xs, res=res: res.update(lambdaEnvironment=xs[0])))
         elif target == "containerapps":
             res = {}
             results[name] = res
@@ -209,7 +213,7 @@ func TestPulumiPythonRejectsWhatVetRejects(t *testing.T) {
 }
 
 func TestPulumiPythonTargets(t *testing.T) {
-	for _, target := range []string{"ecs", "cloudrun", "containerapps"} {
+	for _, target := range []string{"ecs", "cloudrun", "containerapps", "lambda"} {
 		t.Run(target, func(t *testing.T) {
 			var list []map[string]any
 			for _, c := range targetCases(target) {

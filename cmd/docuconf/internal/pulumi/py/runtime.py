@@ -803,12 +803,16 @@ GCP_SECRET = re.compile(r"^(projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/)?[A-Z
 GCP_VERSION = re.compile(r"^(latest|[1-9][0-9]*)$")
 KEY_VAULT_SECRET_ID = re.compile(r"^https://[0-9A-Za-z-]{3,24}\.vault\.[0-9a-z.-]+/secrets/[0-9A-Za-z-]{1,127}(/[0-9A-Fa-f]{32})?/?$")
 AZURE_IDENTITY = re.compile(r"^(System|(?i:/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\.ManagedIdentity/userAssignedIdentities/[^/]+))$")
-PLATFORM = {"ecs": "ECS", "cloudrun": "Cloud Run", "containerapps": "Container Apps"}
+PLATFORM = {"ecs": "ECS", "cloudrun": "Cloud Run", "containerapps": "Container Apps", "lambda": "Lambda"}
+LAMBDA_ENV_LIMIT = 4096  # the size Lambda allows a function's environment variables, keys and values together
 TARGET_SOURCES = ("value", "secret", "injected")
 
 
-def target_var_sources(v: Obj) -> list[str]:
-    """The sources a variable accepts on ecs, cloudrun and containerapps."""
+def target_var_sources(v: Obj, target: str = "") -> list[str]:
+    """The sources a variable accepts on ecs, cloudrun and containerapps; on lambda, which resolves
+    no secret references, a secret is injected."""
+    if target == "lambda" and is_secret(v):
+        return ["injected"]
     # One variable per key: no single secret carries it, but an injector can set the variables.
     if is_secret(v) and v.get("encoding") == "indexed":
         return ["injected"]
@@ -817,7 +821,7 @@ def target_var_sources(v: Obj) -> list[str]:
 
 def target_files(c: Obj, target: str) -> list[tuple[str, Obj]]:
     """The file inputs a target can deliver: none on ecs; on cloudrun and containerapps, all but tls directories."""
-    if target == "ecs":
+    if target in ("ecs", "lambda"):
         return []
     return [(n, f) for n, f in (c.get("files") or {}).items() if f["type"] != "tls"]
 
@@ -831,7 +835,9 @@ def ecs_value_from(s: Obj) -> str:
 
 
 def _secret_hint(target: str, v: Obj, srcs: list[str]) -> str:
-    what = {"ecs": "one ECS secret", "cloudrun": "one secret version", "containerapps": "one secret"}[target]
+    if target == "lambda" and is_secret(v):
+        return " (Lambda resolves no secret references, so a secret is injected: give the secret's ARN as ref, and the function reads it)"
+    what = {"ecs": "one ECS secret", "cloudrun": "one secret version", "containerapps": "one secret", "lambda": "one secret"}[target]
     if is_secret(v) and "secret" not in srcs:
         return f" (an indexed key set is one variable per key, which {what} cannot carry)"
     if is_secret(v):
@@ -883,7 +889,7 @@ def target_problems(c: Obj, target: str, args: Obj) -> tuple[list[str], list[str
             problems.append(f"{k}: the {target} target cannot mount this file input" if k in (c.get("files") or {}) else f"{k}: is not declared in the contract")
     for n, v in c["vars"].items():
         a = args.get(n)
-        srcs = target_var_sources(v)
+        srcs = target_var_sources(v, target)
         if a is None:
             if v.get("required") and not profile_supplies(c, n):
                 problems.append(f"{n}: required, but not set (missing_required)")
@@ -953,6 +959,7 @@ def render_target(c: Obj, target: str, args: Obj) -> Obj:
         "containerapp_secrets": [],
         "containerapp_volumes": [],
         "containerapp_volume_mounts": [],
+        "lambda_environment": {},
     }
 
     def app_secret(name: str, s: Obj) -> Obj:
@@ -984,6 +991,7 @@ def render_target(c: Obj, target: str, args: Obj) -> Obj:
                 out["ecs_environment"].append({"name": en, "value": ev})
                 out["cloudrun_env"].append({"name": en, "value": ev})
                 out["containerapp_env"].append({"name": en, "value": esc(ev)})
+    out["lambda_environment"] = {e["name"]: e["value"] for e in out["ecs_environment"]}
     for n, f in target_files(c, target):
         a = args.get(n)
         if not is_obj(a):
@@ -1021,6 +1029,17 @@ def for_target(self: pulumi.Resource, c: Obj, target: str, args: Mapping[str, An
         pulumi.log.warn(w, self)
     names = [*c["vars"], *(n for n, _ in target_files(c, target))]
     checked = _checked_values(self, c, args, names, TARGET_SOURCES)
-    rendered = (pulumi.Output.all(**checked) if checked else pulumi.Output.from_input({})).apply(lambda r: render_target(c, target, r))
+    def render(r: Obj) -> Obj:
+        out = render_target(c, target, r)
+        if target == "lambda":
+            size = sum(len(k) + len(v) for k, v in out["lambda_environment"].items())
+            if size > LAMBDA_ENV_LIMIT:
+                raise ConfigViolation(component, [f"the environment variables are {size} bytes, and Lambda allows {LAMBDA_ENV_LIMIT}; move large values to files the function reads, or to Parameter Store"])
+        return out
+
+    if target == "lambda" and not has_output(args):
+        render(args)  # every value is known: refuse now, not when the outputs resolve
+
+    rendered = (pulumi.Output.all(**checked) if checked else pulumi.Output.from_input({})).apply(render)
     b = {n: {"set": source_of(args.get(n), TARGET_SOURCES) is not None, "source": source_of(args.get(n), TARGET_SOURCES)} for n in names}
     return {"rendered": rendered, "bindings": b, "checked": rendered.apply(lambda _: True)}

@@ -27,6 +27,8 @@ var (
 	cloudrunGo string
 	//go:embed gocomp/containerapps.go.tmpl
 	containerappsGo string
+	//go:embed gocomp/lambda.go.tmpl
+	lambdaGo string
 )
 
 // Versions of the modules a generated Go component imports.

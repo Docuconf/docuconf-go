@@ -14,7 +14,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 
-export type Target = "kubernetes" | "ecs" | "cloudrun" | "containerapps";
+export type Target = "kubernetes" | "ecs" | "cloudrun" | "containerapps" | "lambda";
 
 /** One problem, with the linter's code. Errors fail the deployment. */
 export interface Finding {
@@ -226,6 +226,18 @@ function readWorkload(r: StackResource): Workload | undefined {
     w.volumes = ((at(t.value, "volumes") as unknown[]) ?? []).map((v) => str(at(v, "name")) ?? "");
     return w;
   }
+  if (r.type === "aws:lambda/function:Function") {
+    const w: Workload = { ...base, target: "lambda" };
+    const vars = known(() => at(r.props, "environment", "variables"));
+    if (!vars.ok) return { ...w, unknown: true };
+    const m = isObj(vars.value) ? vars.value : {};
+    const env: Env[] = Object.keys(m)
+      .sort()
+      .map((n) => ({ name: n, value: str(m[n]), ref: false }));
+    const name = known(() => r.props["name"]);
+    w.containers.push({ name: (name.ok ? str(name.value) : undefined) ?? "", env, envFrom: false, mounts: [] });
+    return w;
+  }
   if (r.type === "azure-native:app:ContainerApp") {
     const w: Workload = { ...base, target: "containerapps" };
     const t = known(() => at(r.props, "template"));
@@ -367,6 +379,7 @@ function checkContainer(c: PackContract, comp: Component, w: Workload, ct: Conta
     ecs: `${comp.name}.${output(comp, "ecsEnvironment")} and .${output(comp, "ecsSecrets")}`,
     cloudrun: `${comp.name}.${output(comp, "cloudrunEnv")}`,
     containerapps: `${comp.name}.${output(comp, "containerappEnv")}`,
+    lambda: `${comp.name}.${output(comp, "lambdaEnvironment")}`,
     kubernetes: `${comp.name}.${output(comp, "kubernetesEnv")}`,
   }[w.target];
   for (const n of renderedNames(c, comp)) {
@@ -384,7 +397,7 @@ function checkContainer(c: PackContract, comp: Component, w: Workload, ct: Conta
         settings.allowEnvFrom ? "warning" : "error",
       );
   }
-  if (w.target !== "ecs") out.push(...checkMounts(c, comp, w, ct));
+  if (w.target !== "ecs" && w.target !== "lambda") out.push(...checkMounts(c, comp, w, ct));
   // Values written into the container by hand: the component checked its own.
   const literal: Record<string, string> = {};
   for (const [n, e] of env) {

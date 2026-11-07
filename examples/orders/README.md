@@ -220,17 +220,19 @@ secret set as a plain value, a file mounted at the wrong path, or a module
 generated from an older contract. See
 [spec/IAC.md](../../spec/IAC.md) for the module and the linter's rules.
 
-### ECS, Cloud Run and Azure Container Apps
+### ECS, Cloud Run, Azure Container Apps and Lambda
 
-[`deploy/ecs`](deploy/ecs), [`deploy/cloudrun`](deploy/cloudrun) and
-[`deploy/containerapps`](deploy/containerapps) set the same inputs for
-Amazon ECS, Cloud Run and Azure Container Apps, each through a module
-generated for its target:
+[`deploy/ecs`](deploy/ecs), [`deploy/cloudrun`](deploy/cloudrun),
+[`deploy/containerapps`](deploy/containerapps) and
+[`deploy/lambda`](deploy/lambda) set the same inputs for Amazon ECS, Cloud
+Run, Azure Container Apps and AWS Lambda, each through a module generated
+for its target:
 
 ```sh
 docuconf terraform -contract contract.cue -target ecs -out deploy/ecs/modules/orders-config
 docuconf terraform -contract contract.cue -target cloudrun -out deploy/cloudrun/modules/orders-config
 docuconf terraform -contract contract.cue -target containerapps -out deploy/containerapps/modules/orders-config
+docuconf terraform -contract contract.cue -target lambda -out deploy/lambda/modules/orders-config
 ```
 
 A secret there is a Secrets Manager or Parameter Store ARN, a Secret
@@ -238,7 +240,10 @@ Manager secret, or a Key Vault secret ID read by a managed identity. ECS
 mounts no files, so its module has no `discounts` or `serving-tls`. A Cloud
 Run secret volume and a Container Apps secret each hold a single file, so
 those modules take `discounts` from Secret Manager or Key Vault but have no
-`serving-tls`. In all three, TLS ends in front of the service. CI plans and
+`serving-tls`. Lambda resolves no secret references, so its secrets are
+injected as their ARNs and the function reads them, through the AWS
+Parameters and Secrets Lambda Extension. In all of them, TLS ends in front
+of the service. CI plans and
 lints each on every change, without a cloud account: the azurerm provider
 wants a token before it plans, so CI points it at
 [`ci/fakeazure`](deploy/containerapps/ci/fakeazure), a stand-in for the few
@@ -360,15 +365,17 @@ error: orders-api config: 1 configuration problem:
 The outputs are snake_case, as the kubernetes provider's Python arguments
 are: `env=orders.kubernetes_env`.
 
-### ECS, Cloud Run and Container Apps, from Pulumi
+### ECS, Cloud Run, Container Apps and Lambda, from Pulumi
 
 [`deploy/pulumi-ecs`](deploy/pulumi-ecs) and
 [`deploy/pulumi-cloudrun`](deploy/pulumi-cloudrun) are the Terraform roots
 above, `deploy/ecs` and `deploy/cloudrun`, as Pulumi programs in
 TypeScript; [`deploy/pulumi-go-ecs`](deploy/pulumi-go-ecs) and
 [`deploy/pulumi-go-cloudrun`](deploy/pulumi-go-cloudrun) are the same in
-Go, and [`deploy/pulumi-go-containerapps`](deploy/pulumi-go-containerapps)
-is `deploy/containerapps` in Go, on azure-native. Each sets the same
+Go, [`deploy/pulumi-go-containerapps`](deploy/pulumi-go-containerapps)
+is `deploy/containerapps` in Go, on azure-native, and
+[`deploy/pulumi-go-lambda`](deploy/pulumi-go-lambda) is `deploy/lambda`
+in Go. Each sets the same
 inputs through a component generated for its target:
 
 ```sh
@@ -377,6 +384,7 @@ docuconf pulumi -contract contract.cue -target cloudrun -out deploy/pulumi-cloud
 docuconf pulumi -contract contract.cue -target ecs -lang go -out deploy/pulumi-go-ecs/ordersapiconfig
 docuconf pulumi -contract contract.cue -target cloudrun -lang go -out deploy/pulumi-go-cloudrun/ordersapiconfig
 docuconf pulumi -contract contract.cue -target containerapps -lang go -out deploy/pulumi-go-containerapps/ordersapiconfig
+docuconf pulumi -contract contract.cue -target lambda -lang go -out deploy/pulumi-go-lambda/ordersapiconfig
 ```
 
 The component's outputs go straight into the resource:
@@ -384,7 +392,8 @@ The component's outputs go straight into the resource:
 definition, `cloudrunEnv`, `cloudrunVolumeMounts` and `cloudrunVolumes`
 into the Cloud Run service's template, and `ContainerAppSecrets` into the
 container app's configuration, `ContainerAppEnv`,
-`ContainerAppVolumeMounts` and `ContainerAppVolumes` into its template.
+`ContainerAppVolumeMounts` and `ContainerAppVolumes` into its template, and
+`LambdaEnvironment` into the Lambda function's environment variables.
 The Terraform module mounts files from one Secret volume with `sub_path`,
 which is all azurerm can express; the component gives each file its own
 volume, which azure-native can, and the check below compares which secret
@@ -394,12 +403,13 @@ each path holds.
 program without a cloud account, and checks that it plans the same
 container configuration as the Terraform root of its target, that the
 preview passes `docuconf lint pulumi`, and that a forbidden value fails at
-preview. CI runs it for all five on every change:
+preview. CI runs it for all six on every change:
 
 ```sh
 deploy/check-cloud-plan.sh ecs deploy/pulumi-ecs
 deploy/check-cloud-plan.sh cloudrun deploy/pulumi-go-cloudrun
 deploy/check-cloud-plan.sh containerapps deploy/pulumi-go-containerapps
+deploy/check-cloud-plan.sh lambda deploy/pulumi-go-lambda
 ```
 
 ### End-to-end test, from Pulumi

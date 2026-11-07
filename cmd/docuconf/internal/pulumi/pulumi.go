@@ -63,9 +63,9 @@ func Generate(c *terraform.Contract, opt Options) (map[string][]byte, error) {
 		return nil, fmt.Errorf("-lang %q is not supported yet; supported: typescript, go, python", opt.Lang)
 	}
 	switch opt.Target {
-	case "kubernetes", "ecs", "cloudrun", "containerapps":
+	case "kubernetes", "ecs", "cloudrun", "containerapps", "lambda":
 	default:
-		return nil, fmt.Errorf("-target %q is not supported by docuconf pulumi yet; supported: kubernetes, ecs, cloudrun, containerapps", opt.Target)
+		return nil, fmt.Errorf("-target %q is not supported by docuconf pulumi yet; supported: kubernetes, ecs, cloudrun, containerapps, lambda", opt.Target)
 	}
 	if c.Name == "" {
 		return nil, fmt.Errorf("the contract has no metadata.name")
@@ -90,6 +90,17 @@ func Generate(c *terraform.Contract, opt Options) (map[string][]byte, error) {
 	}
 	if err := g.appSecretNames(); err != nil {
 		return nil, err
+	}
+	if g.target == "lambda" {
+		var reserved []string
+		for _, v := range c.Vars {
+			if terraform.LambdaReserved(v.Name) {
+				reserved = append(reserved, v.Name)
+			}
+		}
+		if len(reserved) > 0 {
+			return nil, fmt.Errorf("the contract declares %s, which Lambda reserves and refuses in a function's configuration; rename them in the contract", strings.Join(reserved, ", "))
+		}
 	}
 	digest := terraform.Digest(c.JSON)
 	meta, err := json.MarshalIndent(map[string]any{
@@ -144,6 +155,8 @@ func (g *gen) readmeFor(lang string) string {
 	switch g.target {
 	case "ecs":
 		b.WriteString("a container definition's `environment` and `secrets`. ECS does not expand `$(VAR)`, so values are as the app reads them. A secret is a Secrets Manager ARN, a Parameter Store ARN, or the name of either in the task's own account and region; the task execution role must be allowed to read it.\n\n")
+	case "lambda":
+		b.WriteString("a Lambda function's environment variables, as a map for its `environment.variables`. Lambda resolves no secret references, so a secret input is injected: its `ref`, such as a Secrets Manager or Parameter Store ARN, is the value, and the function reads the secret itself, through the AWS Parameters and Secrets Lambda Extension or an SDK. Lambda does not expand `$(VAR)`, and allows 4 KB of environment variables, which the component checks.\n\n")
 	case "containerapps":
 		b.WriteString("a container app's secrets, its container's env, and a Secret volume and mount for each file input, in the shapes of azure-native's `app.ContainerApp`. A secret, or a file input, is a Key Vault secret ID, versioned or not, read by the `identity` given: `System` (the default) or a user-assigned identity's resource ID, which must be able to read it (the Key Vault Secrets User role). The component names the app secret it adds for each (`dc-…`). Container Apps expands `$(VAR)` in env values, so values are `$`-escaped, as on Kubernetes.\n\n")
 	default:
@@ -155,7 +168,7 @@ func (g *gen) readmeFor(lang string) string {
 		if boolean(v.Raw, "required") && !g.profileSupplies(v) {
 			req = "yes"
 		}
-		fmt.Fprintf(&b, "| `%s` | %s | %s | %s | %s |\n", v.Name, v.Type, req, codeList(targetSources(v)), cell(str(v.Raw, "description")))
+		fmt.Fprintf(&b, "| `%s` | %s | %s | %s | %s |\n", v.Name, v.Type, req, codeList(g.targetSources(v)), cell(str(v.Raw, "description")))
 	}
 	for _, f := range g.files {
 		req := ""
@@ -168,7 +181,7 @@ func (g *gen) readmeFor(lang string) string {
 }
 
 // platformName is how a README and a message name a target's platform.
-var platformName = map[string]string{"ecs": "Amazon ECS", "cloudrun": "Cloud Run", "containerapps": "Azure Container Apps"}
+var platformName = map[string]string{"ecs": "Amazon ECS", "cloudrun": "Cloud Run", "containerapps": "Azure Container Apps", "lambda": "AWS Lambda"}
 
 // appSecretNames refuses, on containerapps, two inputs whose names fold to
 // the same app secret, as docuconf terraform does.
@@ -223,6 +236,8 @@ func (g *gen) targetFiles(warn func(string)) error {
 			required = append(required, f.Name)
 		case g.target == "ecs":
 			warn(fmt.Sprintf("%s: ECS mounts no files, so the ecs component leaves this optional file input out", f.Name))
+		case g.target == "lambda":
+			warn(fmt.Sprintf("%s: Lambda mounts no files, so the lambda component leaves this optional file input out", f.Name))
 		case g.target == "containerapps":
 			warn(fmt.Sprintf("%s: a tls input is a directory of several files, and a Container Apps secret holds one, so the containerapps component leaves this optional input out", f.Name))
 		default:
@@ -230,8 +245,8 @@ func (g *gen) targetFiles(warn func(string)) error {
 		}
 	}
 	if len(required) > 0 {
-		if g.target == "ecs" {
-			return fmt.Errorf("the ecs target mounts no files, and the contract requires file inputs %s; deploy it on a target that can (kubernetes)", strings.Join(required, ", "))
+		if g.target == "ecs" || g.target == "lambda" {
+			return fmt.Errorf("the %s target mounts no files, and the contract requires file inputs %s; deploy it on a target that can (kubernetes)", g.target, strings.Join(required, ", "))
 		}
 		what := "a Cloud Run secret volume holds one file"
 		if g.target == "containerapps" {
@@ -241,10 +256,19 @@ func (g *gen) targetFiles(warn func(string)) error {
 	}
 	if g.target != "kubernetes" {
 		for _, o := range g.c.Overlays {
-			warn(fmt.Sprintf("overlay %s: %s has no ConfigMaps, so the %s component leaves this overlay out; set its variables in the environment", o.Name, map[string]string{"ecs": "ECS", "cloudrun": "Cloud Run", "containerapps": "Container Apps"}[g.target], g.target))
+			warn(fmt.Sprintf("overlay %s: %s has no ConfigMaps, so the %s component leaves this overlay out; set its variables in the environment", o.Name, map[string]string{"ecs": "ECS", "cloudrun": "Cloud Run", "containerapps": "Container Apps", "lambda": "Lambda"}[g.target], g.target))
 		}
 	}
 	return nil
+}
+
+// targetSources is targetSources for the component's target: on lambda,
+// which resolves no secret references, a secret is injected.
+func (g *gen) targetSources(v terraform.Var) []string {
+	if g.target == "lambda" && v.Secret {
+		return []string{"injected"}
+	}
+	return targetSources(v)
 }
 
 // targetSources mirrors runtime.ts targetVarSources.
@@ -312,6 +336,8 @@ export interface Secret {
   secret: { valueFrom: In<string>; jsonKey?: string; versionStage?: string; versionId?: string };
 }
 `)
+	} else if g.target == "lambda" {
+		// Lambda resolves no secret references: a secret is Injected.
 	} else if g.target == "containerapps" {
 		b.WriteString(`/**
  * A Key Vault secret, by ID with or without a version, and the identity
@@ -342,7 +368,7 @@ export interface InjectedFile {
 	for _, v := range g.c.Vars {
 		doc(&b, "  ", describe(v.Raw))
 		var types []string
-		for _, s := range targetSources(v) {
+		for _, s := range g.targetSources(v) {
 			switch s {
 			case "value":
 				types = append(types, "Value<"+valueType(v)+">")
@@ -374,6 +400,10 @@ export interface InjectedFile {
   readonly ecsEnvironment: pulumi.Output<runtime.EcsEnvironmentEntry[]>;
   /** The container definition's secrets, each { name, valueFrom }. */
   readonly ecsSecrets: pulumi.Output<runtime.EcsSecretEntry[]>;
+`)
+	} else if g.target == "lambda" {
+		b.WriteString(`  /** The function's environment variables, for environment.variables. */
+  readonly lambdaEnvironment: pulumi.Output<Record<string, string>>;
 `)
 	} else if g.target == "containerapps" {
 		b.WriteString(`  /** The container's env entries, each { name, value } or { name, secretRef }. */
@@ -407,6 +437,8 @@ export interface InjectedFile {
 `, g.class, tsString("docuconf:"+g.c.Name+":Config"), g.target, tsString(g.c.Name))
 	if g.target == "ecs" {
 		b.WriteString("    this.ecsEnvironment = out.rendered.ecsEnvironment;\n    this.ecsSecrets = out.rendered.ecsSecrets;\n")
+	} else if g.target == "lambda" {
+		b.WriteString("    this.lambdaEnvironment = out.rendered.lambdaEnvironment;\n")
 	} else if g.target == "containerapps" {
 		b.WriteString("    this.containerappEnv = out.rendered.containerappEnv;\n    this.containerappSecrets = out.rendered.containerappSecrets;\n    this.containerappVolumes = out.rendered.containerappVolumes;\n    this.containerappVolumeMounts = out.rendered.containerappVolumeMounts;\n")
 	} else {

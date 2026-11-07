@@ -31,6 +31,11 @@ var targetBase = map[string]map[string]any{
 		"DATABASE_URL": map[string]any{"secret": map[string]any{"secret": "projects/acme-prod/secrets/kitchen-db", "version": "4"}},
 		"TENANT":       map[string]any{"value": "acme"},
 	},
+	"lambda": {
+		"API_TOKEN":    map[string]any{"injected": map[string]any{"provider": "aws-parameters-and-secrets", "ref": tokenARN}},
+		"DATABASE_URL": map[string]any{"injected": map[string]any{"provider": "aws-parameters-and-secrets", "ref": dbParam}},
+		"TENANT":       map[string]any{"value": "acme"},
+	},
 	"containerapps": {
 		"API_TOKEN":    map[string]any{"secret": map[string]any{"keyVaultSecretId": kvToken}},
 		"DATABASE_URL": map[string]any{"secret": map[string]any{"keyVaultSecretId": kvDB, "identity": uaiID}},
@@ -70,6 +75,16 @@ func targetCases(target string) []targetCase {
 	}
 	reject := func(name string, args map[string]any, want string) targetCase {
 		return targetCase{name: "reject/" + name, args: with(args), want: want}
+	}
+	if target == "lambda" {
+		return append(cases,
+			reject("secret_as_value", map[string]any{"API_TOKEN": map[string]any{"value": "hunter2"}}, "API_TOKEN: set exactly one of injected (Lambda resolves no secret references, so a secret is injected"),
+			reject("secret_reference", map[string]any{"API_TOKEN": map[string]any{"secret": map[string]any{"valueFrom": tokenARN}}}, "API_TOKEN: set exactly one of injected (Lambda resolves no secret references"),
+			reject("value_checks", map[string]any{"WORKERS": map[string]any{"value": 0}}, "WORKERS:"),
+			reject("field", map[string]any{"NODE_NAME": map[string]any{"fieldRef": map[string]any{"fieldPath": "spec.nodeName"}}}, "NODE_NAME: set exactly one of value or injected (Lambda has no ConfigMaps or Downward API)"),
+			reject("file", map[string]any{"settings": map[string]any{"secret": map[string]any{"secret": "s"}}}, "settings: the lambda target cannot mount this file input"),
+			reject("size", map[string]any{"GREETING": map[string]any{"injected": map[string]any{"provider": "op", "ref": strings.Repeat("x", 4100)}}}, "and Lambda allows 4096; move large values"),
+		)
 	}
 	common := []targetCase{
 		reject("secret_as_value", map[string]any{"API_TOKEN": map[string]any{"value": "hunter2"}}, "API_TOKEN: set exactly one of secret or injected (a secret is never a literal value)"),
@@ -131,13 +146,14 @@ func targetCases(target string) []targetCase {
 // targetResult is what a component rendered, in one shape for both
 // languages and both targets, or the error it threw.
 type targetResult struct {
-	Error       string           `json:"error"`
-	Environment []map[string]any `json:"environment"`
-	Secrets     []map[string]any `json:"secrets"`
-	Env         []map[string]any `json:"env"`
-	Volumes     []map[string]any `json:"volumes"`
-	Mounts      []map[string]any `json:"mounts"`
-	AppSecrets  []map[string]any `json:"appSecrets"`
+	Error       string            `json:"error"`
+	Environment []map[string]any  `json:"environment"`
+	Secrets     []map[string]any  `json:"secrets"`
+	Env         []map[string]any  `json:"env"`
+	Volumes     []map[string]any  `json:"volumes"`
+	Mounts      []map[string]any  `json:"mounts"`
+	AppSecrets  []map[string]any  `json:"appSecrets"`
+	LambdaEnv   map[string]string `json:"lambdaEnvironment"`
 }
 
 const tsTargetHarness = `import * as pulumi from "@pulumi/pulumi";
@@ -158,7 +174,9 @@ async function main() {
       await value(x.checked);
       out[c.name] = target === "ecs"
         ? { environment: await value(x.ecsEnvironment), secrets: await value(x.ecsSecrets) }
-        : target === "containerapps"
+        : target === "lambda"
+          ? { lambdaEnvironment: await value(x.lambdaEnvironment) }
+          : target === "containerapps"
           ? { env: await value(x.containerappEnv), appSecrets: await value(x.containerappSecrets), volumes: await value(x.containerappVolumes), mounts: await value(x.containerappVolumeMounts) }
           : { env: await value(x.cloudrunEnv), volumes: await value(x.cloudrunVolumes), mounts: await value(x.cloudrunVolumeMounts) };
     } catch (e) {
@@ -254,6 +272,13 @@ func TestHarness(t *testing.T) {
 				r := x.(targetRendered)
 				res["environment"], res["secrets"] = r.ecsEnvironment, r.ecsSecrets
 				res["env"], res["volumes"], res["mounts"], res["appSecrets"] = r.env, r.volumes, r.volumeMounts, r.appSecrets
+				if target == "lambda" {
+					m := map[string]string{}
+					for _, e := range r.ecsEnvironment {
+						m[e["name"]] = e["value"]
+					}
+					res["lambdaEnvironment"] = m
+				}
 				return nil
 			}))
 			return nil
@@ -334,6 +359,25 @@ func checkTarget(t *testing.T, target string, got map[string]targetResult) {
 			}
 			if g.Error != "" {
 				t.Fatalf("rejected:\n%s", g.Error)
+			}
+			if target == "lambda" {
+				for _, rc := range renderCases {
+					if rc.name != tc.name {
+						continue
+					}
+					// #Render's env, unescaped, with the injected secrets' refs.
+					want := map[string]string{"API_TOKEN": tokenARN, "DATABASE_URL": dbParam}
+					for _, e := range renderDoc(t, p, c, rc.doc).Env {
+						m := e.(map[string]any)
+						if v, ok := m["value"].(string); ok {
+							want[m["name"].(string)] = strings.ReplaceAll(v, "$$", "$")
+						}
+					}
+					if gj, wj := canon(t, g.LambdaEnv), canon(t, want); gj != wj {
+						t.Errorf("lambdaEnvironment differs from docuconf render:\n component: %s\n render:    %s", gj, wj)
+					}
+				}
+				return
 			}
 			env := g.Environment
 			var refs []map[string]any
@@ -480,7 +524,7 @@ func checkTarget(t *testing.T, target string, got map[string]targetResult) {
 }
 
 func TestPulumiTargets(t *testing.T) {
-	for _, target := range []string{"ecs", "cloudrun", "containerapps"} {
+	for _, target := range []string{"ecs", "cloudrun", "containerapps", "lambda"} {
 		t.Run("typescript/"+target, func(t *testing.T) {
 			checkTarget(t, target, runTSTarget(t, target, targetCases(target)))
 		})
@@ -488,7 +532,7 @@ func TestPulumiTargets(t *testing.T) {
 }
 
 func TestPulumiGoTargets(t *testing.T) {
-	for _, target := range []string{"ecs", "cloudrun", "containerapps"} {
+	for _, target := range []string{"ecs", "cloudrun", "containerapps", "lambda"} {
 		t.Run(target, func(t *testing.T) {
 			checkTarget(t, target, runGoTarget(t, target, targetCases(target)))
 		})
@@ -508,7 +552,7 @@ func TestPulumiTargetFiles(t *testing.T) {
 		t.Fatal("no serving-tls input in the kitchen contract")
 	}
 	os.WriteFile(contract, []byte(marked), 0o644)
-	for target, want := range map[string]string{"ecs": "the ecs target mounts no files", "cloudrun": "requires tls inputs serving-tls", "containerapps": "requires tls inputs serving-tls"} {
+	for target, want := range map[string]string{"ecs": "the ecs target mounts no files", "cloudrun": "requires tls inputs serving-tls", "containerapps": "requires tls inputs serving-tls", "lambda": "the lambda target mounts no files"} {
 		var stdout, stderr bytes.Buffer
 		if code := run([]string{"pulumi", "-contract", contract, "-target", target, "-out", filepath.Join(dir, target)}, &stdout, &stderr); code == 0 || !strings.Contains(stderr.String(), want) {
 			t.Errorf("-target %s with a required tls input: exit %d, %s", target, code, stderr.String())

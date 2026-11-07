@@ -32,7 +32,7 @@ var (
 )
 
 // platform names the target's platform in messages.
-var platform = map[string]string{"ecs": "ECS", "cloudrun": "Cloud Run", "containerapps": "Container Apps"}[target]
+var platform = map[string]string{"ecs": "ECS", "cloudrun": "Cloud Run", "containerapps": "Container Apps", "lambda": "Lambda"}[target]
 
 // appSecretName is the name of the app secret the containerapps component
 // adds for an input: lower case letters, digits and -, as Container Apps
@@ -50,7 +50,8 @@ func appSecretName(input string, file bool) string {
 func targetVarSources(v contractVar) []string {
 	// One variable per key: no single secret carries it, but an injector
 	// can set the variables.
-	if isSecret(v) && v.Encoding == "indexed" {
+	if isSecret(v) && (v.Encoding == "indexed" || target == "lambda") {
+		// Lambda resolves no secret references either.
 		return []string{"injected"}
 	}
 	if isSecret(v) {
@@ -62,7 +63,7 @@ func targetVarSources(v contractVar) []string {
 // targetFiles are the file inputs the target delivers: none on ecs; on
 // cloudrun and containerapps, all but tls directories.
 func targetFiles(c *contract) []string {
-	if target == "ecs" {
+	if target == "ecs" || target == "lambda" {
 		return nil
 	}
 	var out []string
@@ -85,8 +86,10 @@ func ecsValueFrom(s map[string]any) string {
 }
 
 func secretHint(v contractVar, srcs []string) string {
-	what := map[string]string{"ecs": "one ECS secret", "cloudrun": "one secret version", "containerapps": "one secret"}[target]
+	what := map[string]string{"ecs": "one ECS secret", "cloudrun": "one secret version", "containerapps": "one secret", "lambda": "one secret"}[target]
 	switch {
+	case isSecret(v) && target == "lambda":
+		return " (Lambda resolves no secret references, so a secret is injected: give the secret's ARN as ref, and the function reads it)"
 	case isSecret(v) && !has(srcs, "secret"):
 		return " (an indexed key set is one variable per key, which " + what + " cannot carry)"
 	case isSecret(v):
@@ -367,12 +370,23 @@ func buildTarget(ctx *pulumi.Context, self pulumi.Resource, args inputs) (pulumi
 			return x, nil
 		})
 	}
-	all := pulumi.All(outs...).ApplyT(func(xs []any) any {
+	all := pulumi.All(outs...).ApplyT(func(xs []any) (any, error) {
 		res := map[string]resolved{}
 		for i, n := range names {
 			res[n] = resolved{args[n].kind, xs[i]}
 		}
-		return renderTarget(c, res)
+		r := renderTarget(c, res)
+		if target == "lambda" {
+			// Lambda allows 4 KB of environment variables, keys and values together.
+			size := 0
+			for _, e := range r.ecsEnvironment {
+				size += len(e["name"]) + len(e["value"])
+			}
+			if size > 4096 {
+				return nil, &ConfigViolation{component, []string{fmt.Sprintf("the environment variables are %d bytes, and Lambda allows 4096; move large values to files the function reads, or to Parameter Store", size)}}
+			}
+		}
+		return r, nil
 	}).(pulumi.AnyOutput)
 	bindings := map[string]Binding{}
 	for _, n := range append(append([]string{}, c.varOrder...), targetFiles(c)...) {

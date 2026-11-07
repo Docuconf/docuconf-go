@@ -329,7 +329,7 @@ func TestPulumiCheck(t *testing.T) {
 	if code := run([]string{"pulumi", "-contract", kitchen, "-out", out, "-check"}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "is out of date: index.ts") {
 		t.Fatalf("-check on an edited component: exit %d: %s", code, stderr.String())
 	}
-	for _, args := range [][]string{{"-lang", "cobol"}, {"-target", "lambda"}} {
+	for _, args := range [][]string{{"-lang", "cobol"}, {"-target", "nomad"}} {
 		stderr.Reset()
 		if code := run(append([]string{"pulumi", "-contract", kitchen, "-out", out}, args...), &stdout, &stderr); code == 0 {
 			t.Errorf("%v: want an error", args)

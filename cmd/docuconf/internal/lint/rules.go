@@ -105,7 +105,7 @@ func Check(p *Plan) ([]Finding, []Docs) {
 	}
 	for _, m := range p.Modules {
 		c := m.Contract
-		if t := m.Target(); t != "kubernetes" && t != "ecs" && t != "cloudrun" && t != "containerapps" {
+		if t := m.Target(); t != "kubernetes" && t != "ecs" && t != "cloudrun" && t != "containerapps" && t != "lambda" {
 			out = append(out, Finding{Code: "target_unchecked", Level: Notice, Module: m.Addr,
 				Message: fmt.Sprintf("the linter does not check the %s target yet; the %s's own checks still run", t, m.unit())})
 			continue
@@ -136,6 +136,8 @@ func Check(p *Plan) ([]Finding, []Docs) {
 						output = m.out("cloudrun_env") + " output in the app container's env"
 					case "containerapps":
 						output = m.out("containerapp_env") + " output in the app container's env, and its " + m.out("containerapp_secrets") + " in the app's secrets"
+					case "lambda":
+						output = m.out("lambda_environment") + " output as the function's environment variables"
 					}
 					out = append(out, Finding{Code: "unbound_container", Level: Error, Module: m.Addr, Where: w.Addr,
 						Message: fmt.Sprintf("%s reads %s, but none of its containers takes the env the %s renders; use its %s", w.Addr, m.Addr, m.unit(), output)})
@@ -319,6 +321,8 @@ func checkContainer(m *Module, w *Workload, ct Container, where string) ([]Findi
 				from = m.Addr + "." + m.out("cloudrun_env")
 			case "containerapps":
 				from = m.Addr + "." + m.out("containerapp_env")
+			case "lambda":
+				from = m.Addr + "." + m.out("lambda_environment")
 			}
 			add("unbound_container", Error, strings.TrimSuffix(n, "__0"), fmt.Sprintf("%s: %s renders it, but the container does not set it; take the container's env from %s", strings.TrimSuffix(n, "__0"), m.Addr, from))
 		}
@@ -790,7 +794,14 @@ func containerDocs(m *Module, w *Workload, ct Container, where string) Docs {
 				d.Values[v.Name] = r
 			}
 		case e.Value != nil && v.Secret:
-			// secret_as_value reports it; vet would only say it again.
+			if _, set := m.Args[v.Name]; set {
+				// Set through the module, whose argument is not constant: the
+				// module renders a secret as a plain value only from an
+				// injected ref, so it is injected. Its provider is in the
+				// argument, which the module's own validation checked.
+				d.Values[v.Name] = map[string]any{"injected": map[string]any{"provider": "module", "ref": unescape(*e.Value)}}
+			}
+			// Otherwise secret_as_value reports it; vet would only say it again.
 		case e.Value != nil:
 			d.Values[v.Name] = fromWire(v, unescape(*e.Value))
 		}
@@ -1026,7 +1037,7 @@ func bindings(m *Module, d *Docs) []Binding {
 		_, inDoc := d.Values[v.Name]
 		row(v.Name, x, ok || inDoc, v.Secret)
 	}
-	if m.Target() != "ecs" {
+	if m.Target() != "ecs" && m.Target() != "lambda" {
 		for _, f := range m.Contract.Files {
 			if (m.Target() == "cloudrun" || m.Target() == "containerapps") && f.Type == "tls" {
 				continue
