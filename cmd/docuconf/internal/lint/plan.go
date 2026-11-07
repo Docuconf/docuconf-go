@@ -46,6 +46,8 @@ type Module struct {
 	// Raw are a component's arguments as the program set them, for
 	// -explain to print in the component's words.
 	Raw map[string]any
+
+	plan *Plan
 }
 
 // Target is the module's target: kubernetes unless docuconf.json says.
@@ -132,6 +134,11 @@ type Plan struct {
 	Modules   []*Module
 	Workloads []*Workload
 	Pulumi    bool // read from a Pulumi preview
+	// Resources are the configuration's resources and data sources, by
+	// address (module path included), and Schema the provider schema
+	// given with -schema, to type an unknown value's origin.
+	Resources map[string]Resource
+	Schema    *Schema
 }
 
 type planJSON struct {
@@ -149,6 +156,9 @@ type planJSON struct {
 		} `json:"change"`
 	} `json:"resource_changes"`
 	Configuration struct {
+		ProviderConfig map[string]struct {
+			FullName string `json:"full_name"`
+		} `json:"provider_config"`
 		RootModule configModule `json:"root_module"`
 	} `json:"configuration"`
 	Checks []struct {
@@ -163,10 +173,11 @@ type planJSON struct {
 
 type configModule struct {
 	Resources []struct {
-		Address     string         `json:"address"`
-		Type        string         `json:"type"`
-		Mode        string         `json:"mode"`
-		Expressions map[string]any `json:"expressions"`
+		Address           string         `json:"address"`
+		Type              string         `json:"type"`
+		Mode              string         `json:"mode"`
+		ProviderConfigKey string         `json:"provider_config_key"`
+		Expressions       map[string]any `json:"expressions"`
 	} `json:"resources"`
 	ModuleCalls map[string]struct {
 		Source      string                     `json:"source"`
@@ -206,7 +217,7 @@ func Read(planFile, root string) (*Plan, error) {
 			}
 		}
 	}
-	p := &Plan{}
+	p := &Plan{Resources: map[string]Resource{}}
 	configs := map[string]map[string]any{} // resource address → expressions
 	var walk func(m configModule, scope, key, dir string) error
 	walk = func(m configModule, scope, key, dir string) error {
@@ -214,6 +225,14 @@ func Read(planFile, root string) (*Plan, error) {
 			if r.Mode == "managed" {
 				configs[join(scope, r.Address)] = r.Expressions
 			}
+			provider := pj.Configuration.ProviderConfig[r.ProviderConfigKey].FullName
+			if provider == "" {
+				// A provider the configuration does not configure: the
+				// implied hashicorp one, named by the type's prefix.
+				prefix, _, _ := strings.Cut(r.Type, "_")
+				provider = "registry.terraform.io/hashicorp/" + prefix
+			}
+			p.Resources[join(scope, r.Address)] = Resource{Type: r.Type, Mode: r.Mode, Provider: provider}
 		}
 		names := make([]string, 0, len(m.ModuleCalls))
 		for n := range m.ModuleCalls {
@@ -237,6 +256,7 @@ func Read(planFile, root string) (*Plan, error) {
 					return err
 				}
 				if mod != nil {
+					mod.plan = p
 					p.Modules = append(p.Modules, mod)
 				}
 			}

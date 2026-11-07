@@ -477,9 +477,11 @@ docuconf lint terraform plan.json -policy prod.cue     # environment policy, as 
 docuconf lint terraform plan.json -format json|sarif
 docuconf lint terraform plan.json -dir infra/prod      # the root where terraform init ran
 docuconf lint terraform plan.json -contract contract.cue  # also check the modules were generated from this contract
+terraform providers schema -json > schema.json
+docuconf lint terraform plan.json -schema schema.json     # type unknown values by the attribute they come from
 ```
 
-The linter is offline: it reads the plan JSON, the modules' `docuconf.json` (located through `.terraform/modules/modules.json` in the root given by `-dir`, or a local module source), and optionally `terraform providers schema -json` for attribute types (`-schema`, not yet implemented). OpenTofu's plan JSON has the same shape. It exits 0 when there are no errors (warnings and notices allowed), 1 when there are, and 2 on bad usage. Messages never contain a secret value, nor the value of anything the plan marks sensitive.
+The linter is offline: it reads the plan JSON, the modules' `docuconf.json` (located through `.terraform/modules/modules.json` in the root given by `-dir`, or a local module source), and optionally `terraform providers schema -json` for attribute types (`-schema`). OpenTofu's plan JSON has the same shape. It exits 0 when there are no errors (warnings and notices allowed), 1 when there are, and 2 on bad usage. Messages never contain a secret value, nor the value of anything the plan marks sensitive.
 
 ### 7.1 Reconstructing bindings
 
@@ -518,7 +520,7 @@ Each rule has a code. Errors fail the lint; warnings and notices do not. Codes s
 | `unbound_container` | error | A workload runs the contract's image (by digest, or by the repository in `docuconf.json`) but its env does not come from the module. With several containers, only the app container is checked; the others are ignored. |
 | `secret_as_value` | error | A secret input reaches a plain env value: a literal, or an attribute that is sensitive or comes from a resource listed as secret-bearing (`random_password`, `aws_db_instance.password`, `tls_private_key`, `aws_iam_access_key.secret`, and others the linter knows). The module's types prevent this for its own arguments; the rule catches it when someone writes the value into the workload directly. |
 | `invalid_value` | error | A known value breaks the input's constraint, checked by the `docuconf vet` engine on the reconstructed documents, with vet's message. This covers what HCL cannot (a `json` value's schema, a config file's schema) and what the module never saw (a value written into the container by hand). |
-| `origin_type_mismatch` | warning | An unknown value's origin has a type that cannot satisfy the input, from the provider schema (`-schema`): a `bool` attribute into a `url` input, a `list` into a `string`. A `string` attribute into an `int` input is a warning too, since it may hold a number; the apply-time precondition decides. |
+| `origin_type_mismatch` | warning | An unknown value's origin has a type that cannot satisfy the input, from the provider schema (`-schema`): a `bool` attribute into a `url` input, a `number` into a `duration`, a `bool` into an `enum` without `true` and `false`, a `list` into a `string`. A `string` attribute into an `int`, `float` or `bool` input is a warning too, since it may hold one; the apply-time precondition decides. The origin is the one attribute the argument refers to, in a resource or data source of the module's scope (resources' own attributes, nested blocks and nested attributes included); an argument that refers to several, such as an interpolation of two, is not typed, nor is a Kubernetes object's `metadata[…].name`, which a `config_map` or `secret` source names, since the plan does not say which source the argument uses. |
 | `unsupported_source` | error | An input is set with a source the target cannot express (section 5), or a file input is bound on a target that cannot mount it. |
 | `env_from_unchecked` | error | A bound container uses `env_from` (a whole ConfigMap or Secret as env). Its keys are unknown before apply, so it hides typos and missing inputs. Set `docuconf_options.allow_env_from = true` to downgrade it to a warning. |
 | `mount_mismatch` | error | A file input's mount is missing, at a different path, uses `sub_path`, or is writable ([SPEC.md section 4.6](SPEC.md#46-file-inputs)). |
@@ -537,7 +539,7 @@ Each rule has a code. Errors fail the lint; warnings and notices do not. Codes s
 
 What the linter cannot know, it says it cannot know: it never passes an input silently because a value was unknown.
 
-Not yet implemented: `-schema` and `origin_type_mismatch`; and `unsupported_source`, which the targets' argument types already prevent.
+Not yet implemented: `unsupported_source`, which the targets' argument types already prevent.
 
 ### 7.3 Policy
 

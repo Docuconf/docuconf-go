@@ -25,10 +25,10 @@ import (
 // against the contracts of the docuconf modules or components it uses
 // (spec/IAC.md sections 6.3 and 7).
 //
-//	docuconf lint terraform plan.json [-dir .] [-policy prod.cue] [-contract contract.cue] [-explain] [-format text|json|sarif]
+//	docuconf lint terraform plan.json [-dir .] [-policy prod.cue] [-contract contract.cue] [-schema schema.json] [-explain] [-format text|json|sarif]
 //	docuconf lint pulumi preview.json [-dir .] [-policy prod.cue] [-contract contract.cue] [-unmanaged-env A,B] [-allow-env-from] [-explain] [-format text|json|sarif]
 func runLint(args []string, stdout, stderr io.Writer) error {
-	usage := "usage: docuconf lint terraform <plan.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-explain] [-format text|json|sarif]\n" +
+	usage := "usage: docuconf lint terraform <plan.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-schema schema.json] [-explain] [-format text|json|sarif]\n" +
 		"       docuconf lint pulumi <preview.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-unmanaged-env NAME,...] [-allow-env-from] [-explain] [-format text|json|sarif]\n"
 	if len(args) == 0 || (args[0] != "terraform" && args[0] != "tofu" && args[0] != "pulumi") {
 		fmt.Fprint(stderr, usage)
@@ -46,8 +46,11 @@ func runLint(args []string, stdout, stderr io.Writer) error {
 	contractFile := fs.String("contract", "", "the contract the modules or components should have been generated from")
 	explain := fs.Bool("explain", false, "print how each input is bound")
 	format := fs.String("format", "text", "text, json or sarif")
-	var unmanaged *string
+	var unmanaged, schemaFile *string
 	var allowEnvFrom *bool
+	if !isPulumi {
+		schemaFile = fs.String("schema", "", "terraform providers schema -json, to check the type of an unknown value's origin")
+	}
 	if isPulumi {
 		unmanaged = fs.String("unmanaged-env", "", "env names the platform sets for itself, comma-separated (a Terraform module's docuconf_options.unmanaged_env)")
 		allowEnvFrom = fs.Bool("allow-env-from", false, "report envFrom as a warning, not an error (docuconf_options.allow_env_from)")
@@ -94,6 +97,11 @@ func runLint(args []string, stdout, stderr io.Writer) error {
 	} else {
 		if plan, err = lint.Read(plans[0], *dir); err != nil {
 			return err
+		}
+		if *schemaFile != "" {
+			if plan.Schema, err = lint.ReadSchema(*schemaFile); err != nil {
+				return err
+			}
 		}
 		if len(plan.Modules) == 0 {
 			return fmt.Errorf("%s uses no docuconf module; run docuconf lint where terraform init ran, or give -dir", plans[0])
