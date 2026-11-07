@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -85,9 +86,15 @@ func runPush(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	src, err := sdk.ContractCUE(doc, "")
+	src, err := pushSource(p, *contract, doc)
 	if err != nil {
 		return err
+	}
+	if src == nil {
+		fmt.Fprintf(stderr, "docuconf push: warning: %s does not read back as itself, so the canonical form is pushed; modules generated from the image get another contract digest than ones generated from the file\n", *contract)
+		if src, err = sdk.ContractCUE(doc, ""); err != nil {
+			return err
+		}
 	}
 	ref, err := oci.ParseRef(fs.Arg(0))
 	if err != nil {
@@ -102,6 +109,26 @@ func runPush(args []string, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stderr, "docuconf push: attached the %s contract to %s as %s\n", c.Name, img, desc.Digest)
 	fmt.Fprintf(stdout, "%s%s\n", oci.Scheme, img)
 	return nil
+}
+
+// pushSource is the contract file's own source when it reads back, alone,
+// as the same contract JSON: then a module generated from the image has
+// the same contract digest as one generated from the file. nil when it
+// does not (a JSON contract may not).
+func pushSource(p *platform.Platform, file string, doc []byte) ([]byte, error) {
+	src, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	c, err := p.ParseContract("contract.cue", src)
+	if err != nil {
+		return nil, nil
+	}
+	back, err := p.ContractJSON(c)
+	if err != nil || !bytes.Equal(back, doc) {
+		return nil, nil
+	}
+	return src, nil
 }
 
 // runPull writes the contract attached to an image.

@@ -151,6 +151,15 @@ func TestOCIContractRecordsImage(t *testing.T) {
 	if meta["image"] != pinned {
 		t.Errorf("docuconf.json image = %v, want %s", meta["image"], pinned)
 	}
+	// The same contract, so the same digest: lint -contract and a policy
+	// pack from the file agree with a module from the image.
+	var fileMeta map[string]any
+	if err := json.Unmarshal([]byte(read(t, filepath.Join(fromFile, "docuconf.json"))), &fileMeta); err != nil {
+		t.Fatal(err)
+	}
+	if meta["contractDigest"] != fileMeta["contractDigest"] {
+		t.Errorf("contractDigest from the image %v, from the file %v", meta["contractDigest"], fileMeta["contractDigest"])
+	}
 	if outputs := read(t, filepath.Join(dir, "outputs.tf")); !strings.Contains(outputs, `image  = "`+pinned+`"`) {
 		t.Errorf("the contract output does not record the image:\n%s", outputs)
 	}
