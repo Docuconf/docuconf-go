@@ -147,7 +147,7 @@ class PodMetadata(TypedDict, total=False):
     labels: Dict[str, str]
 
 
-# ---- ecs and cloudrun ----
+# ---- ecs, cloudrun and containerapps ----
 
 TargetInjectedSpec = TypedDict("TargetInjectedSpec", {"provider": str, "ref": NotRequired[pulumi.Input[str]]})
 TargetInjected = TypedDict("TargetInjected", {"injected": TargetInjectedSpec})
@@ -180,6 +180,17 @@ class CloudRunSecret(TypedDict):
     by default. The revision's service account must be allowed to access it."""
 
     secret: CloudRunSecretSpec
+
+
+KeyVaultSecretSpec = TypedDict("KeyVaultSecretSpec", {"keyVaultSecretId": pulumi.Input[str], "identity": NotRequired[pulumi.Input[str]]})
+
+
+class KeyVaultSecret(TypedDict):
+    """A Key Vault secret, by ID with or without a version, and the identity that reads it: System
+    (the default) or a user-assigned identity's resource ID. The component adds it to the app's
+    secrets."""
+
+    secret: KeyVaultSecretSpec
 
 
 TargetInjectedFileSpec = TypedDict("TargetInjectedFileSpec", {"provider": str})

@@ -23,7 +23,7 @@ func runPulumi(args []string, stdout, stderr io.Writer) error {
 	contract := fs.String("contract", "contract.cue", "the service's contract")
 	lang := fs.String("lang", "typescript", "the component's language: typescript, go or python")
 	pkg := fs.String("package", "", "a Go component's package name (default: the contract's name, then config); a Python one's is the -out directory's name")
-	target := fs.String("target", "kubernetes", "the workload kind to render for: kubernetes, ecs or cloudrun")
+	target := fs.String("target", "kubernetes", "the workload kind to render for: kubernetes, ecs, cloudrun or containerapps")
 	out := fs.String("out", "", "the component directory to write into")
 	check := fs.Bool("check", false, "compare with the component in -out instead of writing; exit 1 if it is out of date (generator.version is ignored)")
 	if err := fs.Parse(args); err != nil {
@@ -67,7 +67,7 @@ func runPulumiPolicy(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("pulumi policy", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	contract := fs.String("contract", "contract.cue", "the service's contract")
-	target := fs.String("target", "kubernetes", "the workload kind to check: kubernetes, ecs or cloudrun")
+	target := fs.String("target", "kubernetes", "the workload kind to check: kubernetes, ecs, cloudrun or containerapps")
 	out := fs.String("out", "", "the policy pack directory to write into")
 	check := fs.Bool("check", false, "compare with the policy pack in -out instead of writing; exit 1 if it is out of date (generator.version is ignored)")
 	if err := fs.Parse(args); err != nil {

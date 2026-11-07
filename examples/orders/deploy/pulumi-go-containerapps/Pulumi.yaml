@@ -1,0 +1,21 @@
+name: orders-go-containerapps
+description: The orders service on Azure Container Apps, from a Pulumi program in Go, through the component docuconf pulumi -lang go -target containerapps generates from the contract.
+runtime: go
+config:
+  azure-native:location:
+    value: westeurope
+  orders-go-containerapps:resourceGroup:
+    default: orders
+  orders-go-containerapps:environmentId:
+    default: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/orders/providers/Microsoft.App/managedEnvironments/orders
+  orders-go-containerapps:image:
+    default: ordersacr.azurecr.io/orders-api:2.3.0
+  orders-go-containerapps:environment:
+    default: prod
+  orders-go-containerapps:workerCount:
+    default: 8
+  orders-go-containerapps:keyVault:
+    default: https://orders-kv.vault.azure.net
+  # The identity that reads the Key Vault secrets (the Key Vault Secrets User role).
+  orders-go-containerapps:identityId:
+    default: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/orders/providers/Microsoft.ManagedIdentity/userAssignedIdentities/orders-api

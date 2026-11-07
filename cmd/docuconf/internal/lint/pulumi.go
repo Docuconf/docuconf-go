@@ -92,6 +92,8 @@ func ReadPreview(previewFile, dir string, opt PulumiOptions) (*Plan, error) {
 			w = readTaskDefinition(map[string]any{"container_definitions": s}, map[string]any{"container_definitions": hidden(s)})
 		case ns.Type == "gcp:cloudrunv2/service:Service" || ns.Type == "gcp:cloudrunv2/job:Job":
 			w = pulumiCloudRun(ns.Type, ns.Inputs)
+		case ns.Type == "azure-native:app:ContainerApp":
+			w = pulumiContainerApp(ns.Inputs)
 		default:
 			continue
 		}
@@ -439,6 +441,85 @@ func tfValueFrom(vf map[string]any) map[string]any {
 		out[snake(k)] = []any{snakeKeys(v)}
 	}
 	return out
+}
+
+// pulumiContainerApp reads an azure-native container app: its template's
+// containers and volumes, with each env entry's secretRef resolved to the
+// app's configuration.secrets, keyed as the Terraform module's secrets are.
+func pulumiContainerApp(in map[string]any) *Workload {
+	w := &Workload{Type: "azure-native:app:ContainerApp", Target: "containerapps", AppSecrets: map[string]map[string]any{}}
+	unknownSecrets := map[string]bool{}
+	secretsList := at(in, "configuration", "secrets")
+	_, secretsHidden := secretsList.(string)
+	list, _ := secretsList.([]any)
+	for _, x := range list {
+		m, ok := x.(map[string]any)
+		if !ok {
+			continue
+		}
+		n, _ := m["name"].(string)
+		sec := map[string]any{"name": n}
+		if id, ok := m["keyVaultUrl"].(string); ok && !hidden(id) {
+			sec["key_vault_secret_id"] = id
+		}
+		if id, ok := m["identity"].(string); ok && !hidden(id) {
+			sec["identity"] = id
+		}
+		if hidden(m["keyVaultUrl"]) || hidden(m["identity"]) {
+			unknownSecrets[n] = true
+		}
+		w.AppSecrets[n] = sec
+	}
+	tmpl := at(in, "template")
+	if _, whole := at(tmpl, "containers").(string); whole {
+		w.Unknown = true
+		return w
+	}
+	containers, _ := at(tmpl, "containers").([]any)
+	for _, c := range containers {
+		ct := Container{}
+		ct.Name, _ = at(c, "name").(string)
+		ct.Image, _ = at(c, "image").(string)
+		envs, _ := at(c, "env").([]any)
+		for _, e := range envs {
+			env := Env{}
+			env.Name, _ = at(e, "name").(string)
+			val := at(e, "value")
+			if ref, ok := at(e, "secretRef").(string); ok && ref != "" {
+				sec, found := w.AppSecrets[ref]
+				if !found {
+					sec = map[string]any{"name": ref}
+				}
+				env.ValueFrom = map[string]any{"azure": sec}
+				// A Key Vault reference the preview does not know, or a
+				// secret list it hides, is checked during the update.
+				env.Unknown = secretsHidden || unknownSecrets[ref]
+			} else {
+				if s, ok := val.(string); ok && !hidden(s) {
+					env.Value = &s
+				}
+				env.Unknown = val == pulumiUnknown
+				env.Sensitive = containsSecret(val)
+			}
+			ct.Env = append(ct.Env, env)
+		}
+		mounts, _ := at(c, "volumeMounts").([]any)
+		for _, mo := range mounts {
+			mt := Mount{ReadOnly: true} // Container Apps mounts Secret volumes read-only
+			mt.Name, _ = at(mo, "volumeName").(string)
+			mt.MountPath, _ = at(mo, "mountPath").(string)
+			mt.SubPath, _ = at(mo, "subPath").(string)
+			ct.Mounts = append(ct.Mounts, mt)
+		}
+		w.Containers = append(w.Containers, ct)
+	}
+	vols, _ := at(tmpl, "volumes").([]any)
+	for _, v := range vols {
+		if m, ok := v.(map[string]any); ok {
+			w.Volumes = append(w.Volumes, m)
+		}
+	}
+	return w
 }
 
 // pulumiCloudRun reads a Cloud Run service's or job's revision template.

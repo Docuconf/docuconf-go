@@ -14,7 +14,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 
-export type Target = "kubernetes" | "ecs" | "cloudrun";
+export type Target = "kubernetes" | "ecs" | "cloudrun" | "containerapps";
 
 /** One problem, with the linter's code. Errors fail the deployment. */
 export interface Finding {
@@ -226,6 +226,30 @@ function readWorkload(r: StackResource): Workload | undefined {
     w.volumes = ((at(t.value, "volumes") as unknown[]) ?? []).map((v) => str(at(v, "name")) ?? "");
     return w;
   }
+  if (r.type === "azure-native:app:ContainerApp") {
+    const w: Workload = { ...base, target: "containerapps" };
+    const t = known(() => at(r.props, "template"));
+    if (!t.ok) return { ...w, unknown: true };
+    for (const c of (at(t.value, "containers") as unknown[]) ?? []) {
+      w.containers.push({
+        name: str(at(c, "name")) ?? "",
+        env: ((at(c, "env") as unknown[]) ?? []).map((e) => {
+          const ref = str(at(e, "secretRef")) !== undefined;
+          return { name: str(at(e, "name")) ?? "", value: ref ? undefined : str(at(e, "value")), ref };
+        }),
+        envFrom: false,
+        // Container Apps mounts Secret volumes read-only.
+        mounts: ((at(c, "volumeMounts") as unknown[]) ?? []).map((m) => ({
+          name: str(at(m, "volumeName")) ?? "",
+          mountPath: str(at(m, "mountPath")) ?? "",
+          subPath: str(at(m, "subPath")),
+          readOnly: true,
+        })),
+      });
+    }
+    w.volumes = ((at(t.value, "volumes") as unknown[]) ?? []).map((v) => str(at(v, "name")) ?? "");
+    return w;
+  }
   return undefined;
 }
 
@@ -290,7 +314,7 @@ function mountDir(f: { type: string; path: string }): string {
 function output(comp: Component, ts: string): string {
   if (comp.lang === "python") return ts.replace(/[A-Z]/g, (c) => "_" + c.toLowerCase());
   if (comp.lang !== "go") return ts;
-  return (ts[0]!.toUpperCase() + ts.slice(1)).replace("Cloudrun", "CloudRun");
+  return (ts[0]!.toUpperCase() + ts.slice(1)).replace("Cloudrun", "CloudRun").replace("Containerapp", "ContainerApp");
 }
 
 let emptyRoot: string | undefined;
@@ -339,8 +363,12 @@ function checkContainer(c: PackContract, comp: Component, w: Workload, ct: Conta
       }
     }
   }
-  const from =
-    w.target === "ecs" ? `${comp.name}.${output(comp, "ecsEnvironment")} and .${output(comp, "ecsSecrets")}` : w.target === "cloudrun" ? `${comp.name}.${output(comp, "cloudrunEnv")}` : `${comp.name}.${output(comp, "kubernetesEnv")}`;
+  const from = {
+    ecs: `${comp.name}.${output(comp, "ecsEnvironment")} and .${output(comp, "ecsSecrets")}`,
+    cloudrun: `${comp.name}.${output(comp, "cloudrunEnv")}`,
+    containerapps: `${comp.name}.${output(comp, "containerappEnv")}`,
+    kubernetes: `${comp.name}.${output(comp, "kubernetesEnv")}`,
+  }[w.target];
   for (const n of renderedNames(c, comp)) {
     if (!seen.has(n)) {
       const input = n.replace(/__0$/, "");
@@ -364,7 +392,8 @@ function checkContainer(c: PackContract, comp: Component, w: Workload, ct: Conta
     if (!v || e.ref || e.value === undefined || v[1].secret) continue;
     const a = comp.args[v[0]];
     if (a === UNKNOWN || sourceOf(a) === "injected") continue;
-    literal[n] = w.target === "kubernetes" ? e.value.split("$$").join("$") : e.value;
+    // The kubelet, and Container Apps on it, reduce $$ to $.
+    literal[n] = w.target === "kubernetes" || w.target === "containerapps" ? e.value.split("$$").join("$") : e.value;
   }
   for (const p of bootProblems(c, literal)) add("invalid_value", p.message);
   // A required input the container does not get, through the component or
@@ -383,7 +412,10 @@ function checkContainer(c: PackContract, comp: Component, w: Workload, ct: Conta
 function checkMounts(c: PackContract, comp: Component, w: Workload, ct: Container): Finding[] {
   const out: Finding[] = [];
   const vols = new Set(w.volumes);
-  const [volumes, mounts] = w.target === "cloudrun" ? ["cloudrunVolumes", "cloudrunVolumeMounts"] : ["kubernetesVolumes", "kubernetesVolumeMounts"];
+  const [volumes, mounts] = {
+    cloudrun: ["cloudrunVolumes", "cloudrunVolumeMounts"],
+    containerapps: ["containerappVolumes", "containerappVolumeMounts"],
+  }[w.target as string] ?? ["kubernetesVolumes", "kubernetesVolumeMounts"];
   const check = (input: string, vol: string, dir: string) => {
     const add = (m: string) => out.push({ code: "mount_mismatch", level: "error", message: `${input}: ${m}`, urn: w.urn });
     if (!vols.has(vol)) add(`the pod has no volume ${vol}; take its volumes from ${comp.name}.${output(comp, volumes)}`);

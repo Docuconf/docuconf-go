@@ -911,30 +911,34 @@ export function kubernetes(
   };
 }
 
-// ---- The ecs and cloudrun targets (spec/IAC.md 5.1, 5.2) ----
+// ---- The ecs, cloudrun and containerapps targets (spec/IAC.md 5.1-5.3) ----
 //
 // A variable is a literal, a reference the platform resolves when the
 // task or instance starts, or injected. ECS mounts no files; Cloud Run
-// mounts a file input from a Secret Manager secret, one file per secret.
-// Neither expands $(VAR), so values are not escaped.
+// mounts a file input from a Secret Manager secret, and Container Apps
+// from a Key Vault secret, one file per secret. ECS and Cloud Run do not
+// expand $(VAR); Container Apps runs on Kubernetes and does, so its values
+// are escaped as the kubernetes target's are.
 
-export type Target = "ecs" | "cloudrun";
+export type Target = "ecs" | "cloudrun" | "containerapps";
 
 const SM_ARN = /^arn:aws(-cn|-us-gov|-iso|-iso-b)?:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$/;
 const SSM_ARN = /^arn:aws(-cn|-us-gov|-iso|-iso-b)?:ssm:[a-z0-9-]+:[0-9]{12}:parameter\/[A-Za-z0-9/_.-]+$/;
 const BARE_REF = /^[A-Za-z0-9/_+=.@-]+$/;
 const GCP_SECRET = /^(projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/secrets\/)?[A-Za-z0-9_-]{1,255}$/;
 const GCP_VERSION = /^(latest|[1-9][0-9]*)$/;
+const KEY_VAULT_SECRET_ID = /^https:\/\/[0-9A-Za-z-]{3,24}\.vault\.[0-9a-z.-]+\/secrets\/[0-9A-Za-z-]{1,127}(\/[0-9A-Fa-f]{32})?\/?$/;
+const AZURE_IDENTITY = /^(System|\/subscriptions\/[^/]+\/resourceGroups\/[^/]+\/providers\/Microsoft\.ManagedIdentity\/userAssignedIdentities\/[^/]+)$/i;
 const TARGET_SOURCES = ["value", "secret", "injected"] as const;
 
-/** The sources a variable accepts on ecs and cloudrun. */
+/** The sources a variable accepts on ecs, cloudrun and containerapps. */
 export function targetVarSources(v: ContractVar): string[] {
   // One variable per key: no single secret carries it, but an injector can set the variables.
   if (isSecret(v) && v.encoding === "indexed") return ["injected"];
   return isSecret(v) ? ["secret", "injected"] : ["value", "injected"];
 }
 
-/** The file inputs a target can deliver: none on ecs; on cloudrun, all but tls directories. */
+/** The file inputs a target can deliver: none on ecs; on cloudrun and containerapps, all but tls directories. */
 export function targetFiles(c: Contract, target: Target): [string, ContractFile][] {
   if (target === "ecs") return [];
   return Object.entries(c.files ?? {}).filter(([, f]) => f.type !== "tls");
@@ -947,11 +951,36 @@ function ecsValueFrom(s: Obj): string {
   return `${s["valueFrom"]}:${sel.map((x) => (x === undefined || x === null ? "" : x)).join(":")}`;
 }
 
+const PLATFORM: Record<Target, string> = { ecs: "ECS", cloudrun: "Cloud Run", containerapps: "Container Apps" };
+
 function secretHint(target: Target, v: ContractVar, srcs: string[]): string {
-  const what = target === "ecs" ? "one ECS secret" : "one secret version";
+  const what = { ecs: "one ECS secret", cloudrun: "one secret version", containerapps: "one secret" }[target];
   if (isSecret(v) && !srcs.includes("secret")) return ` (an indexed key set is one variable per key, which ${what} cannot carry)`;
   if (isSecret(v)) return " (a secret is never a literal value)";
-  return target === "ecs" ? " (ECS has no ConfigMaps or Downward API)" : " (Cloud Run has no ConfigMaps or Downward API)";
+  return ` (${PLATFORM[target]} has no ConfigMaps or Downward API)`;
+}
+
+/**
+ * The name of the app secret the containerapps component adds for an
+ * input: lower case letters, digits and -, as Container Apps requires
+ * (dc-database-url for DATABASE_URL, dc-file-NAME for a file input).
+ */
+export function appSecretName(input: string, file: boolean): string {
+  const slug = input.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return (file ? "dc-file-" : "dc-") + slug;
+}
+
+function keyVaultProblems(n: string, s: Obj): string[] {
+  const out: string[] = [];
+  const id = s["keyVaultSecretId"];
+  if (!hasOutput(id) && !KEY_VAULT_SECRET_ID.test(String(id ?? ""))) {
+    out.push(`${n}: secret.keyVaultSecretId ${JSON.stringify(id)} is not a Key Vault secret ID, such as https://VAULT.vault.azure.net/secrets/NAME`);
+  }
+  const identity = s["identity"] ?? "System";
+  if (!hasOutput(identity) && !AZURE_IDENTITY.test(String(identity))) {
+    out.push(`${n}: secret.identity ${JSON.stringify(identity)} is not System or a user-assigned identity's resource ID`);
+  }
+  return out;
 }
 
 function gcpSecretProblems(n: string, s: Obj): string[] {
@@ -1011,6 +1040,8 @@ export function targetProblems(c: Contract, target: Target, args: Args): { probl
           }
         }
         if (s["versionStage"] !== undefined && s["versionId"] !== undefined) problems.push(`${n}: set secret.versionStage or secret.versionId, not both`);
+      } else if (target === "containerapps") {
+        problems.push(...keyVaultProblems(n, s));
       } else {
         problems.push(...gcpSecretProblems(n, s));
       }
@@ -1030,14 +1061,14 @@ export function targetProblems(c: Contract, target: Target, args: Args): { probl
     }
     const kind = sourceOf(a, ["secret", "injected"]);
     if (kind === undefined) {
-      problems.push(`${n}: set exactly one of secret or injected (Cloud Run mounts files from Secret Manager)`);
+      problems.push(`${n}: set exactly one of secret or injected (${target === "containerapps" ? "Container Apps mounts files from Key Vault secrets" : "Cloud Run mounts files from Secret Manager"})`);
       continue;
     }
     const s = (a as Obj)[kind];
     if (kind === "injected" && isObj(s) && !hasOutput(s["provider"]) && !PROVIDER.test(String(s["provider"] ?? ""))) {
       problems.push(`${n}: injected.provider must name the injector as a lowercase label, such as bank-vaults`);
     }
-    if (kind === "secret" && isObj(s)) problems.push(...gcpSecretProblems(n, s));
+    if (kind === "secret" && isObj(s)) problems.push(...(target === "containerapps" ? keyVaultProblems(n, s) : gcpSecretProblems(n, s)));
     if (f.deprecated) warnings.push(deprecatedWarning(n, f.deprecated));
   }
   return { problems, warnings };
@@ -1068,6 +1099,29 @@ export interface CloudRunVolumeMount {
   name: string;
   mountPath: string;
 }
+/** A Container Apps container's env entry: a value, or the name of one of the app's secrets (azure-native app.EnvironmentVar). */
+export interface ContainerAppEnv {
+  name: string;
+  value?: string;
+  secretRef?: string;
+}
+/** One of the app's secrets, a Key Vault reference read by a managed identity (azure-native app.Secret). */
+export interface ContainerAppSecret {
+  name: string;
+  keyVaultUrl: string;
+  identity: string;
+}
+/** A Secret volume holding one file input's secret (azure-native app.Volume). */
+export interface ContainerAppVolume {
+  name: string;
+  storageType: "Secret";
+  secrets: { secretRef: string; path: string }[];
+}
+/** A container's volume mount (azure-native app.VolumeMount). */
+export interface ContainerAppVolumeMount {
+  volumeName: string;
+  mountPath: string;
+}
 
 export interface TargetRendered {
   ecsEnvironment: EcsEnvironmentEntry[];
@@ -1075,11 +1129,25 @@ export interface TargetRendered {
   cloudrunEnv: CloudRunEnv[];
   cloudrunVolumes: CloudRunVolume[];
   cloudrunVolumeMounts: CloudRunVolumeMount[];
+  containerappEnv: ContainerAppEnv[];
+  containerappSecrets: ContainerAppSecret[];
+  containerappVolumes: ContainerAppVolume[];
+  containerappVolumeMounts: ContainerAppVolumeMount[];
 }
 
-/** The ecs and cloudrun outputs, for arguments that passed the checks. */
+/** The ecs, cloudrun and containerapps outputs, for arguments that passed the checks. */
 export function renderTarget(c: Contract, target: Target, args: Args): TargetRendered {
-  const out: TargetRendered = { ecsEnvironment: [], ecsSecrets: [], cloudrunEnv: [], cloudrunVolumes: [], cloudrunVolumeMounts: [] };
+  const out: TargetRendered = {
+    ecsEnvironment: [],
+    ecsSecrets: [],
+    cloudrunEnv: [],
+    cloudrunVolumes: [],
+    cloudrunVolumeMounts: [],
+    containerappEnv: [],
+    containerappSecrets: [],
+    containerappVolumes: [],
+    containerappVolumeMounts: [],
+  };
   for (const [n, v] of Object.entries(c.vars)) {
     const a = args[n];
     if (!isObj(a)) continue;
@@ -1090,24 +1158,43 @@ export function renderTarget(c: Contract, target: Target, args: Args): TargetRen
       if (typeof ref === "string" && ref !== "") {
         out.ecsEnvironment.push({ name: n, value: ref });
         out.cloudrunEnv.push({ name: n, value: ref });
+        out.containerappEnv.push({ name: n, value: esc(ref) });
       }
     } else if (kind === "secret") {
       const m = s as Obj;
       out.ecsSecrets.push({ name: n, valueFrom: target === "ecs" ? ecsValueFrom(m) : "" });
-      out.cloudrunEnv.push({ name: n, valueSource: { secretKeyRef: { secret: m["secret"] as string, version: (m["version"] as string | undefined) ?? "latest" } } });
+      if (target === "cloudrun") {
+        out.cloudrunEnv.push({ name: n, valueSource: { secretKeyRef: { secret: m["secret"] as string, version: (m["version"] as string | undefined) ?? "latest" } } });
+      }
+      if (target === "containerapps") {
+        const name = appSecretName(n, false);
+        out.containerappSecrets.push({ name, keyVaultUrl: m["keyVaultSecretId"] as string, identity: (m["identity"] as string | undefined) ?? "System" });
+        out.containerappEnv.push({ name: n, secretRef: name });
+      }
     } else {
       for (const e of wireEntries(n, v, s)) {
         out.ecsEnvironment.push(e);
         out.cloudrunEnv.push(e);
+        out.containerappEnv.push({ name: e.name, value: esc(e.value) });
       }
     }
   }
   for (const [n, f] of targetFiles(c, target)) {
     const a = args[n];
     if (!isObj(a)) continue;
-    if (f.pathEnv) out.cloudrunEnv.push({ name: f.pathEnv, value: f.path });
+    if (f.pathEnv) {
+      out.cloudrunEnv.push({ name: f.pathEnv, value: f.path });
+      out.containerappEnv.push({ name: f.pathEnv, value: esc(f.path) });
+    }
     const s = a["secret"];
     if (!isObj(s)) continue;
+    if (target === "containerapps") {
+      const name = appSecretName(n, true);
+      out.containerappSecrets.push({ name, keyVaultUrl: s["keyVaultSecretId"] as string, identity: (s["identity"] as string | undefined) ?? "System" });
+      out.containerappVolumes.push({ name: `dc-${n}`, storageType: "Secret", secrets: [{ secretRef: name, path: posix.basename(f.path) }] });
+      out.containerappVolumeMounts.push({ volumeName: `dc-${n}`, mountPath: mountDir(f) });
+      continue;
+    }
     out.cloudrunVolumes.push({
       name: `dc-${n}`,
       secret: { secret: s["secret"] as string, defaultMode: f.secret ? 0o400 : 0o444, items: [{ version: (s["version"] as string | undefined) ?? "latest", path: posix.basename(f.path) }] },
@@ -1123,7 +1210,7 @@ export interface TargetOutputs {
   checked: pulumi.Output<boolean>;
 }
 
-/** Checks and renders a component's arguments on ecs or cloudrun, as kubernetes does for its target. */
+/** Checks and renders a component's arguments on ecs, cloudrun or containerapps, as kubernetes does for its target. */
 export function forTarget(self: pulumi.ComponentResource, c: Contract, target: Target, args: Args): TargetOutputs {
   const component = `${c.metadata.name} config`;
   const structure = targetProblems(c, target, args);

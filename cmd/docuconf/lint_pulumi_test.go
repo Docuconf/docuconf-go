@@ -414,4 +414,59 @@ func TestLintPulumiTargets(t *testing.T) {
 			t.Errorf("typo and mount: got:\n%s", describeFindings(fs))
 		}
 	})
+
+	t.Run("containerapps", func(t *testing.T) {
+		const kv = "https://orders-kv.vault.azure.net/secrets/"
+		args := map[string]any{
+			"ALLOWED_ORIGINS": map[string]any{"value": []any{"https://shop.example.com/$(x)"}},
+			"DATABASE_URL":    map[string]any{"secret": map[string]any{"keyVaultSecretId": kv + "orders-db"}},
+			"LOG_LEVEL":       map[string]any{"value": "warn"},
+			"discounts":       map[string]any{"secret": map[string]any{"keyVaultSecretId": kv + "orders-discounts"}},
+		}
+		app := func(env, mounts, secrets any) []step {
+			return []step{{"azure-native:app:ContainerApp", "orders", map[string]any{
+				"configuration": map[string]any{"secrets": secrets},
+				"template": map[string]any{
+					"containers": []any{map[string]any{"name": "orders-api", "image": "ordersacr.azurecr.io/orders-api:2.3.0", "env": env, "volumeMounts": mounts}},
+					"volumes":    []any{map[string]any{"name": "dc-discounts", "storageType": "Secret", "secrets": []any{map[string]any{"secretRef": "dc-file-discounts", "path": "discounts.yaml"}}}},
+				},
+			}}}
+		}
+		secrets := []any{
+			map[string]any{"name": "dc-database-url", "keyVaultUrl": kv + "orders-db", "identity": "System"},
+			map[string]any{"name": "dc-file-discounts", "keyVaultUrl": kv + "orders-discounts", "identity": "System"},
+		}
+		env := []any{
+			map[string]any{"name": "ALLOWED_ORIGINS", "value": "https://shop.example.com/$$(x)"},
+			map[string]any{"name": "DATABASE_URL", "secretRef": "dc-database-url"},
+			map[string]any{"name": "LOG_LEVEL", "value": "warn"},
+		}
+		mounts := []any{map[string]any{"volumeName": "dc-discounts", "mountPath": "/etc/orders/discounts"}}
+		for _, lang := range []string{"typescript", "go"} {
+			dir := pulumiProgram(t, lang, "containerapps")
+			fs, _ := lintPreview(t, dir, args, app(env, mounts, secrets))
+			for _, f := range fs {
+				if f.Level != lint.Notice || f.Code == "deferred" {
+					t.Errorf("%s clean: unexpected finding: %s", lang, textLine(f))
+				}
+			}
+			out := map[string]string{"typescript": "orders.containerappVolumeMounts", "go": "orders.ContainerAppVolumeMounts"}[lang]
+			fs, _ = lintPreview(t, dir, args, app(append(env, map[string]any{"name": "LOG_LEVL", "value": "x"}), []any{}, secrets))
+			if !hasFinding(fs, "undeclared_input", "LOG_LEVL: is not declared in the contract, and the component did not render it; did you mean LOG_LEVEL?") ||
+				!hasFinding(fs, "mount_mismatch", "the container does not mount volume dc-discounts; take its mounts from "+out) {
+				t.Errorf("%s typo and mount: got:\n%s", lang, describeFindings(fs))
+			}
+		}
+		dir := pulumiProgram(t, "typescript", "containerapps")
+		policy := filepath.Join(t.TempDir(), "prod.cue")
+		writeFile(t, policy, "secretReferences: [string]: azureKeyVault: vault: \"prod-kv.vault.azure.net\"\n")
+		fs, _ := lintPreview(t, dir, args, app(env, mounts, secrets), "-policy", policy)
+		if !hasFinding(fs, "policy_mismatch", `DATABASE_URL: azureKeyVault.vault "orders-kv.vault.azure.net" is not allowed by policy`) {
+			t.Errorf("policy: got:\n%s", describeFindings(fs))
+		}
+		fs, _ = lintPreview(t, dir, args, app(env, mounts, unknown))
+		if !hasFinding(fs, "deferred", "DATABASE_URL: is unknown at preview") {
+			t.Errorf("hidden secrets: got:\n%s", describeFindings(fs))
+		}
+	})
 }

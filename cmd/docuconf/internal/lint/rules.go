@@ -338,7 +338,13 @@ func checkContainer(m *Module, w *Workload, ct Container, where string) ([]Findi
 	case "kubernetes", "cloudrun":
 		out = append(out, checkMounts(m, w, ct)...)
 	case "containerapps":
-		out = append(out, checkContainerAppMounts(m, w, ct)...)
+		if m.Pulumi {
+			// A component mounts each file input's own Secret volume at its
+			// directory, as on kubernetes; a module uses sub_path.
+			out = append(out, checkMounts(m, w, ct)...)
+		} else {
+			out = append(out, checkContainerAppMounts(m, w, ct)...)
+		}
 	}
 	for i := range out {
 		out[i].Where = where
@@ -387,8 +393,11 @@ func checkMounts(m *Module, w *Workload, ct Container) []Finding {
 		}
 	}
 	volumes, mounts := m.out("kubernetes_volumes"), m.out("kubernetes_volume_mounts")
-	if w.Target == "cloudrun" {
+	switch w.Target {
+	case "cloudrun":
 		volumes, mounts = m.out("cloudrun_volumes"), m.out("cloudrun_volume_mounts")
+	case "containerapps":
+		volumes, mounts = m.out("containerapp_volumes"), m.out("containerapp_volume_mounts")
 	}
 	check := func(input, vol, dir string) {
 		add := func(msg string) {

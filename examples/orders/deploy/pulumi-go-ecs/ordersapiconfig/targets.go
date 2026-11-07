@@ -2,12 +2,14 @@
 
 package ordersapiconfig
 
-// The ecs and cloudrun targets (spec/IAC.md 5.1, 5.2): a variable is a
-// literal, a reference the platform resolves when the task or instance
-// starts, or injected. ECS mounts no files; Cloud Run mounts a file input
-// from a Secret Manager secret, one file per secret. Neither expands
-// $(VAR), so values are not escaped. ecs.go or cloudrun.go has the
-// target's own sources and output types.
+// The ecs, cloudrun and containerapps targets (spec/IAC.md 5.1-5.3): a
+// variable is a literal, a reference the platform resolves when the task
+// or instance starts, or injected. ECS mounts no files; Cloud Run mounts a
+// file input from a Secret Manager secret, and Container Apps from a Key
+// Vault secret, one file per secret. ECS and Cloud Run do not expand
+// $(VAR); Container Apps runs on Kubernetes and does, so its values are
+// escaped. ecs.go, cloudrun.go or containerapps.go has the target's own
+// sources and output types.
 
 import (
 	"fmt"
@@ -24,9 +26,27 @@ var (
 	bareRefRe    = regexp.MustCompile(`^[A-Za-z0-9/_+=.@-]+$`)
 	gcpSecretRe  = regexp.MustCompile(`^(projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/)?[A-Za-z0-9_-]{1,255}$`)
 	gcpVersionRe = regexp.MustCompile(`^(latest|[1-9][0-9]*)$`)
+	kvSecretRe   = regexp.MustCompile(`^https://[0-9A-Za-z-]{3,24}\.vault\.[0-9a-z.-]+/secrets/[0-9A-Za-z-]{1,127}(/[0-9A-Fa-f]{32})?/?$`)
+	identityRe   = regexp.MustCompile(`^(System|(?i)/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\.ManagedIdentity/userAssignedIdentities/[^/]+)$`)
+	nonSecretRe  = regexp.MustCompile(`[^a-z0-9]+`)
 )
 
-// targetVarSources are the sources a variable accepts on ecs and cloudrun.
+// platform names the target's platform in messages.
+var platform = map[string]string{"ecs": "ECS", "cloudrun": "Cloud Run", "containerapps": "Container Apps"}[target]
+
+// appSecretName is the name of the app secret the containerapps component
+// adds for an input: lower case letters, digits and -, as Container Apps
+// requires (dc-database-url for DATABASE_URL, dc-file-NAME for a file).
+func appSecretName(input string, file bool) string {
+	slug := strings.Trim(nonSecretRe.ReplaceAllString(strings.ToLower(input), "-"), "-")
+	if file {
+		return "dc-file-" + slug
+	}
+	return "dc-" + slug
+}
+
+// targetVarSources are the sources a variable accepts on ecs, cloudrun and
+// containerapps.
 func targetVarSources(v contractVar) []string {
 	// One variable per key: no single secret carries it, but an injector
 	// can set the variables.
@@ -40,7 +60,7 @@ func targetVarSources(v contractVar) []string {
 }
 
 // targetFiles are the file inputs the target delivers: none on ecs; on
-// cloudrun, all but tls directories.
+// cloudrun and containerapps, all but tls directories.
 func targetFiles(c *contract) []string {
 	if target == "ecs" {
 		return nil
@@ -65,19 +85,33 @@ func ecsValueFrom(s map[string]any) string {
 }
 
 func secretHint(v contractVar, srcs []string) string {
-	what := "one secret version"
-	if target == "ecs" {
-		what = "one ECS secret"
-	}
+	what := map[string]string{"ecs": "one ECS secret", "cloudrun": "one secret version", "containerapps": "one secret"}[target]
 	switch {
 	case isSecret(v) && !has(srcs, "secret"):
 		return " (an indexed key set is one variable per key, which " + what + " cannot carry)"
 	case isSecret(v):
 		return " (a secret is never a literal value)"
-	case target == "ecs":
-		return " (ECS has no ConfigMaps or Downward API)"
 	}
-	return " (Cloud Run has no ConfigMaps or Downward API)"
+	return " (" + platform + " has no ConfigMaps or Downward API)"
+}
+
+func keyVaultProblems(n string, s map[string]any) []string {
+	var out []string
+	if x, ok := plain(s["keyVaultSecretId"]); ok && !kvSecretRe.MatchString(scalar(x)) {
+		out = append(out, fmt.Sprintf("%s: secret.keyVaultSecretId %s is not a Key Vault secret ID, such as https://VAULT.vault.azure.net/secrets/NAME", n, marshal(x)))
+	}
+	if x, ok := plain(s["identity"]); ok && x != nil && !identityRe.MatchString(scalar(x)) {
+		out = append(out, fmt.Sprintf("%s: secret.identity %s is not System or a user-assigned identity's resource ID", n, marshal(x)))
+	}
+	return out
+}
+
+// secretProblems checks a secret source in the target's own form.
+func secretProblems(n string, s map[string]any) []string {
+	if target == "containerapps" {
+		return keyVaultProblems(n, s)
+	}
+	return gcpSecretProblems(n, s)
 }
 
 func gcpSecretProblems(n string, s map[string]any) []string {
@@ -151,7 +185,7 @@ func targetProblems(c *contract, args inputs) ([]string, []string) {
 					problems = append(problems, n+": set secret.versionStage or secret.versionId, not both")
 				}
 			} else {
-				problems = append(problems, gcpSecretProblems(n, m)...)
+				problems = append(problems, secretProblems(n, m)...)
 			}
 		case "value":
 			if x, known := plain(s.fields); known {
@@ -180,9 +214,13 @@ func targetProblems(c *contract, args inputs) ([]string, []string) {
 				problems = append(problems, n+": injected.provider must name the injector as a lowercase label, such as bank-vaults")
 			}
 		case "secret":
-			problems = append(problems, gcpSecretProblems(n, m)...)
+			problems = append(problems, secretProblems(n, m)...)
 		default:
-			problems = append(problems, n+": set exactly one of secret or injected (Cloud Run mounts files from Secret Manager)")
+			from := "Cloud Run mounts files from Secret Manager"
+			if target == "containerapps" {
+				from = "Container Apps mounts files from Key Vault secrets"
+			}
+			problems = append(problems, n+": set exactly one of secret or injected ("+from+")")
 		}
 		if f.Deprecated != nil {
 			warnings = append(warnings, deprecatedWarning(n, f.Deprecated))
@@ -195,10 +233,13 @@ func targetProblems(c *contract, args inputs) ([]string, []string) {
 type targetRendered struct {
 	ecsEnvironment, ecsSecrets []map[string]string
 	env, volumes, volumeMounts []map[string]any
+	appSecrets                 []map[string]any // containerapps
 }
 
-// renderTarget is the ecs and cloudrun outputs, for arguments that passed
-// the checks.
+// renderTarget is the ecs, cloudrun and containerapps outputs, for
+// arguments that passed the checks. env, volumes and volumeMounts are in
+// the target's shapes: Cloud Run's, or azure-native's on containerapps,
+// where values are escaped.
 func renderTarget(c *contract, args map[string]resolved) targetRendered {
 	var r targetRendered
 	for _, n := range c.varOrder {
@@ -212,10 +253,16 @@ func renderTarget(c *contract, args map[string]resolved) targetRendered {
 		case "injected":
 			if ref := str(m, "ref"); ref != "" {
 				r.ecsEnvironment = append(r.ecsEnvironment, map[string]string{"name": n, "value": ref})
-				r.env = append(r.env, map[string]any{"name": n, "value": ref})
+				r.env = append(r.env, map[string]any{"name": n, "value": envValue(ref)})
 			}
 		case "secret":
 			r.ecsSecrets = append(r.ecsSecrets, map[string]string{"name": n, "valueFrom": ecsValueFrom(m)})
+			if target == "containerapps" {
+				name := appSecretName(n, false)
+				r.appSecrets = append(r.appSecrets, appSecret(name, m))
+				r.env = append(r.env, map[string]any{"name": n, "secretRef": name})
+				continue
+			}
 			version := str(m, "version")
 			if version == "" {
 				version = "latest"
@@ -224,7 +271,7 @@ func renderTarget(c *contract, args map[string]resolved) targetRendered {
 		default:
 			for _, e := range wireEntries(n, v, a.fields) {
 				r.ecsEnvironment = append(r.ecsEnvironment, map[string]string{"name": e.name, "value": e.value})
-				r.env = append(r.env, map[string]any{"name": e.name, "value": e.value})
+				r.env = append(r.env, map[string]any{"name": e.name, "value": envValue(e.value)})
 			}
 		}
 	}
@@ -235,12 +282,19 @@ func renderTarget(c *contract, args map[string]resolved) targetRendered {
 		}
 		f := c.files[n]
 		if f.PathEnv != "" {
-			r.env = append(r.env, map[string]any{"name": f.PathEnv, "value": f.Path})
+			r.env = append(r.env, map[string]any{"name": f.PathEnv, "value": envValue(f.Path)})
 		}
 		if a.kind != "secret" {
 			continue
 		}
 		m := obj(a.fields)
+		if target == "containerapps" {
+			name := appSecretName(n, true)
+			r.appSecrets = append(r.appSecrets, appSecret(name, m))
+			r.volumes = append(r.volumes, map[string]any{"name": "dc-" + n, "storageType": "Secret", "secrets": []any{map[string]any{"secretRef": name, "path": path.Base(f.Path)}}})
+			r.volumeMounts = append(r.volumeMounts, map[string]any{"volumeName": "dc-" + n, "mountPath": mountDir(f)})
+			continue
+		}
 		mode := 0o444
 		if f.Secret {
 			mode = 0o400
@@ -257,8 +311,28 @@ func renderTarget(c *contract, args map[string]resolved) targetRendered {
 	return r
 }
 
-// buildTarget checks and renders a component's arguments on ecs or
-// cloudrun, as build does on kubernetes. The output is a targetRendered.
+// envValue is an env value as the target takes it: Container Apps expands
+// $(VAR) as the kubelet does, so $ is doubled there.
+func envValue(s string) string {
+	if target == "containerapps" {
+		return esc(s)
+	}
+	return s
+}
+
+// appSecret is one of a container app's secrets: a Key Vault reference
+// and the identity that reads it.
+func appSecret(name string, m map[string]any) map[string]any {
+	identity := str(m, "identity")
+	if identity == "" {
+		identity = "System"
+	}
+	return map[string]any{"name": name, "keyVaultUrl": str(m, "keyVaultSecretId"), "identity": identity}
+}
+
+// buildTarget checks and renders a component's arguments on ecs, cloudrun
+// or containerapps, as build does on kubernetes. The output is a
+// targetRendered.
 func buildTarget(ctx *pulumi.Context, self pulumi.Resource, args inputs) (pulumi.AnyOutput, map[string]Binding, error) {
 	c, err := theContract()
 	if err != nil {

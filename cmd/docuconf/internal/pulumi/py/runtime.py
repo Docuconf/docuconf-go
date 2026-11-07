@@ -787,23 +787,28 @@ def kubernetes(self: pulumi.Resource, c: Obj, args: Mapping[str, Any], overlay_v
     }
 
 
-# ---- The ecs and cloudrun targets (spec/IAC.md 5.1, 5.2) ----
+# ---- The ecs, cloudrun and containerapps targets (spec/IAC.md 5.1-5.3) ----
 #
 # A variable is a literal, a reference the platform resolves when the task
 # or instance starts, or injected. ECS mounts no files; Cloud Run mounts a
-# file input from a Secret Manager secret, one file per secret. Neither
-# expands $(VAR), so values are not escaped.
+# file input from a Secret Manager secret, and Container Apps from a Key
+# Vault secret, one file per secret. ECS and Cloud Run do not expand
+# $(VAR); Container Apps runs on Kubernetes and does, so its values are
+# escaped as the kubernetes target's are.
 
 SM_ARN = re.compile(r"^arn:aws(-cn|-us-gov|-iso|-iso-b)?:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$")
 SSM_ARN = re.compile(r"^arn:aws(-cn|-us-gov|-iso|-iso-b)?:ssm:[a-z0-9-]+:[0-9]{12}:parameter/[A-Za-z0-9/_.-]+$")
 BARE_REF = re.compile(r"^[A-Za-z0-9/_+=.@-]+$")
 GCP_SECRET = re.compile(r"^(projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/)?[A-Za-z0-9_-]{1,255}$")
 GCP_VERSION = re.compile(r"^(latest|[1-9][0-9]*)$")
+KEY_VAULT_SECRET_ID = re.compile(r"^https://[0-9A-Za-z-]{3,24}\.vault\.[0-9a-z.-]+/secrets/[0-9A-Za-z-]{1,127}(/[0-9A-Fa-f]{32})?/?$")
+AZURE_IDENTITY = re.compile(r"^(System|(?i:/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\.ManagedIdentity/userAssignedIdentities/[^/]+))$")
+PLATFORM = {"ecs": "ECS", "cloudrun": "Cloud Run", "containerapps": "Container Apps"}
 TARGET_SOURCES = ("value", "secret", "injected")
 
 
 def target_var_sources(v: Obj) -> list[str]:
-    """The sources a variable accepts on ecs and cloudrun."""
+    """The sources a variable accepts on ecs, cloudrun and containerapps."""
     # One variable per key: no single secret carries it, but an injector can set the variables.
     if is_secret(v) and v.get("encoding") == "indexed":
         return ["injected"]
@@ -811,7 +816,7 @@ def target_var_sources(v: Obj) -> list[str]:
 
 
 def target_files(c: Obj, target: str) -> list[tuple[str, Obj]]:
-    """The file inputs a target can deliver: none on ecs; on cloudrun, all but tls directories."""
+    """The file inputs a target can deliver: none on ecs; on cloudrun and containerapps, all but tls directories."""
     if target == "ecs":
         return []
     return [(n, f) for n, f in (c.get("files") or {}).items() if f["type"] != "tls"]
@@ -826,12 +831,35 @@ def ecs_value_from(s: Obj) -> str:
 
 
 def _secret_hint(target: str, v: Obj, srcs: list[str]) -> str:
-    what = "one ECS secret" if target == "ecs" else "one secret version"
+    what = {"ecs": "one ECS secret", "cloudrun": "one secret version", "containerapps": "one secret"}[target]
     if is_secret(v) and "secret" not in srcs:
         return f" (an indexed key set is one variable per key, which {what} cannot carry)"
     if is_secret(v):
         return " (a secret is never a literal value)"
-    return " (ECS has no ConfigMaps or Downward API)" if target == "ecs" else " (Cloud Run has no ConfigMaps or Downward API)"
+    return f" ({PLATFORM[target]} has no ConfigMaps or Downward API)"
+
+
+def app_secret_name(name: str, file: bool) -> str:
+    """The name of the app secret the containerapps component adds for an input: lower case
+    letters, digits and -, as Container Apps requires (dc-database-url for DATABASE_URL,
+    dc-file-NAME for a file input)."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return ("dc-file-" if file else "dc-") + slug
+
+
+def _key_vault_problems(n: str, s: Obj) -> list[str]:
+    out: list[str] = []
+    sid = s.get("keyVaultSecretId")
+    if not has_output(sid) and not KEY_VAULT_SECRET_ID.match(js(sid or "")):
+        out.append(f"{n}: secret.keyVaultSecretId {quote(sid)} is not a Key Vault secret ID, such as https://VAULT.vault.azure.net/secrets/NAME")
+    identity = s.get("identity") or "System"
+    if not has_output(identity) and not AZURE_IDENTITY.match(js(identity)):
+        out.append(f"{n}: secret.identity {quote(identity)} is not System or a user-assigned identity's resource ID")
+    return out
+
+
+def _secret_problems(target: str, n: str, s: Obj) -> list[str]:
+    return _key_vault_problems(n, s) if target == "containerapps" else _gcp_secret_problems(n, s)
 
 
 def _gcp_secret_problems(n: str, s: Obj) -> list[str]:
@@ -846,7 +874,7 @@ def _gcp_secret_problems(n: str, s: Obj) -> list[str]:
 
 
 def target_problems(c: Obj, target: str, args: Obj) -> tuple[list[str], list[str]]:
-    """The checks on ecs and cloudrun that need no resolved Input."""
+    """The checks on ecs, cloudrun and containerapps that need no resolved Input."""
     problems: list[str] = []
     warned: list[str] = []
     files = dict(target_files(c, target))
@@ -884,7 +912,7 @@ def target_problems(c: Obj, target: str, args: Obj) -> tuple[list[str], list[str
                 if s.get("versionStage") is not None and s.get("versionId") is not None:
                     problems.append(f"{n}: set secret.versionStage or secret.versionId, not both")
             else:
-                problems += _gcp_secret_problems(n, s)
+                problems += _secret_problems(target, n, s)
         if v.get("deprecated") and kind != "value":
             warned.append(deprecated_warning(n, v["deprecated"]))
         if kind == "value" and not has_output(s):
@@ -899,21 +927,37 @@ def target_problems(c: Obj, target: str, args: Obj) -> tuple[list[str], list[str
             continue
         kind = source_of(a, ("secret", "injected"))
         if kind is None:
-            problems.append(f"{n}: set exactly one of secret or injected (Cloud Run mounts files from Secret Manager)")
+            frm = "Container Apps mounts files from Key Vault secrets" if target == "containerapps" else "Cloud Run mounts files from Secret Manager"
+            problems.append(f"{n}: set exactly one of secret or injected ({frm})")
             continue
         s = a[kind]
         if kind == "injected" and is_obj(s) and not has_output(s.get("provider")) and not PROVIDER.match(js(s.get("provider") or "")):
             problems.append(f"{n}: injected.provider must name the injector as a lowercase label, such as bank-vaults")
         if kind == "secret" and is_obj(s):
-            problems += _gcp_secret_problems(n, s)
+            problems += _secret_problems(target, n, s)
         if f.get("deprecated"):
             warned.append(deprecated_warning(n, f["deprecated"]))
     return problems, warned
 
 
 def render_target(c: Obj, target: str, args: Obj) -> Obj:
-    """The ecs and cloudrun outputs, for arguments that passed the checks."""
-    out: Obj = {"ecs_environment": [], "ecs_secrets": [], "cloudrun_env": [], "cloudrun_volumes": [], "cloudrun_volume_mounts": []}
+    """The ecs, cloudrun and containerapps outputs, for arguments that passed the checks: on
+    containerapps, as azure-native's app input dicts, with values escaped."""
+    out: Obj = {
+        "ecs_environment": [],
+        "ecs_secrets": [],
+        "cloudrun_env": [],
+        "cloudrun_volumes": [],
+        "cloudrun_volume_mounts": [],
+        "containerapp_env": [],
+        "containerapp_secrets": [],
+        "containerapp_volumes": [],
+        "containerapp_volume_mounts": [],
+    }
+
+    def app_secret(name: str, s: Obj) -> Obj:
+        return {"name": name, "key_vault_url": s.get("keyVaultSecretId"), "identity": s.get("identity") or "System"}
+
     for n, v in c["vars"].items():
         a = args.get(n)
         if not is_obj(a):
@@ -925,22 +969,36 @@ def render_target(c: Obj, target: str, args: Obj) -> Obj:
             if isinstance(ref, str) and ref != "":
                 out["ecs_environment"].append({"name": n, "value": ref})
                 out["cloudrun_env"].append({"name": n, "value": ref})
+                out["containerapp_env"].append({"name": n, "value": esc(ref)})
         elif kind == "secret":
             if target == "ecs":
                 out["ecs_secrets"].append({"name": n, "valueFrom": ecs_value_from(s)})
-            out["cloudrun_env"].append({"name": n, "value_source": {"secret_key_ref": {"secret": s.get("secret"), "version": s.get("version") or "latest"}}})
+            elif target == "containerapps":
+                name = app_secret_name(n, False)
+                out["containerapp_secrets"].append(app_secret(name, s))
+                out["containerapp_env"].append({"name": n, "secret_ref": name})
+            else:
+                out["cloudrun_env"].append({"name": n, "value_source": {"secret_key_ref": {"secret": s.get("secret"), "version": s.get("version") or "latest"}}})
         else:
             for en, ev in wire_entries(n, v, s):
                 out["ecs_environment"].append({"name": en, "value": ev})
                 out["cloudrun_env"].append({"name": en, "value": ev})
+                out["containerapp_env"].append({"name": en, "value": esc(ev)})
     for n, f in target_files(c, target):
         a = args.get(n)
         if not is_obj(a):
             continue
         if f.get("pathEnv"):
             out["cloudrun_env"].append({"name": f["pathEnv"], "value": f["path"]})
+            out["containerapp_env"].append({"name": f["pathEnv"], "value": esc(f["path"])})
         s = a.get("secret")
         if not is_obj(s):
+            continue
+        if target == "containerapps":
+            name = app_secret_name(n, True)
+            out["containerapp_secrets"].append(app_secret(name, s))
+            out["containerapp_volumes"].append({"name": f"dc-{n}", "storage_type": "Secret", "secrets": [{"secret_ref": name, "path": posixpath.basename(f["path"])}]})
+            out["containerapp_volume_mounts"].append({"volume_name": f"dc-{n}", "mount_path": mount_dir(f)})
             continue
         out["cloudrun_volumes"].append(
             {
@@ -953,7 +1011,7 @@ def render_target(c: Obj, target: str, args: Obj) -> Obj:
 
 
 def for_target(self: pulumi.Resource, c: Obj, target: str, args: Mapping[str, Any]) -> Obj:
-    """Checks and renders a component's arguments on ecs or cloudrun, as kubernetes does for its target."""
+    """Checks and renders a component's arguments on ecs, cloudrun or containerapps, as kubernetes does for its target."""
     component = f"{c['metadata']['name']} config"
     args = _clean(args)
     problems, warned = target_problems(c, target, args)
