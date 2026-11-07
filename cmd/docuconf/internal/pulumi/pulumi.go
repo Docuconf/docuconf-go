@@ -46,6 +46,9 @@ type Options struct {
 	// GeneratorVersion is the docuconf CLI's version, recorded in
 	// docuconf.json.
 	GeneratorVersion string
+	// Image is the image the contract was pulled from, pinned by digest,
+	// when it came from an OCI reference; docuconf.json records it.
+	Image string
 	// Warn, if set, receives what the generator leaves out: an optional
 	// input the target cannot carry.
 	Warn func(string)
@@ -103,7 +106,7 @@ func Generate(c *terraform.Contract, opt Options) (map[string][]byte, error) {
 		}
 	}
 	digest := terraform.Digest(c.JSON)
-	meta, err := json.MarshalIndent(map[string]any{
+	m := map[string]any{
 		"apiVersion":     "docuconf.dev/v1alpha1",
 		"kind":           "PulumiComponent",
 		"generator":      map[string]any{"name": "docuconf", "version": opt.GeneratorVersion},
@@ -111,7 +114,11 @@ func Generate(c *terraform.Contract, opt Options) (map[string][]byte, error) {
 		"targets":        []string{opt.Target},
 		"contractDigest": digest,
 		"contract":       json.RawMessage(c.JSON),
-	}, "", "  ")
+	}
+	if opt.Image != "" {
+		m["image"] = opt.Image
+	}
+	meta, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return nil, err
 	}

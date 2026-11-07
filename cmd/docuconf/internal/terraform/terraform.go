@@ -37,6 +37,10 @@ type Options struct {
 	// GeneratorVersion is the docuconf CLI's version, recorded in
 	// docuconf.json.
 	GeneratorVersion string
+	// Image is the image the contract was pulled from, pinned by digest
+	// (HOST/REPOSITORY@sha256:...), when it came from an OCI reference;
+	// docuconf.json and the contract output record it (section 4.7).
+	Image string
 	// Warn, if set, receives what the generator leaves out: an optional
 	// input the target cannot carry.
 	Warn func(string)
@@ -180,7 +184,7 @@ func Generate(c *Contract, opt Options) (map[string][]byte, error) {
 	default:
 		return nil, fmt.Errorf("target %q is not supported yet; supported: kubernetes, ecs, cloudrun, containerapps, lambda", opt.Targets[0])
 	}
-	g := &gen{c: c}
+	g := &gen{c: c, image: opt.Image}
 	for _, v := range c.Vars {
 		if err := g.checkSupported(v); err != nil {
 			return nil, err
@@ -198,14 +202,7 @@ func Generate(c *Contract, opt Options) (map[string][]byte, error) {
 		return nil, err
 	}
 	digest := Digest(c.JSON)
-	meta, err := json.MarshalIndent(map[string]any{
-		"apiVersion":     "docuconf.dev/v1alpha1",
-		"kind":           "TerraformModule",
-		"generator":      map[string]any{"name": "docuconf", "version": opt.GeneratorVersion},
-		"targets":        opt.Targets,
-		"contractDigest": digest,
-		"contract":       json.RawMessage(c.JSON),
-	}, "", "  ")
+	meta, err := metaJSON(c, opt, digest)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +222,18 @@ func Generate(c *Contract, opt Options) (map[string][]byte, error) {
 }
 
 type gen struct {
-	c *Contract
+	c     *Contract
+	image string
+}
+
+// contractFields ends the contract output: its name, digest and, for a
+// module generated from an OCI reference, the image (section 4.7).
+func (g *gen) contractFields(digest string) string {
+	s := fmt.Sprintf("    name   = %s\n    digest = %s\n", hclString(g.c.Name), hclString(digest))
+	if g.image != "" {
+		s = fmt.Sprintf("    name   = %s\n    digest = %s\n    image  = %s\n", hclString(g.c.Name), hclString(digest), hclString(g.image))
+	}
+	return s + "  }\n}\n"
 }
 
 func (g *gen) checkSupported(v Var) error {
@@ -956,7 +964,7 @@ output "contract" {
   description = "The contract this module was generated from."
   value = {
 `)
-	fmt.Fprintf(&b, "    name   = %s\n    digest = %s\n  }\n}\n", hclString(g.c.Name), hclString(digest))
+	b.WriteString(g.contractFields(digest))
 	return []byte(b.String())
 }
 

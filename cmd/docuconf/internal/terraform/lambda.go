@@ -42,7 +42,7 @@ func lambdaSources(v Var) []string {
 }
 
 func generateLambda(c *Contract, opt Options) (map[string][]byte, error) {
-	g := &gen{c: c}
+	g := &gen{c: c, image: opt.Image}
 	var reserved []string
 	for _, v := range c.Vars {
 		if err := g.checkSupported(v); err != nil {
@@ -237,7 +237,7 @@ output "contract" {
   description = "The contract this module was generated from."
   value = {
 `, LambdaEnvLimit)
-	fmt.Fprintf(&b, "    name   = %s\n    digest = %s\n  }\n}\n", hclString(g.c.Name), hclString(digest))
+	b.WriteString(g.contractFields(digest))
 	return []byte(b.String())
 }
 

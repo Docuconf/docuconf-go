@@ -110,8 +110,10 @@ func Check(p *Plan) ([]Finding, []Docs) {
 				Message: fmt.Sprintf("the linter does not check the %s target yet; the %s's own checks still run", t, m.unit())})
 			continue
 		}
-		out = append(out, Finding{Code: "image_unverified", Level: Notice, Module: m.Addr,
-			Message: fmt.Sprintf("the %s records no image digest, so the linter cannot check that the bound container runs the image the contract describes", m.unit())})
+		if m.Meta.Image == "" {
+			out = append(out, Finding{Code: "image_unverified", Level: Notice, Module: m.Addr,
+				Message: fmt.Sprintf("the %s records no image digest, so the linter cannot check that the bound container runs the image the contract describes; generate it from the image (-contract oci://IMAGE) to check", m.unit())})
+		}
 		for _, w := range bound[m] {
 			_, attrs := refersTo(w.Config, "module."+m.Name)
 			if w.Unknown {
@@ -125,6 +127,10 @@ func Check(p *Plan) ([]Finding, []Docs) {
 					msg = fmt.Sprintf("%s's values are unknown or sensitive at plan, so the linter checks only %s's arguments; the chart's values.schema.json checks them at install", w.Addr, m.Addr)
 				}
 				out = append(out, Finding{Code: "deferred", Level: Notice, Module: m.Addr, Where: w.Addr, Message: msg})
+				if m.Meta.Image != "" {
+					out = append(out, Finding{Code: "image_unverified", Level: Notice, Module: m.Addr, Where: w.Addr,
+						Message: fmt.Sprintf("%s: the containers are unknown, so the linter cannot check that the app runs %s, the image %s's contract describes", w.Addr, m.Meta.Image, m.Addr)})
+				}
 				docs = append(docs, constantDocs(m, w.Addr))
 				continue
 			}
@@ -160,6 +166,7 @@ func Check(p *Plan) ([]Finding, []Docs) {
 			}
 			f, d := checkContainer(m, w, ct, where)
 			out = append(out, f...)
+			out = append(out, checkImage(m, w, ct, where)...)
 			if w.Target == "kubernetes" {
 				out = append(out, checkPodMeta(m, w, where, attrs)...)
 			}
@@ -204,6 +211,40 @@ func checkHelmRelease(m *Module, w *Workload) ([]Finding, Docs) {
 		}
 	}
 	return out, d
+}
+
+// checkImage compares the image the app container runs with the one the
+// module's contract was pulled from (spec/IAC.md section 4.7), by digest:
+// the same digest in another repository is the same image.
+func checkImage(m *Module, w *Workload, ct Container, where string) []Finding {
+	want := m.Meta.Image
+	if want == "" {
+		return nil
+	}
+	_, wantDigest, _ := strings.Cut(want, "@")
+	gen := "docuconf terraform"
+	if m.Pulumi {
+		gen = "docuconf pulumi"
+	}
+	switch _, got, pinned := strings.Cut(ct.Image, "@"); {
+	case ct.Image == "":
+		what := "image is unknown at plan"
+		if m.Pulumi {
+			what = "image is unknown at preview"
+		}
+		if w.Target == "lambda" {
+			what += ", or it is a .zip function, which has none"
+		}
+		return []Finding{{Code: "image_unverified", Level: Notice, Module: m.Addr, Where: where,
+			Message: fmt.Sprintf("%s: the %s, so the linter cannot check that it is %s, the image %s's contract describes", where, what, want, m.Addr)}}
+	case !pinned:
+		return []Finding{{Code: "image_unverified", Level: Notice, Module: m.Addr, Where: where,
+			Message: fmt.Sprintf("%s runs %s, which is not pinned by digest, so the linter cannot check that it is %s, the image %s's contract describes; pin it as REPOSITORY@sha256:...", where, ct.Image, want, m.Addr)}}
+	case got != wantDigest:
+		return []Finding{{Code: "contract_image_mismatch", Level: Error, Module: m.Addr, Where: where,
+			Message: fmt.Sprintf("%s runs %s, but %s's contract describes %s; regenerate the %s from the image the container runs (%s -contract oci://%s), or deploy that image", where, ct.Image, m.Addr, want, m.unit(), gen, ct.Image)}}
+	}
+	return nil
 }
 
 // appContainer is the container that takes the module's env: the one
