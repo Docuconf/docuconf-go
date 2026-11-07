@@ -262,7 +262,7 @@ func vetDocs(p *platform.Platform, d lint.Docs, policy cue.Value, policyFile str
 func staleModules(plan *lint.Plan) []lint.Finding {
 	var out []lint.Finding
 	for _, m := range plan.Modules {
-		files, err := terraform.Generate(m.Contract, terraform.Options{Targets: m.Meta.Targets, GeneratorVersion: m.Meta.Generator.Version})
+		files, err := terraform.Generate(m.Contract, terraform.Options{Targets: m.Meta.Targets, GeneratorVersion: m.Meta.Generator.Version, Image: m.Meta.Image})
 		if err != nil {
 			out = append(out, lint.Finding{Code: "stale_module", Level: lint.Error, Module: m.Addr, Message: fmt.Sprintf("its contract no longer generates a module: %v", err)})
 			continue
@@ -292,7 +292,7 @@ func staleComponents(plan *lint.Plan) []lint.Finding {
 			continue
 		}
 		seen[m.Dir] = true
-		opt := pulumi.Options{Lang: m.Meta.Language, Target: m.Target(), GeneratorVersion: m.Meta.Generator.Version}
+		opt := pulumi.Options{Lang: m.Meta.Language, Target: m.Target(), GeneratorVersion: m.Meta.Generator.Version, Image: m.Meta.Image}
 		switch opt.Lang {
 		case "go":
 			opt.Package = goPackageOf(m.Dir)
@@ -342,7 +342,7 @@ func sortedFileNames(m map[string][]byte) []string {
 // contractMismatch compares each module generated for this contract's
 // service with the contract itself.
 func contractMismatch(p *platform.Platform, plan *lint.Plan, file string) ([]lint.Finding, error) {
-	c, err := p.LoadContract(file)
+	c, _, err := loadContract(p, file)
 	if err != nil {
 		return nil, err
 	}

@@ -11,6 +11,13 @@
 //	docuconf check  -contract contract.cue
 //	docuconf exec   -contract contract.cue -- program [args...]
 //	docuconf docs   contract.cue [--format model|markdown|agents] [-o file | --check file]
+//	docuconf push   -contract contract.cue registry.example.com/orders:1.4.0
+//	docuconf pull   registry.example.com/orders@sha256:... -o contract.cue
+//
+// push attaches a contract to the image it describes, as an OCI artifact
+// whose subject is the image (spec section 8); pull reads it back, or the
+// image's dev.docuconf.contract label. A -contract of oci://<image> reads
+// it wherever a contract file is expected.
 //
 // docs generates documentation from a contract: a docs model (a
 // versioned JSON document, spec section 14), and from the model Markdown
@@ -62,7 +69,7 @@ Usage:
   docuconf vet    -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml] [-policy policy.cue]
   docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml]
   docuconf helm   -contract <contract.cue> -chart <chart directory>
-  docuconf terraform -contract <contract.cue> -out <module directory> [-target kubernetes] [-check]
+  docuconf terraform -contract <contract.cue> -out <module directory> [-target kubernetes|ecs|cloudrun|containerapps|lambda] [-check]
   docuconf pulumi -contract <contract.cue> -out <component directory> [-lang typescript|go|python] [-package name] [-target kubernetes|ecs|cloudrun|containerapps|lambda] [-check]
   docuconf pulumi policy -contract <contract.cue> -out <policy pack directory> [-target kubernetes|ecs|cloudrun|containerapps|lambda] [-check]
   docuconf lint terraform <plan.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-schema schema.json] [-explain] [-format text|json|sarif]
@@ -70,6 +77,12 @@ Usage:
   docuconf check  -contract <contract.cue> [-env-file .env]
   docuconf exec   -contract <contract.cue> [-env-file .env] [-no-defaults] -- <program> [args...]
   docuconf docs   <contract.cue | docs.json> [--format model|markdown|agents] [-o file | --check file]
+  docuconf push   [-contract contract.cue] <image>
+  docuconf pull   <image> [-o contract.cue]
+
+Wherever a contract file is expected, oci://<image> reads the contract
+attached to the image instead (docuconf push), and terraform and pulumi
+record the image's digest for docuconf lint.
 
 Run "docuconf <command> -h" for a command's flags.
 `
@@ -105,6 +118,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runPulumi(args[1:], stdout, stderr)
 	case "lint":
 		err = runLint(args[1:], stdout, stderr)
+	case "push":
+		err = runPush(args[1:], stdout, stderr)
+	case "pull":
+		err = runPull(args[1:], stdout, stderr)
 	case "check":
 		err = runCheck(args[1:], stdout, stderr)
 	case "exec":
@@ -160,7 +177,7 @@ func (pf *platformFlags) load() (*loaded, error) {
 		return nil, err
 	}
 	l := &loaded{p: p}
-	if l.c, err = p.LoadContract(pf.contract); err != nil {
+	if l.c, _, err = loadContract(p, pf.contract); err != nil {
 		return nil, err
 	}
 	if l.values, err = p.LoadData(pf.values); err != nil {
@@ -258,7 +275,7 @@ func runHelm(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	c, err := p.LoadContract(*contract)
+	c, _, err := loadContract(p, *contract)
 	if err != nil {
 		return err
 	}

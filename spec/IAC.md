@@ -264,6 +264,16 @@ The linter still applies the whole policy at plan. Compiling it into the module 
 
 A contract describes one image ([SPEC.md section 8](SPEC.md#8-distribution)). When the module is generated from an OCI reference, `docuconf.json` and the `contract` output record the image digest, and the linter checks that every bound container runs that digest (rule `contract_image_mismatch`). A module generated from a local file records no digest, and the linter says so once (`image_unverified`, a notice).
 
+```sh
+docuconf push -contract contract.cue registry.example.com/orders:1.4.0   # prints oci://registry.example.com/orders@sha256:…
+docuconf terraform -contract oci://registry.example.com/orders@sha256:… -target ecs -out modules/orders-config
+```
+
+- The reference may name a tag; it is resolved when the module is generated, and the module records the digest it resolved to, as `HOST/REPOSITORY@sha256:…` (`image` in `docuconf.json`, and in the `contract` output). The rest of the module is what the contract's file generates, so switching a module to its image changes nothing else.
+- A Pulumi component generated from an OCI reference records the image in its `docuconf.json`, which `docuconf lint pulumi` reads.
+- The linter compares digests, not repositories: the same digest pulled through a mirror is the same image. A container whose image is not pinned by digest, or is unknown at plan, cannot be compared, and gets `image_unverified` naming it.
+- A multi-platform image is one digest, its index's; a container pinned to one platform's manifest digest does not match it. Push the contract for the reference the containers run.
+
 ## 5. Targets
 
 A target maps the contract's sources onto what one kind of workload can express. A source a target cannot express is missing from that target's argument types, so using it is a validate error, and the linter reports `unsupported_source` with the target's name.
@@ -519,17 +529,17 @@ Each rule has a code. Errors fail the lint; warnings and notices do not. Codes s
 | `module_unused` | warning | No workload in the plan takes the module's outputs, so only its arguments are checked. |
 | `binding_ambiguous` | notice | A workload's env matches more than one module's contract and references none of them outside a `dynamic` block, so it is not checked (section 7.1). |
 | `target_unchecked` | notice | The module is for a target the linter does not check yet; only `stale_module` applies to it. |
-| `contract_image_mismatch` | error | The bound container's image digest is not the one the contract was exported from (section 4.7). |
+| `contract_image_mismatch` | error | The bound container's image digest is not the one the contract was pulled from (section 4.7). The message names both and the command that regenerates the module from the image the container runs. |
 | `stale_module` | error | The module's files differ from what `docuconf terraform` generates from the contract its `docuconf.json` holds, so it was edited by hand; or, with `-contract`, the module was generated from another version of that contract. The contract digest is the sha256 of its compact JSON. |
 | `policy_mismatch` | error | A value or a reference breaks the environment policy (section 7.3). The message names the input, the field and the constraint, such as `DATABASE_URL: awsSecretsManager.account: 210987654321 is not 123456789012 (policy prod.cue)`. A reference is not secret, so its fields are printed; a secret's value never is. |
 | `policy_deferred` | notice | A policy constrains a field that is unknown at plan, such as the account of a secret created in the same apply. The notice names the input, the field and the constraint, and says whether the module checks it at apply (the constraint was compiled, section 4.6, and the selected `environment` is this policy) or nothing checks it before boot. |
 | `deprecated_set` | warning | A deprecated input is set ([SPEC.md section 4.2](SPEC.md#42-variables)), printed with its message. |
 | `deferred` | notice | A value is unknown at plan. The notice names the input and its origin, and says where it is checked: at apply by the module's preconditions, or at boot. |
-| `image_unverified` | notice | The module records no image digest, so `contract_image_mismatch` could not run. |
+| `image_unverified` | notice | `contract_image_mismatch` could not run: the module records no image digest (it was generated from a file), or the bound container's image is not pinned by digest, unknown at plan, or, for a Lambda function, absent (a .zip package). |
 
 What the linter cannot know, it says it cannot know: it never passes an input silently because a value was unknown.
 
-Not yet implemented: `contract_image_mismatch`, which needs a module generated from an OCI reference (section 4.7), so every module gets `image_unverified`; and `unsupported_source`, which the targets' argument types already prevent.
+Not yet implemented: `unsupported_source`, which the targets' argument types already prevent.
 
 ### 7.3 Policy
 

@@ -67,6 +67,9 @@ type Meta struct {
 	} `json:"generator"`
 	Targets  []string `json:"targets"`
 	Language string   `json:"language"` // a Pulumi component's
+	// Image is the image the contract was pulled from, pinned by digest,
+	// for a module generated from an OCI reference.
+	Image string `json:"image"`
 }
 
 // Workload is a resource that runs the app: a Kubernetes resource that

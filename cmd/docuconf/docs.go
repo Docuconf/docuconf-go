@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/docs"
+	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/oci"
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/platform"
 )
 
@@ -109,8 +110,15 @@ func runDocs(args []string, stdout, stderr io.Writer) error {
 // docs model. Either way the model is checked against #DocsModel, so the
 // renderers only ever see a valid model.
 func loadDocsModel(file string) (*docs.Model, error) {
-	src, err := os.ReadFile(file)
-	if err != nil {
+	var src []byte
+	var err error
+	if strings.HasPrefix(file, oci.Scheme) {
+		pulled, perr := pullContract(file)
+		if perr != nil {
+			return nil, perr
+		}
+		src, file = pulled.Contract, "contract.cue"
+	} else if src, err = os.ReadFile(file); err != nil {
 		return nil, err
 	}
 	p, err := platform.New()

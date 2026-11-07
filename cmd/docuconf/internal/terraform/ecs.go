@@ -42,7 +42,7 @@ var ecsSourceTypes = map[string]string{
 }
 
 func generateECS(c *Contract, opt Options) (map[string][]byte, error) {
-	g := &gen{c: c}
+	g := &gen{c: c, image: opt.Image}
 	for _, v := range c.Vars {
 		if err := g.checkSupported(v); err != nil {
 			return nil, err
@@ -80,14 +80,18 @@ func generateECS(c *Contract, opt Options) (map[string][]byte, error) {
 }
 
 func metaJSON(c *Contract, opt Options, digest string) ([]byte, error) {
-	return json.MarshalIndent(map[string]any{
+	m := map[string]any{
 		"apiVersion":     "docuconf.dev/v1alpha1",
 		"kind":           "TerraformModule",
 		"generator":      map[string]any{"name": "docuconf", "version": opt.GeneratorVersion},
 		"targets":        opt.Targets,
 		"contractDigest": digest,
 		"contract":       json.RawMessage(c.JSON),
-	}, "", "  ")
+	}
+	if opt.Image != "" {
+		m["image"] = opt.Image
+	}
+	return json.MarshalIndent(m, "", "  ")
 }
 
 func (g *gen) ecsVariables() []byte {
@@ -275,7 +279,7 @@ output "contract" {
   description = "The contract this module was generated from."
   value = {
 `)
-	fmt.Fprintf(&b, "    name   = %s\n    digest = %s\n  }\n}\n", hclString(g.c.Name), hclString(digest))
+	b.WriteString(g.contractFields(digest))
 	return []byte(b.String())
 }
 

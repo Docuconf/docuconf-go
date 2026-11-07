@@ -35,7 +35,7 @@ func runTerraform(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	c, err := p.LoadContract(*contract)
+	c, src, err := loadContract(p, *contract)
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func runTerraform(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	files, err := terraform.Generate(tc, terraform.Options{Targets: strings.Split(*target, ","), GeneratorVersion: version,
+	files, err := terraform.Generate(tc, terraform.Options{Targets: strings.Split(*target, ","), GeneratorVersion: version, Image: src.Image,
 		Warn: func(w string) { fmt.Fprintf(stderr, "docuconf terraform: warning: %s\n", w) }})
 	if err != nil {
 		return err
