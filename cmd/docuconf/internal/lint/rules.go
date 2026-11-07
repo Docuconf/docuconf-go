@@ -372,6 +372,14 @@ func checkContainer(m *Module, w *Workload, ct Container, where string) ([]Findi
 		}
 		out = append(out, Finding{Code: "deferred", Level: Notice, Module: m.Addr, Where: where, Input: n,
 			Message: fmt.Sprintf("%s: %s (from %s); it is checked %s", n, why, origin, checked)})
+		// An unknown value: its origin's type may still rule it out. A
+		// reference's own fields come from elsewhere, so only a value whose
+		// entry is unknown, or names no reference, is checked.
+		if e, ok := env[n]; !ok || e.Unknown && e.ValueFrom == nil {
+			if v := varOf(m.Contract, n); v != nil && !v.Secret {
+				out = append(out, checkOriginType(m, *v, where)...)
+			}
+		}
 	}
 	return out, d
 }
