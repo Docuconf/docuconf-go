@@ -121,8 +121,17 @@ func Check(p *Plan) ([]Finding, []Docs) {
 				if m.Pulumi {
 					msg = fmt.Sprintf("%s's containers are unknown or secret at preview, so the linter checks only %s's arguments; the values are checked during the update, by the component's checks", w.Addr, m.Addr)
 				}
+				if w.Type == "helm_release" {
+					msg = fmt.Sprintf("%s's values are unknown or sensitive at plan, so the linter checks only %s's arguments; the chart's values.schema.json checks them at install", w.Addr, m.Addr)
+				}
 				out = append(out, Finding{Code: "deferred", Level: Notice, Module: m.Addr, Where: w.Addr, Message: msg})
 				docs = append(docs, constantDocs(m, w.Addr))
+				continue
+			}
+			if w.Type == "helm_release" {
+				f, d := checkHelmRelease(m, w)
+				out = append(out, f...)
+				docs = append(docs, d)
 				continue
 			}
 			app := appContainer(w, c)
@@ -163,6 +172,38 @@ func Check(p *Plan) ([]Finding, []Docs) {
 		}
 	}
 	return out, docs
+}
+
+// checkHelmRelease checks a helm_release bound to a module: the docuconf:
+// values the chart will render are the documents vet's engine checks.
+func checkHelmRelease(m *Module, w *Workload) ([]Finding, Docs) {
+	var out []Finding
+	if w.Helm == nil {
+		out = append(out, Finding{Code: "unbound_container", Level: Error, Module: m.Addr, Where: w.Addr,
+			Message: fmt.Sprintf("%s reads %s, but its values have no docuconf key, so the chart renders none of the inputs; pass values = [yamlencode({ docuconf = %s.helm_values })]", w.Addr, m.Addr, m.Addr)})
+		return out, constantDocs(m, w.Addr)
+	}
+	for _, n := range w.HelmSet {
+		out = append(out, Finding{Code: "deferred", Level: Notice, Module: m.Addr, Where: w.Addr,
+			Message: fmt.Sprintf("%s: set %s overrides the values, and the linter does not read set blocks; the chart's values.schema.json checks the result at install", w.Addr, n)})
+	}
+	sub := func(k string) map[string]any {
+		x, _ := w.Helm[k].(map[string]any)
+		if x == nil {
+			x = map[string]any{}
+		}
+		return x
+	}
+	d := Docs{Module: m, Where: w.Addr, Values: sub("values"), Files: sub("files"), Overlays: sub("overlays"), Deferred: map[string]bool{}, Refs: map[string]any{}}
+	for k := range w.Helm {
+		switch k {
+		case "values", "files", "overlays", "global":
+		default:
+			out = append(out, Finding{Code: "undeclared_input", Level: Error, Module: m.Addr, Where: w.Addr,
+				Message: fmt.Sprintf("%s: docuconf.%s is not a key of the docuconf chart's values (values, files, overlays)", w.Addr, k)})
+		}
+	}
+	return out, d
 }
 
 // appContainer is the container that takes the module's env: the one

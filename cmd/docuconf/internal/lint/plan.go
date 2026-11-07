@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
 	"path"
 	"path/filepath"
@@ -86,6 +87,11 @@ type Workload struct {
 	// AppSecrets are a container app's secret blocks, by name, without
 	// their values.
 	AppSecrets map[string]map[string]any
+	// Helm is a helm_release's docuconf: values, its YAML documents merged
+	// as Helm merges them; nil when they have none. HelmSet names the
+	// release's set blocks under docuconf., which the linter does not read.
+	Helm    map[string]any
+	HelmSet []string
 }
 
 // Metadata is planned annotations and labels; nil maps are unknown.
@@ -266,6 +272,8 @@ func Read(planFile, root string) (*Plan, error) {
 			w = readContainerApp(rc.Change.After, rc.Change.AfterUnknown)
 		case rc.Type == "aws_lambda_function":
 			w = readLambda(rc.Change.After, rc.Change.AfterUnknown, rc.Change.AfterSensitive)
+		case rc.Type == "helm_release":
+			w = readHelmRelease(rc.Change.After, rc.Change.AfterUnknown, rc.Change.AfterSensitive)
 		default:
 			continue
 		}
@@ -355,6 +363,56 @@ func readModule(dir, addr, name, scope string, exprs map[string]json.RawMessage)
 		m.Args[k] = x
 	}
 	return m, nil
+}
+
+// readHelmRelease reads a helm_release's values: the YAML documents of
+// values, merged in order as Helm merges them (maps deeply, anything else
+// replaced), and their docuconf: key, which the docuconf library chart
+// renders (spec/IAC.md 4.5).
+func readHelmRelease(after, unknown, sensitive any) *Workload {
+	w := &Workload{Type: "helm_release", Target: "kubernetes"}
+	if anyTrue(at(unknown, "values")) || anyTrue(at(sensitive, "values")) {
+		w.Unknown = true
+		return w
+	}
+	merged := map[string]any{}
+	docs, _ := at(after, "values").([]any)
+	for _, d := range docs {
+		s, _ := d.(string)
+		var m map[string]any
+		if err := yaml.Unmarshal([]byte(s), &m); err != nil {
+			continue // helm itself refuses it
+		}
+		mergeValues(merged, m)
+	}
+	if dc, ok := merged["docuconf"].(map[string]any); ok {
+		w.Helm = dc
+	}
+	for _, kind := range []string{"set", "set_sensitive", "set_list"} {
+		sets, _ := at(after, kind).([]any)
+		for _, x := range sets {
+			if n, _ := at(x, "name").(string); n == "docuconf" || strings.HasPrefix(n, "docuconf.") {
+				w.HelmSet = append(w.HelmSet, n)
+			}
+		}
+	}
+	return w
+}
+
+func mergeValues(dst, src map[string]any) {
+	for k, v := range src {
+		if sm, ok := v.(map[string]any); ok {
+			if dm, ok := dst[k].(map[string]any); ok {
+				mergeValues(dm, sm)
+				continue
+			}
+			cp := map[string]any{}
+			mergeValues(cp, sm)
+			dst[k] = cp
+			continue
+		}
+		dst[k] = v
+	}
 }
 
 // podTemplate lists the resource types whose pods the linter reads.
