@@ -23,6 +23,10 @@ type PolicyOptions struct {
 	// GeneratorVersion is the docuconf CLI's version, recorded in
 	// docuconf.json.
 	GeneratorVersion string
+	// Image is the image the contract was pulled from, pinned by digest,
+	// when it came from an OCI reference: the pack checks that the app
+	// container runs it.
+	Image string
 }
 
 // GeneratePolicy writes a CrossGuard policy pack for a contract and a
@@ -42,14 +46,18 @@ func GeneratePolicy(c *terraform.Contract, opt PolicyOptions) (map[string][]byte
 		return nil, fmt.Errorf("the contract has no metadata.name")
 	}
 	digest := terraform.Digest(c.JSON)
-	meta, err := json.MarshalIndent(map[string]any{
+	m := map[string]any{
 		"apiVersion":     "docuconf.dev/v1alpha1",
 		"kind":           "PulumiPolicyPack",
 		"generator":      map[string]any{"name": "docuconf", "version": opt.GeneratorVersion},
 		"targets":        []string{opt.Target},
 		"contractDigest": digest,
 		"contract":       json.RawMessage(c.JSON),
-	}, "", "  ")
+	}
+	if opt.Image != "" {
+		m["image"] = opt.Image
+	}
+	meta, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +74,11 @@ func GeneratePolicy(c *terraform.Contract, opt PolicyOptions) (map[string][]byte
 	contract.WriteString("/** The contract this policy pack was generated from. */\n")
 	fmt.Fprintf(&contract, "export const contract: PackContract = %s;\n\n", ordered.String())
 	fmt.Fprintf(&contract, "/** The sha256 of the contract's compact JSON. */\nexport const digest = %s;\n", tsString(digest))
+	image := "undefined"
+	if opt.Image != "" {
+		image = tsString(opt.Image)
+	}
+	fmt.Fprintf(&contract, "\n/** The image the contract was pulled from, pinned by digest: what the app container must run. */\nexport const image: string | undefined = %s;\n", image)
 
 	var index strings.Builder
 	index.WriteString(Header)
@@ -75,7 +88,7 @@ func GeneratePolicy(c *terraform.Contract, opt PolicyOptions) (map[string][]byte
 
 import { PolicyPack } from "@pulumi/policy";
 
-import { contract, digest } from "./contract";
+import { contract, digest, image } from "./contract";
 import { checkStack, type Settings } from "./policy";
 
 new PolicyPack(%[3]q, {
@@ -92,7 +105,7 @@ new PolicyPack(%[3]q, {
       },
       validateStack: (args, reportViolation) => {
         const settings = args.getConfig<Settings>();
-        for (const f of checkStack(contract, digest, %[2]q, args.resources, settings)) if (f.level === "error") reportViolation(%[5]s, f.urn);
+        for (const f of checkStack(contract, digest, %[2]q, args.resources, settings, image)) if (f.level === "error") reportViolation(%[5]s, f.urn);
       },
     },
     {
@@ -100,7 +113,7 @@ new PolicyPack(%[3]q, {
       description: "The %[1]s contract's warnings: a component no workload takes (docuconf lint's warnings).",
       enforcementLevel: "advisory",
       validateStack: (args, reportViolation) => {
-        for (const f of checkStack(contract, digest, %[2]q, args.resources)) if (f.level === "warning") reportViolation(%[5]s, f.urn);
+        for (const f of checkStack(contract, digest, %[2]q, args.resources, null, image)) if (f.level === "warning") reportViolation(%[5]s, f.urn);
       },
     },
   ],

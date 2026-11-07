@@ -20,7 +20,7 @@ import (
 // that throws when read, as CrossGuard's does.
 
 const policyHarness = `import { readFileSync } from "node:fs";
-import { contract, digest } from "./contract";
+import { contract, digest, image } from "./contract";
 import { checkStack, type Target } from "./policy";
 
 const UNKNOWN = "04da6b54-80e4-46f7-96ec-b56ff0331ba9";
@@ -51,7 +51,7 @@ const cases = JSON.parse(readFileSync(process.argv[2]!, "utf8"));
 const out: Record<string, unknown> = {};
 for (const [name, c] of Object.entries<any>(cases)) {
   const resources = c.resources.map((r: any) => ({ ...r, props: props(r.props) }));
-  out[name] = checkStack(contract, digest, c.target as Target, resources, c.settings);
+  out[name] = checkStack(contract, digest, c.target as Target, resources, c.settings, image);
 }
 console.log(JSON.stringify(out));
 `

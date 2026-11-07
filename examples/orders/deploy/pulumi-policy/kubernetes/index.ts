@@ -5,7 +5,7 @@
 
 import { PolicyPack } from "@pulumi/policy";
 
-import { contract, digest } from "./contract";
+import { contract, digest, image } from "./contract";
 import { checkStack, type Settings } from "./policy";
 
 new PolicyPack("docuconf-orders-api-kubernetes", {
@@ -22,7 +22,7 @@ new PolicyPack("docuconf-orders-api-kubernetes", {
       },
       validateStack: (args, reportViolation) => {
         const settings = args.getConfig<Settings>();
-        for (const f of checkStack(contract, digest, "kubernetes", args.resources, settings)) if (f.level === "error") reportViolation(`${f.message} (${f.code})`, f.urn);
+        for (const f of checkStack(contract, digest, "kubernetes", args.resources, settings, image)) if (f.level === "error") reportViolation(`${f.message} (${f.code})`, f.urn);
       },
     },
     {
@@ -30,7 +30,7 @@ new PolicyPack("docuconf-orders-api-kubernetes", {
       description: "The orders-api contract's warnings: a component no workload takes (docuconf lint's warnings).",
       enforcementLevel: "advisory",
       validateStack: (args, reportViolation) => {
-        for (const f of checkStack(contract, digest, "kubernetes", args.resources)) if (f.level === "warning") reportViolation(`${f.message} (${f.code})`, f.urn);
+        for (const f of checkStack(contract, digest, "kubernetes", args.resources, null, image)) if (f.level === "warning") reportViolation(`${f.message} (${f.code})`, f.urn);
       },
     },
   ],

@@ -147,3 +147,6 @@ export const contract: PackContract = {
 
 /** The sha256 of the contract's compact JSON. */
 export const digest = "sha256:4cb94f6f5dec96da303e9c811521563e6b2904232b3f76b1a2a0479cb121bdcb";
+
+/** The image the contract was pulled from, pinned by digest: what the app container must run. */
+export const image: string | undefined = undefined;

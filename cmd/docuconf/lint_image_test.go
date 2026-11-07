@@ -167,3 +167,55 @@ func TestLintPulumiImage(t *testing.T) {
 		t.Errorf("zip function: got:\n%s", describeFindings(imageFindings(fs)))
 	}
 }
+
+// The policy pack checks the image too, when it was generated from an OCI
+// reference.
+func TestPolicyImage(t *testing.T) {
+	modules := nodeModules(t)
+	host, reg := testRegistry(t, true)
+	img := pushImage(t, reg, "orders-api", "2.3.0", nil)
+	other := pushImage(t, reg, "orders-api", "2.4.0", nil)
+	if _, stderr, code := docuconf(t, "push", "-contract", ordersContract, host+"/orders-api:2.3.0"); code != 0 {
+		t.Fatal(stderr)
+	}
+	pinned := host + "/orders-api@" + string(img.Digest)
+	pack := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	if err := runPulumi([]string{"policy", "-contract", "oci://" + pinned, "-target", "lambda", "-out", pack}, &stdout, &stderr); err != nil {
+		t.Fatalf("docuconf pulumi policy: %v\n%s", err, stderr.String())
+	}
+	if !strings.Contains(read(t, filepath.Join(pack, "docuconf.json")), `"image": "`+pinned+`"`) {
+		t.Errorf("the pack's docuconf.json does not record the image")
+	}
+	if err := os.Symlink(modules, filepath.Join(pack, "node_modules")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(pack, "harness.ts"), policyHarness)
+	comp := pulumiProgram(t, "typescript", "lambda")
+	const db = "arn:aws:secretsmanager:us-east-1:123456789012:secret:orders/db-AbCdEf"
+	args := map[string]any{
+		"DATABASE_URL": map[string]any{"injected": map[string]any{"provider": "aws-parameters-and-secrets", "ref": db}},
+		"WEBHOOK_KEYS": map[string]any{"injected": map[string]any{"provider": "aws-parameters-and-secrets", "ref": db}},
+	}
+	fn := func(image string) []step {
+		in := map[string]any{"environment": map[string]any{"variables": map[string]any{"DATABASE_URL": db, "WEBHOOK_KEYS": db}}}
+		if image != "" {
+			in["imageUri"] = image
+		}
+		return []step{{"aws:lambda/function:Function", "orders", in}}
+	}
+	got := runPolicy(t, pack, map[string]policyCase{
+		"same":  {Target: "lambda", Resources: stackOf(t, comp, args, fn(pinned))},
+		"other": {Target: "lambda", Resources: stackOf(t, comp, args, fn(host+"/orders-api@"+string(other.Digest)))},
+		"tag":   {Target: "lambda", Resources: stackOf(t, comp, args, fn(host+"/orders-api:2.3.0"))},
+		"zip":   {Target: "lambda", Resources: stackOf(t, comp, args, fn(""))},
+	})
+	for _, name := range []string{"same", "tag", "zip"} {
+		if len(got[name]) != 0 {
+			t.Errorf("%s: want nothing, got %v", name, got[name])
+		}
+	}
+	if fs := got["other"]; len(fs) != 1 || fs[0].Code != "contract_image_mismatch" || !strings.Contains(fs[0].Message, "but orders's contract describes "+pinned) {
+		t.Errorf("other: got %v", fs)
+	}
+}

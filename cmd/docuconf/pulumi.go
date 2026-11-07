@@ -80,7 +80,7 @@ func runPulumiPolicy(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	c, _, err := loadContract(p, *contract)
+	c, src, err := loadContract(p, *contract)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func runPulumiPolicy(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	files, err := pulumi.GeneratePolicy(tc, pulumi.PolicyOptions{Target: *target, GeneratorVersion: version})
+	files, err := pulumi.GeneratePolicy(tc, pulumi.PolicyOptions{Target: *target, GeneratorVersion: version, Image: src.Image})
 	if err != nil {
 		return err
 	}
