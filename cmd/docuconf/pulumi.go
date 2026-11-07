@@ -36,7 +36,7 @@ func runPulumi(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	c, err := p.LoadContract(*contract)
+	c, src, err := loadContract(p, *contract)
 	if err != nil {
 		return err
 	}
@@ -52,7 +52,7 @@ func runPulumi(args []string, stdout, stderr io.Writer) error {
 		// A Python package is imported by its directory's name.
 		*pkg = filepath.Base(filepath.Clean(*out))
 	}
-	files, err := pulumi.Generate(tc, pulumi.Options{Lang: *lang, Package: *pkg, Target: *target, GeneratorVersion: version,
+	files, err := pulumi.Generate(tc, pulumi.Options{Lang: *lang, Package: *pkg, Target: *target, GeneratorVersion: version, Image: src.Image,
 		Warn: func(w string) { fmt.Fprintf(stderr, "docuconf pulumi: warning: %s\n", w) }})
 	if err != nil {
 		return err
@@ -80,7 +80,7 @@ func runPulumiPolicy(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	c, err := p.LoadContract(*contract)
+	c, _, err := loadContract(p, *contract)
 	if err != nil {
 		return err
 	}

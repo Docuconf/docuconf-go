@@ -53,7 +53,7 @@ func VarSecretName(v Var) string   { return appSecretName("dc-", v.Name) }
 func FileSecretName(f File) string { return appSecretName("dc-file-", f.Name) }
 
 func generateContainerApps(c *Contract, opt Options) (map[string][]byte, error) {
-	g := &gen{c: c}
+	g := &gen{c: c, image: opt.Image}
 	for _, v := range c.Vars {
 		if err := g.checkSupported(v); err != nil {
 			return nil, err
@@ -381,7 +381,7 @@ output "contract" {
   description = "The contract this module was generated from."
   value = {
 `)
-	fmt.Fprintf(&b, "    name   = %s\n    digest = %s\n  }\n}\n", hclString(g.c.Name), hclString(digest))
+	b.WriteString(g.contractFields(digest))
 	return []byte(b.String())
 }
 
