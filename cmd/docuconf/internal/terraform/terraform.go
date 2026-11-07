@@ -207,9 +207,14 @@ func Generate(c *Contract, opt Options) (map[string][]byte, error) {
 		return nil, err
 	}
 	return map[string][]byte{
-		"versions.tf":   hclwrite.Format([]byte(Header + "\nterraform {\n  # optional() attributes, check blocks and output preconditions.\n  required_version = \">= 1.5.0\"\n}\n")),
-		"variables.tf":  hclwrite.Format(g.variables()),
-		"render.tf":     hclwrite.Format(render),
+		"versions.tf":  hclwrite.Format([]byte(Header + "\nterraform {\n  # optional() attributes, check blocks and output preconditions.\n  required_version = \">= 1.5.0\"\n}\n")),
+		"variables.tf": hclwrite.Format(g.variables()),
+		"render.tf":    hclwrite.Format(render),
+		"helm.tf": hclwrite.Format(g.helm(func(b *strings.Builder, cs []check) {
+			for _, c := range cs {
+				fmt.Fprintf(b, "\n  precondition {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, c.msg)
+			}
+		})),
 		"outputs.tf":    hclwrite.Format(g.outputs(digest)),
 		"docuconf.json": append(meta, '\n'),
 		"README.md":     g.readme(),
@@ -1148,7 +1153,7 @@ dynamic "volume_mount" {
     read_only  = volume_mount.value.read_only
   }
 }
-`+"```\n\n`restart_triggers` lists the ConfigMaps, Secrets and SecretProviderClasses whose change must restart the pods; hash their content into a pod template annotation, or hand the list to a reloader. An inline ConfigMap's name already changes with its content.\n", m)
+`+"```\n\n`restart_triggers` lists the ConfigMaps, Secrets and SecretProviderClasses whose change must restart the pods; hash their content into a pod template annotation, or hand the list to a reloader. An inline ConfigMap's name already changes with its content.\n\n### With the Helm library chart\n\nA platform that deploys with Helm and the [docuconf library chart](https://github.com/Docuconf/docuconf-go/tree/main/helm) passes `helm_values`, the same arguments in the chart's `docuconf:` vocabulary, instead of declaring the workload:\n\n```hcl\nresource \"helm_release\" \"app\" {\n  name   = \"app\"\n  chart  = \"./chart\"\n  values = [yamlencode({ docuconf = module.app_config.helm_values })]\n}\n```\n\nThe chart renders the env, volumes and ConfigMaps and checks the values again with its `values.schema.json`; the module's checks run first, at plan.\n", m)
 	}
 	return []byte(b.String())
 }

@@ -150,3 +150,17 @@ dynamic "volume_mount" {
 ```
 
 `restart_triggers` lists the ConfigMaps, Secrets and SecretProviderClasses whose change must restart the pods; hash their content into a pod template annotation, or hand the list to a reloader. An inline ConfigMap's name already changes with its content.
+
+### With the Helm library chart
+
+A platform that deploys with Helm and the [docuconf library chart](https://github.com/Docuconf/docuconf-go/tree/main/helm) passes `helm_values`, the same arguments in the chart's `docuconf:` vocabulary, instead of declaring the workload:
+
+```hcl
+resource "helm_release" "app" {
+  name   = "app"
+  chart  = "./chart"
+  values = [yamlencode({ docuconf = module.app_config.helm_values })]
+}
+```
+
+The chart renders the env, volumes and ConfigMaps and checks the values again with its `values.schema.json`; the module's checks run first, at plan.

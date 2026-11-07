@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"cuelang.org/go/cue"
+	"cuelang.org/go/encoding/jsonschema"
 	toml "github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
 
@@ -462,7 +463,7 @@ func TestTerraformMatchesRender(t *testing.T) {
 	for _, tc := range renderCases {
 		modules[tc.name] = moduleArgs(tc.doc)
 		o := map[string]any{}
-		for _, name := range renderOutputs {
+		for _, name := range append(renderOutputs, "helm_values") {
 			o[name] = "${module." + tc.name + "." + name + "}"
 		}
 		outputs[tc.name] = map[string]any{"value": o}
@@ -484,8 +485,10 @@ func TestTerraformMatchesRender(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
+	schema := helmSchema(t, p, c)
 	for _, tc := range renderCases {
 		t.Run(tc.name, func(t *testing.T) {
+			defer checkHelmValues(t, p, c, schema, got[tc.name].Value["helm_values"], renderDoc(t, p, c, tc.doc))
 			var stdout, stderr bytes.Buffer
 			if code := run(append([]string{"vet"}, vetArgs(t, tc.doc)...), &stdout, &stderr); code != 0 {
 				t.Fatalf("the case does not pass vet: %s%s", stdout.String(), stderr.String())
@@ -554,6 +557,57 @@ func TestTerraformMatchesRender(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// helmSchema is the chart's values.schema.json for the contract, as CUE.
+func helmSchema(t *testing.T, p *platform.Platform, c *platform.Contract) cue.Value {
+	t.Helper()
+	data, err := p.HelmValuesSchema(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := p.CompileJSON("values.schema.json", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := jsonschema.Extract(v, &jsonschema.Config{})
+	if err != nil {
+		t.Fatalf("values.schema.json: %v", err)
+	}
+	s, err := p.CompileFile(f)
+	if err != nil {
+		t.Fatalf("values.schema.json: %v", err)
+	}
+	return s
+}
+
+// checkHelmValues checks the helm_values output: the chart's schema
+// accepts it under docuconf, and as values, files and overlays documents
+// it renders what the case renders.
+func checkHelmValues(t *testing.T, p *platform.Platform, c *platform.Contract, schema cue.Value, hv any, want rendered) {
+	t.Helper()
+	m, ok := hv.(map[string]any)
+	if !ok {
+		t.Errorf("helm_values = %v, want an object", hv)
+		return
+	}
+	data, _ := json.Marshal(map[string]any{"docuconf": m})
+	v, err := p.CompileJSON("helm_values.json", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.Unify(v).Validate(cue.Concrete(true)); err != nil {
+		t.Errorf("values.schema.json rejects helm_values %s: %v", data, err)
+	}
+	sub := func(k string) map[string]any { x, _ := m[k].(map[string]any); return x }
+	d := doc{values: sub("values"), files: sub("files"), overlays: sub("overlays")}
+	for k := range base {
+		d.drop = append(d.drop, k) // the output holds every value it was given
+	}
+	got := renderDoc(t, p, c, d)
+	if gj, wj := maskHashes(canon(t, got)), maskHashes(canon(t, want)); gj != wj {
+		t.Errorf("helm_values renders differently:\n helm_values: %s\n render:      %s\n values: %s", gj, wj, data)
 	}
 }
 
