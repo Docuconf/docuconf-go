@@ -99,6 +99,8 @@ interface Mount {
 }
 interface Container {
   name: string;
+  /** The image it runs, when known. */
+  image?: string;
   env: Env[];
   envFrom: boolean;
   mounts: Mount[];
@@ -177,6 +179,7 @@ function readWorkload(r: StackResource): Workload | undefined {
     for (const c of (at(spec, "containers") as unknown[]) ?? []) {
       w.containers.push({
         name: str(at(c, "name")) ?? "",
+        image: str(at(c, "image")),
         env: ((at(c, "env") as unknown[]) ?? []).map((e) => ({ name: str(at(e, "name")) ?? "", value: str(at(e, "value")), ref: isObj(at(e, "valueFrom")) })),
         envFrom: ((at(c, "envFrom") as unknown[]) ?? []).length > 0,
         mounts: ((at(c, "volumeMounts") as unknown[]) ?? []).map((m) => ({
@@ -203,7 +206,7 @@ function readWorkload(r: StackResource): Workload | undefined {
     for (const d of Array.isArray(parsed) ? parsed : []) {
       const env: Env[] = ((at(d, "environment") as unknown[]) ?? []).map((e) => ({ name: str(at(e, "name")) ?? "", value: str(at(e, "value")), ref: false }));
       for (const e of (at(d, "secrets") as unknown[]) ?? []) env.push({ name: str(at(e, "name")) ?? "", ref: true });
-      w.containers.push({ name: str(at(d, "name")) ?? "", env, envFrom: ((at(d, "environmentFiles") as unknown[]) ?? []).length > 0, mounts: [] });
+      w.containers.push({ name: str(at(d, "name")) ?? "", image: str(at(d, "image")), env, envFrom: ((at(d, "environmentFiles") as unknown[]) ?? []).length > 0, mounts: [] });
     }
     return w;
   }
@@ -214,6 +217,7 @@ function readWorkload(r: StackResource): Workload | undefined {
     for (const c of (at(t.value, "containers") as unknown[]) ?? []) {
       w.containers.push({
         name: str(at(c, "name")) ?? "",
+        image: str(at(c, "image")),
         env: ((at(c, "envs") as unknown[]) ?? []).map((e) => {
           const ref = isObj(at(e, "valueSource", "secretKeyRef"));
           return { name: str(at(e, "name")) ?? "", value: ref ? undefined : str(at(e, "value")), ref };
@@ -235,7 +239,8 @@ function readWorkload(r: StackResource): Workload | undefined {
       .sort()
       .map((n) => ({ name: n, value: str(m[n]), ref: false }));
     const name = known(() => r.props["name"]);
-    w.containers.push({ name: (name.ok ? str(name.value) : undefined) ?? "", env, envFrom: false, mounts: [] });
+    const image = known(() => r.props["imageUri"]);
+    w.containers.push({ name: (name.ok ? str(name.value) : undefined) ?? "", image: image.ok ? str(image.value) : undefined, env, envFrom: false, mounts: [] });
     return w;
   }
   if (r.type === "azure-native:app:ContainerApp") {
@@ -245,6 +250,7 @@ function readWorkload(r: StackResource): Workload | undefined {
     for (const c of (at(t.value, "containers") as unknown[]) ?? []) {
       w.containers.push({
         name: str(at(c, "name")) ?? "",
+        image: str(at(c, "image")),
         env: ((at(c, "env") as unknown[]) ?? []).map((e) => {
           const ref = str(at(e, "secretRef")) !== undefined;
           return { name: str(at(e, "name")) ?? "", value: ref ? undefined : str(at(e, "value")), ref };
@@ -509,11 +515,33 @@ function appContainer(c: PackContract, w: Workload): number {
 }
 
 /**
+ * The image the app container runs against the one the contract was
+ * pulled from, by digest (spec/IAC.md section 4.7). A tag or an unknown
+ * image cannot be compared, and docuconf lint says so; the pack has no
+ * notices.
+ */
+function checkImage(comp: Component, w: Workload, ct: Container, image: string | undefined): Finding[] {
+  if (image === undefined || ct.image === undefined) return [];
+  const want = image.split("@")[1];
+  const got = ct.image.split("@")[1];
+  if (got === undefined || got === want) return [];
+  return [
+    {
+      code: "contract_image_mismatch",
+      level: "error",
+      urn: w.urn,
+      message: `${w.addr} runs ${ct.image}, but ${comp.name}'s contract describes ${image}; regenerate the component and this pack from the image the container runs (-contract oci://${ct.image}), or deploy that image`,
+    },
+  ];
+}
+
+/**
  * Checks the stack: each component of this contract and target, and the
  * workloads that take its env. digest is the contract's this pack was
- * generated from.
+ * generated from, and image the image it was pulled from, pinned by
+ * digest, when the pack was generated from an OCI reference.
  */
-export function checkStack(c: PackContract, digest: string, target: Target, resources: StackResource[], settings?: Settings | null): Finding[] {
+export function checkStack(c: PackContract, digest: string, target: Target, resources: StackResource[], settings?: Settings | null, image?: string): Finding[] {
   settings ??= {};
   const out: Finding[] = [];
   const comps: Component[] = [];
@@ -551,6 +579,7 @@ export function checkStack(c: PackContract, digest: string, target: Target, reso
       const ct = w.containers[appContainer(c, w)]!;
       out.push(...checkContainer(c, comp, w, ct, settings));
       if (w.target === "kubernetes") out.push(...checkPodMeta(c, comp, w));
+      out.push(...checkImage(comp, w, ct, image));
     }
   }
   return out;
