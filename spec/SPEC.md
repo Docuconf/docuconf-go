@@ -662,6 +662,8 @@ A contract describes a specific build of an application. It MUST travel with the
 - **Fallback:** an image label `dev.docuconf.contract` holding the contract, base64-encoded, for registries without referrers support. This only works for small contracts, because of label size limits.
 - **Local and GitOps:** commit `contract.cue` beside the claim. This is fine for getting started but invites version skew.
 
+`docuconf push -contract contract.cue IMAGE` attaches a contract to an image as that artifact: an OCI image manifest with `artifactType` and one layer of that type (the contract in the canonical form `docuconf export` writes), an empty config, and the image as its `subject`. On a registry without the referrers API it also adds the artifact to the index at the image's referrers tag (`sha256-<hex>`), as the distribution spec says a client must. `docuconf pull IMAGE` reads it back: the image's referrer of that type, or else its label (for a multi-platform image, its platform images' labels, which must agree; an index's attestations are skipped). Two different contracts attached to one image are an error. Wherever the CLI expects a contract file, `oci://IMAGE` reads the image's contract instead. Credentials are `docker login`'s; a registry on `localhost`, `127.0.0.1` or `[::1]` is reached over plain HTTP.
+
 ## 9. Compatibility
 
 `docuconf diff old.cue new.cue` classifies every change. CI SHOULD block merges with an unacknowledged breaking change.

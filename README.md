@@ -226,6 +226,8 @@ docuconf render -contract contract.cue -values deploy/values.yaml -files deploy/
 
 `vet` prints one line per problem, such as `PORT: 70000 is above max 65535` or `LOG_LEVL: is not declared in the contract (check the spelling)`, and exits 1. `-policy prod.cue` adds an environment's own rules, on values and on references: `secretReferences: [string]: secretKeyRef?: name: =~"^orders-"` pins every secret to the service's own Secrets. `render` turns valid inputs into the pod's `env`, volumes and ConfigMaps. A Helm-based platform can use the [docuconf Helm chart](helm), and a Crossplane composition can evaluate the contract in plain CUE. The [walkthrough](examples/walkthrough) shows all three paths end to end, including a policy file.
 
+So that the platform never checks image B against contract A, ship the contract with its image: `docuconf push -contract contract.cue registry.example.com/orders:1.4.0` attaches it to the image in the registry, and every command that takes `-contract` reads it from there as `oci://registry.example.com/orders@sha256:…` ([spec section 8](spec/SPEC.md#8-distribution)). A Terraform module or Pulumi component generated that way records the digest, and `docuconf lint` fails a plan whose container runs another image.
+
 ## Reference
 
 ### File inputs

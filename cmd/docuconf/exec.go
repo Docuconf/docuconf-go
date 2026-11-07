@@ -65,7 +65,7 @@ func boot(b *bootFlags, stderr io.Writer) (*booted, error) {
 	if err != nil {
 		return nil, err
 	}
-	c, err := p.LoadContract(b.contract)
+	c, _, err := loadContract(p, b.contract)
 	if err != nil {
 		return nil, err
 	}
