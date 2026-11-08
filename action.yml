@@ -75,7 +75,8 @@ runs:
         BASE_REF: ${{ inputs.base-ref || github.base_ref }}
         ACCEPT: ${{ inputs.accept }}
       run: |
-        set -uo pipefail
+        # The runner starts bash with -e; docuconf's exit code is read below.
+        set +e -uo pipefail
         if [ -z "$BASE_REF" ]; then
           echo "::error title=docuconf diff::no base-ref, and this is not a pull_request event"
           exit 2
@@ -136,7 +137,8 @@ runs:
         OVERLAYS: ${{ inputs.overlays }}
         POLICY: ${{ inputs.policy }}
       run: |
-        set -uo pipefail
+        # The runner starts bash with -e; docuconf's exit code is read below.
+        set +e -uo pipefail
         args=(vet -contract "$CONTRACT")
         [ -n "$VALUES" ] && args+=(-values "$VALUES")
         [ -n "$FILES" ] && args+=(-files "$FILES")
