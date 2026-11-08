@@ -27,6 +27,10 @@ step "Tools: docuconf, the functions and the crossplane CLI"
 (cd "$fn" && go build -o "$work/function-docuconf" .)
 GOBIN="$work" go install github.com/crossplane-contrib/function-go-templating@v0.13.2
 GOBIN="$work" go install github.com/crossplane/cli/v2/cmd/crossplane@v2.5.0
+# The CLI renders with Crossplane's own reconciler, from this binary rather
+# than its container, so that it reaches the functions on localhost.
+mkdir -p "$work/core"
+GOBIN="$work/core" go install github.com/crossplane/crossplane/v2/cmd/crossplane@v2.4.3
 
 step "A registry with the orders image and its contract"
 docker run -d --name docuconf-demo-registry -p 5000:5000 registry:2 >/dev/null
@@ -45,12 +49,10 @@ for port in 9443 9444; do
 	for _ in $(seq 1 30); do (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null && break; sleep 1; done
 done
 
-# The CLI renders in a Crossplane container; on the host's network it
-# reaches the functions on localhost.
 render() {
 	"$work/crossplane" render "$1" "$example/composition.yaml" "$here/functions.yaml" \
 		--required-resources "$here/secrets.yaml" --include-full-xr \
-		--crossplane-docker-network host --timeout 5m
+		--crossplane-binary "$work/core/crossplane"
 }
 
 step "The App: rendered into a configured Deployment"
