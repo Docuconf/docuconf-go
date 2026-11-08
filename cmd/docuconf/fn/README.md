@@ -77,5 +77,36 @@ crossplane xpkg build -f cmd/docuconf/fn/package --embed-runtime-image=function-
 crossplane xpkg push -f function-docuconf.xpkg ghcr.io/<you>/function-docuconf:v0.1.0
 ```
 
-It pulls from registries anonymously. Registry credentials, and checking
-that referenced Secrets exist, are not supported yet.
+## Secrets
+
+The function checks that each Secret the values and file sources name
+exists in the composite resource's namespace (its claim's, for a claim),
+with the key they name, and adds a line for each that does not:
+`DATABASE_URL: Secret orders-db has no key url`. It reads only the Secrets'
+keys, never their data. A Secret the composition itself creates, or an
+ExternalSecret that makes it, is still syncing rather than missing, and the
+function waits for it. It asks Crossplane for the Secrets as required
+resources, which Crossplane v2 supplies; with an older one it warns and
+skips the check. `checkSecrets: false` turns it off.
+
+## Private registries
+
+To pull contracts from a private registry, give the step a credential named
+`registry`: a Secret of type `kubernetes.io/dockerconfigjson`, as for an
+image pull secret.
+
+```yaml
+    - step: configuration
+      functionRef:
+        name: function-docuconf
+      credentials:
+        - name: registry
+          source: Secret
+          secretRef:
+            namespace: crossplane-system
+            name: registry-pull
+      input: ...
+```
+
+The function writes it where only that request reads it, and removes it
+after.

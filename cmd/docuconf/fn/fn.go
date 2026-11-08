@@ -149,6 +149,13 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 			image = in.Image.Value
 		}
 	}
+	// The Secrets the values and files name, which Crossplane fetches
+	// for the function: a first call only asks for them.
+	missing, waitSecrets, asked := f.secrets(req, rsp, in, oxr, desired, values, files)
+	if asked {
+		return rsp, nil
+	}
+	waiting = append(waiting, waitSecrets...)
 	if len(waiting) > 0 {
 		msg := "waiting for " + strings.Join(waiting, ", ")
 		response.ConditionUnknown(rsp, ConditionType, "Waiting").WithMessage(msg).TargetCompositeAndClaim()
@@ -164,9 +171,16 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 		return rsp, nil
 	}
 
+	registry, cleanup, err := f.registryFor(req)
+	if err != nil {
+		response.Fatal(rsp, err)
+		return rsp, nil
+	}
+	defer cleanup()
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	c, pinned, err := f.contract(ctx, in.Contract, image)
+	c, pinned, err := f.contract(ctx, registry, in.Contract, image)
 	if err != nil {
 		response.ConditionFalse(rsp, ConditionType, "ContractUnavailable").WithMessage(err.Error()).TargetCompositeAndClaim()
 		response.Fatal(rsp, err)
@@ -190,7 +204,7 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 					policy, err = p.CompileJSON("policy.cue", []byte(in.Policy))
 				}
 				if err == nil {
-					return f.check(rsp, desired, target, in, c, pinned, vals, fv, ov, policy)
+					return f.check(rsp, desired, target, in, c, pinned, vals, fv, ov, policy, missing)
 				}
 			}
 		}
@@ -201,13 +215,14 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 
 // check validates and renders, with the platform locked.
 func (f *Function) check(rsp *fnv1.RunFunctionResponse, desired map[resource.Name]*resource.DesiredComposed, target resource.Name,
-	in *v1alpha1.Input, c *platform.Contract, pinned string, values, files, overlays, policy cue.Value) (*fnv1.RunFunctionResponse, error) {
+	in *v1alpha1.Input, c *platform.Contract, pinned string, values, files, overlays, policy cue.Value, missing []string) (*fnv1.RunFunctionResponse, error) {
 	p := f.platform
 	problems, warnings, err := p.ValidateWarn(c, values, files, overlays, policy)
 	if err != nil {
 		response.Fatal(rsp, errors.Wrap(err, "cannot validate the values"))
 		return rsp, nil
 	}
+	problems = append(problems, missing...)
 	for _, w := range warnings {
 		response.Warning(rsp, errors.New(w)).TargetCompositeAndClaim()
 	}
@@ -258,19 +273,19 @@ func (f *Function) check(rsp *fnv1.RunFunctionResponse, desired map[resource.Nam
 // contract finds the contract: inline, oci://, or the image's own, pulled
 // once per pinned image. pinned is the image pinned by digest, when the
 // contract came from it.
-func (f *Function) contract(ctx context.Context, inline, image string) (*platform.Contract, string, error) {
+func (f *Function) contract(ctx context.Context, registry *oci.Client, inline, image string) (*platform.Contract, string, error) {
 	src := strings.TrimSpace(inline)
 	switch {
 	case src != "" && !strings.HasPrefix(src, oci.Scheme):
 		if c, ok := f.contracts[src]; ok {
-			return c, f.pin(ctx, image), nil
+			return c, f.pin(ctx, registry, image), nil
 		}
 		c, err := f.platform.ParseContract("contract.cue", []byte(src))
 		if err != nil {
 			return nil, "", errors.Wrap(err, "input: contract")
 		}
 		f.contracts[src] = c
-		return c, f.pin(ctx, image), nil
+		return c, f.pin(ctx, registry, image), nil
 	case src == "" && image == "":
 		return nil, "", errors.New("input: set image, whose contract the function pulls, or contract")
 	case src == "":
@@ -284,14 +299,14 @@ func (f *Function) contract(ctx context.Context, inline, image string) (*platfor
 	defer cancel()
 	// A tag can move, so it is resolved every time; the contract of a
 	// digest never changes.
-	img, _, err := f.registry.Resolve(ctx, ref)
+	img, _, err := registry.Resolve(ctx, ref)
 	if err != nil {
 		return nil, "", err
 	}
 	if c, ok := f.contracts[img.String()]; ok {
 		return c, img.String(), nil
 	}
-	pulled, err := f.registry.Pull(ctx, ref)
+	pulled, err := registry.Pull(ctx, ref)
 	if err != nil {
 		return nil, "", err
 	}
@@ -305,7 +320,7 @@ func (f *Function) contract(ctx context.Context, inline, image string) (*platfor
 
 // pin resolves an image to its digest, for an inline contract; "" when
 // there is no image or it cannot be resolved (the workload keeps its tag).
-func (f *Function) pin(ctx context.Context, image string) string {
+func (f *Function) pin(ctx context.Context, registry *oci.Client, image string) string {
 	if image == "" {
 		return ""
 	}
@@ -315,7 +330,7 @@ func (f *Function) pin(ctx context.Context, image string) string {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	img, _, err := f.registry.Resolve(ctx, ref)
+	img, _, err := registry.Resolve(ctx, ref)
 	if err != nil {
 		f.log.Info("cannot resolve the image; the workload keeps its reference", "image", image, "error", err)
 		return ""

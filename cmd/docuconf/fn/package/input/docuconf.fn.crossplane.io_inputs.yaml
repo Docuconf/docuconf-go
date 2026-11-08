@@ -88,3 +88,7 @@ spec:
           allowEnvFrom:
             description: Let the target container keep envFrom, whose keys the contract cannot check.
             type: boolean
+          checkSecrets:
+            description: Check that each Secret the values and file sources name exists in the composite resource's namespace, with the key they name. On by default; it needs a Crossplane that supplies
+              required resources (v2).
+            type: boolean

@@ -394,3 +394,163 @@ func pushImage(t *testing.T, host, repo, tag string) {
 		t.Fatal(err)
 	}
 }
+
+// answer runs the function as Crossplane does: while the response
+// requires resources the request lacks, it fetches them from cluster, a
+// set of Secrets by name, and calls again.
+func answer(t *testing.T, f *Function, req *fnv1.RunFunctionRequest, cluster map[string]map[string]string) *fnv1.RunFunctionResponse {
+	t.Helper()
+	for i := 0; ; i++ {
+		rsp, err := f.RunFunction(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reqs := rsp.GetRequirements().GetResources()
+		done := true
+		for k := range reqs {
+			if _, ok := req.GetRequiredResources()[k]; !ok {
+				done = false
+			}
+		}
+		if done {
+			return rsp
+		}
+		if i == 3 {
+			t.Fatal("the requirements never settle")
+		}
+		req.RequiredResources = map[string]*fnv1.Resources{}
+		for k, sel := range reqs {
+			res := &fnv1.Resources{}
+			if data, ok := cluster[sel.GetMatchName()]; ok {
+				d := map[string]any{}
+				for key := range data {
+					d[key] = "c2VjcmV0" // base64 of "secret": never read
+				}
+				obj, _ := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "Secret",
+					"metadata": map[string]any{"name": sel.GetMatchName(), "namespace": sel.GetNamespace()}, "data": d})
+				res.Items = []*fnv1.Resource{{Resource: resource.MustStructJSON(string(obj))}}
+			}
+			req.RequiredResources[k] = res
+		}
+	}
+}
+
+func secretsRequest(t *testing.T, input map[string]any, extra map[string]string) *fnv1.RunFunctionRequest {
+	t.Helper()
+	in := map[string]any{"apiVersion": "docuconf.fn.crossplane.io/v1alpha1", "kind": "Input", "contract": contractText(t),
+		"values": map[string]any{"fromFieldPath": "spec.values"}, "target": map[string]any{"resource": "deployment", "container": "orders-api"}}
+	for k, v := range input {
+		in[k] = v
+	}
+	inJSON, _ := json.Marshal(in)
+	resources := map[string]*fnv1.Resource{"deployment": {Resource: resource.MustStructJSON(deployment)}}
+	for k, v := range extra {
+		resources[k] = &fnv1.Resource{Resource: resource.MustStructJSON(v)}
+	}
+	return &fnv1.RunFunctionRequest{
+		Meta:  capable,
+		Input: resource.MustStructJSON(string(inJSON)),
+		Observed: &fnv1.State{Composite: &fnv1.Resource{Resource: resource.MustStructJSON(
+			`{"apiVersion": "example.org/v1", "kind": "App", "metadata": {"name": "orders", "namespace": "shop"}, "spec": {"values": ` + goodValues + `}}`)}},
+		Desired: &fnv1.State{Resources: resources},
+	}
+}
+
+// capable is a Crossplane that supplies required resources.
+var capable = &fnv1.RequestMeta{Capabilities: []fnv1.Capability{fnv1.Capability_CAPABILITY_CAPABILITIES, fnv1.Capability_CAPABILITY_REQUIRED_RESOURCES}}
+
+// An older Crossplane is never asked: the Secrets are not checked, and it
+// says so.
+func TestSecretsUnsupported(t *testing.T) {
+	f := newFunction(t)
+	req := secretsRequest(t, nil, nil)
+	req.Meta = nil
+	rsp, err := f.RunFunction(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warned := false
+	for _, r := range rsp.GetResults() {
+		warned = warned || r.GetSeverity() == fnv1.Severity_SEVERITY_WARNING && strings.Contains(r.GetMessage(), "does not supply required resources")
+	}
+	if len(rsp.GetRequirements().GetResources()) != 0 || !warned || condition(t, rsp).GetReason() != "Valid" {
+		t.Errorf("unsupported: requirements %v, results %v", rsp.GetRequirements(), rsp.GetResults())
+	}
+}
+
+func TestSecrets(t *testing.T) {
+	f := newFunction(t)
+	both := map[string]map[string]string{"orders-db": {"url": ""}, "orders-webhooks": {"keys": ""}}
+
+	// The first call only asks for the Secrets, in the App's namespace.
+	rsp, err := f.RunFunction(context.Background(), secretsRequest(t, nil, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sel := rsp.GetRequirements().GetResources()["docuconf-secret-orders-db"]
+	if sel.GetKind() != "Secret" || sel.GetNamespace() != "shop" || sel.GetMatchName() != "orders-db" || len(rsp.GetConditions()) != 0 {
+		t.Errorf("first call: %v, conditions %v", rsp.GetRequirements(), rsp.GetConditions())
+	}
+
+	if rsp := answer(t, f, secretsRequest(t, nil, nil), both); fatal(rsp) != "" || condition(t, rsp).GetReason() != "Valid" {
+		t.Errorf("both Secrets: %s", fatal(rsp))
+	}
+
+	rsp = answer(t, f, secretsRequest(t, nil, nil), map[string]map[string]string{"orders-db": {"password": ""}})
+	msg := fatal(rsp)
+	for _, want := range []string{"DATABASE_URL: Secret orders-db has no key url", "WEBHOOK_KEYS: Secret orders-webhooks does not exist in namespace shop"} {
+		if !strings.Contains(msg, want) || !strings.Contains(condition(t, rsp).GetMessage(), want) {
+			t.Errorf("no %q in %q", want, msg)
+		}
+	}
+	if condition(t, rsp).GetReason() != "Invalid" {
+		t.Errorf("condition: %v", condition(t, rsp))
+	}
+
+	// An ExternalSecret this composition creates is syncing: wait.
+	es := `{"apiVersion": "external-secrets.io/v1", "kind": "ExternalSecret", "metadata": {"name": "orders-webhooks"}, "spec": {}}`
+	rsp = answer(t, f, secretsRequest(t, nil, map[string]string{"webhooks": es}), map[string]map[string]string{"orders-db": {"url": ""}})
+	if c := condition(t, rsp); c.GetReason() != "Waiting" || !strings.Contains(c.GetMessage(), "Secret orders-webhooks, which this composition creates") || fatal(rsp) != "" {
+		t.Errorf("syncing: %v %s", c, fatal(rsp))
+	}
+
+	// Turned off, nothing is asked.
+	rsp, err = f.RunFunction(context.Background(), secretsRequest(t, map[string]any{"checkSecrets": false}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rsp.GetRequirements().GetResources()) != 0 || condition(t, rsp).GetReason() != "Valid" {
+		t.Errorf("checkSecrets false: %v", rsp.GetRequirements())
+	}
+}
+
+// Registry credentials from the step's credentials: written for the
+// request, removed after it.
+func TestRegistryCredentials(t *testing.T) {
+	f := newFunction(t)
+	req := secretsRequest(t, map[string]any{"checkSecrets": false}, nil)
+	req.Credentials = map[string]*fnv1.Credentials{RegistryCredentials: {Source: &fnv1.Credentials_CredentialData{
+		CredentialData: &fnv1.CredentialData{Data: map[string][]byte{".dockerconfigjson": []byte(`{"auths": {"registry.example.com": {"auth": "dXNlcjpwYXNz"}}}`)}}}}}
+	c, cleanup, err := f.registryFor(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Env) != 1 || !strings.HasPrefix(c.Env[0], "DOCKER_CONFIG=") {
+		t.Fatalf("env: %v", c.Env)
+	}
+	dir := strings.TrimPrefix(c.Env[0], "DOCKER_CONFIG=")
+	if b, err := os.ReadFile(dir + "/config.json"); err != nil || !strings.Contains(string(b), "registry.example.com") {
+		t.Errorf("config.json: %v %s", err, b)
+	}
+	cleanup()
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("the credentials outlive the request: %v", err)
+	}
+	if f.registry.Env != nil {
+		t.Errorf("the shared client was changed")
+	}
+	req.Credentials[RegistryCredentials] = &fnv1.Credentials{Source: &fnv1.Credentials_CredentialData{CredentialData: &fnv1.CredentialData{Data: map[string][]byte{"token": []byte("x")}}}}
+	if _, _, err := f.registryFor(req); err == nil || !strings.Contains(err.Error(), "kubernetes.io/dockerconfigjson") {
+		t.Errorf("credentials without a docker config: %v", err)
+	}
+}

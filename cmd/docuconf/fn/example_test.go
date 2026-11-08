@@ -74,16 +74,15 @@ func TestExample(t *testing.T) {
 	appJSON, _ := json.Marshal(app)
 	workload := `{"apiVersion": "apps/v1", "kind": "Deployment", "spec": {"selector": {"matchLabels": {"app": "orders"}},
 	  "template": {"metadata": {"labels": {"app": "orders"}}, "spec": {"containers": [{"name": "app", "image": "` + host + `/orders-api:2.3.0"}]}}}}`
+	// The Secrets the example App names, in its namespace.
+	cluster := map[string]map[string]string{"orders-db": {"url": ""}, "orders-webhooks": {"keys": ""}, "orders-tls": {"tls.crt": "", "tls.key": ""}}
 	run := func(app []byte) *fnv1.RunFunctionResponse {
-		rsp, err := f.RunFunction(context.Background(), &fnv1.RunFunctionRequest{
+		return answer(t, f, &fnv1.RunFunctionRequest{
+			Meta:     capable,
 			Input:    resource.MustStructJSON(string(inJSON)),
 			Observed: &fnv1.State{Composite: &fnv1.Resource{Resource: resource.MustStructJSON(string(app))}},
 			Desired:  &fnv1.State{Resources: map[string]*fnv1.Resource{"deployment": {Resource: resource.MustStructJSON(workload)}}},
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return rsp
+		}, cluster)
 	}
 	rsp := run(appJSON)
 	if m := fatal(rsp); m != "" {
