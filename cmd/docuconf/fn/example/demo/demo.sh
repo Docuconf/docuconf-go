@@ -29,8 +29,11 @@ GOBIN="$work" go install github.com/crossplane-contrib/function-go-templating@v0
 GOBIN="$work" go install github.com/crossplane/cli/v2/cmd/crossplane@v2.5.0
 # The CLI renders with Crossplane's own reconciler, from this binary rather
 # than its container, so that it reaches the functions on localhost.
+# Its module has replace directives, so it is built from its release
+# rather than with go install.
+git clone -q --depth 1 --branch v2.4.3 https://github.com/crossplane/crossplane "$work/crossplane-src" 2>/dev/null
 mkdir -p "$work/core"
-GOBIN="$work/core" go install github.com/crossplane/crossplane/v2/cmd/crossplane@v2.4.3
+(cd "$work/crossplane-src" && go build -o "$work/core/crossplane" ./cmd/crossplane)
 
 step "A registry with the orders image and its contract"
 docker run -d --name docuconf-demo-registry -p 5000:5000 registry:2 >/dev/null
