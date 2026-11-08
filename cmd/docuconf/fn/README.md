@@ -66,6 +66,13 @@ README](../../../README.md#8-deploy)). The input's schema is
 declares the Deployment, and function-docuconf configures it. Its test,
 `example_test.go`, runs the function with the example's own input and App.
 
+[example/demo/demo.sh](example/demo/demo.sh) runs it for real with `crossplane
+render`: function-go-templating and function-docuconf in Crossplane's
+development runtime, a local registry holding the orders image and its
+contract, and the Secrets the App names. The App renders into a configured
+Deployment, its image pinned by digest; the same App with `PORT: 70000` is
+rejected, and nothing renders. It needs Docker and Go, and CI runs it.
+
 ## Build
 
 The function shares the CLI's validation, rendering and OCI code, so its
