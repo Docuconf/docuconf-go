@@ -516,6 +516,36 @@ def profile_supplies(c: Obj, n: str) -> bool:
     return any(n in m for m in ((c.get("profiles") or {}).get("defaults") or {}).values())
 
 
+def condition_holds(c: Obj, cond: Obj | None, args: Obj, overlay_values: Obj) -> str | None:
+    """The input's requiredIf (SPEC.md 4.2.1), as vet writes it: "TLS_ENABLED
+    is true", the value as JSON; None when the condition does not hold. The
+    condition variable's value is its argument's literal, else an overlay's,
+    else its default; where it is not known here (a reference, an Output, or
+    a value a profile may set), docuconf lint and the SDK check it instead."""
+    for n, want in (cond or {}).items():
+        cv = c["vars"].get(n)
+        if cv is None:
+            return None
+        a = args.get(n)
+        if a is not None:
+            if not is_obj(a) or "value" not in a or has_output(a["value"]):
+                return None
+            got = a["value"]
+        else:
+            o = next((o for o in (c.get("overlays") or {}) if is_obj(overlay_values.get(o)) and overlay_values[o].get(n) is not None), None)
+            if o is not None:
+                got = overlay_values[o][n]
+            elif profile_supplies(c, n):
+                return None
+            else:
+                got = cv.get("default")
+        # True == 1 in Python: compare the kinds too.
+        if type(got) is type(want) and got == want:
+            return f"{n} is {json.dumps(want)}"
+        return None
+    return None
+
+
 def deprecated_warning(n: str, d: Obj) -> str:
     """The SDK's deprecation warning."""
     by = f" (replaced by {d['replacedBy']})" if d.get("replacedBy") is not None and d["replacedBy"] not in d["message"] else ""
@@ -587,6 +617,9 @@ def structure_problems(c: Obj, args: Obj, overlay_values: Obj, pod_metadata: Any
         if a is None:
             if v.get("required") and not in_overlay(n) and not profile_supplies(c, n):
                 problems.append(f"{n}: required, but not set (missing_required)")
+            when = condition_holds(c, v.get("requiredIf"), args, overlay_values)
+            if when and not in_overlay(n) and not profile_supplies(c, n):
+                problems.append(f"{n}: is required when {when}, but not set (missing_required)")
             continue
         if isinstance(a, pulumi.Output):
             problems.append(f'{n}: give the source as a dict, such as {{"value": ...}}, with any Output inside it')
@@ -626,6 +659,9 @@ def structure_problems(c: Obj, args: Obj, overlay_values: Obj, pod_metadata: Any
         if a is None:
             if f.get("required"):
                 problems.append(f"{n}: is a required file input; set one of {or_list(srcs)}")
+            when = condition_holds(c, f.get("requiredIf"), args, overlay_values)
+            if when:
+                problems.append(f"{n}: is a required file input when {when}; set one of {or_list(srcs)}")
             continue
         kind = source_of(a, FILE_SOURCES)
         if kind is None or kind not in srcs:
@@ -893,6 +929,9 @@ def target_problems(c: Obj, target: str, args: Obj) -> tuple[list[str], list[str
         if a is None:
             if v.get("required") and not profile_supplies(c, n):
                 problems.append(f"{n}: required, but not set (missing_required)")
+            when = condition_holds(c, v.get("requiredIf"), args, {})
+            if when and not profile_supplies(c, n):
+                problems.append(f"{n}: is required when {when}, but not set (missing_required)")
             continue
         kind = source_of(a, TARGET_SOURCES)
         if kind is None or kind not in srcs:
@@ -925,11 +964,18 @@ def target_problems(c: Obj, target: str, args: Obj) -> tuple[list[str], list[str
             p, w = value_problems(c, n, s)
             problems += p
             warned += w
+    for n, f in (c.get("files") or {}).items():
+        when = None if n in files else condition_holds(c, f.get("requiredIf"), args, {})
+        if when:
+            problems.append(f"{n}: is a required file input when {when}, and the {target} target cannot mount it; deploy it on a target that can (kubernetes)")
     for n, f in files.items():
         a = args.get(n)
         if a is None:
             if f.get("required"):
                 problems.append(f"{n}: is a required file input; set one of secret or injected")
+            when = condition_holds(c, f.get("requiredIf"), args, {})
+            if when:
+                problems.append(f"{n}: is a required file input when {when}; set one of secret or injected")
             continue
         kind = source_of(a, ("secret", "injected"))
         if kind is None:

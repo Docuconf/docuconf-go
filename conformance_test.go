@@ -53,6 +53,17 @@ func TestConformance(t *testing.T) {
 	if path == "" {
 		path = filepath.Join("conformance", "cases.json")
 	}
+	runSuite(t, path)
+}
+
+// TestConformancePending runs conformance/cases.pending.json: the cases of
+// features not every SDK has yet, which the Go SDK has
+// (conformance/README.md).
+func TestConformancePending(t *testing.T) {
+	runSuite(t, filepath.Join("conformance", "cases.pending.json"))
+}
+
+func runSuite(t *testing.T, path string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("reading the conformance suite: %v", err)

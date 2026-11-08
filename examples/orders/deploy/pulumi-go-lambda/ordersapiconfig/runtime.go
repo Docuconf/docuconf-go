@@ -195,6 +195,8 @@ type contractVar struct {
 	Type       string          `json:"type"`
 	Secret     bool            `json:"secret"`
 	Required   bool            `json:"required"`
+	RequiredIf map[string]any  `json:"requiredIf"`
+	Default    any             `json:"default"`
 	Encoding   string          `json:"encoding"`
 	Separator  *string         `json:"separator"`
 	Items      string          `json:"items"`
@@ -205,17 +207,18 @@ type contractVar struct {
 }
 
 type contractFile struct {
-	Type          string       `json:"type"`
-	Secret        bool         `json:"secret"`
-	Required      bool         `json:"required"`
-	Path          string       `json:"path"`
-	PathEnv       string       `json:"pathEnv"`
-	Format        string       `json:"format"`
-	Reload        string       `json:"reload"`
-	DNSNames      []string     `json:"dnsNames"`
-	KeyAlgorithms []string     `json:"keyAlgorithms"`
-	MinRemaining  string       `json:"minRemaining"`
-	Deprecated    *deprecation `json:"deprecated"`
+	Type          string         `json:"type"`
+	Secret        bool           `json:"secret"`
+	Required      bool           `json:"required"`
+	RequiredIf    map[string]any `json:"requiredIf"`
+	Path          string         `json:"path"`
+	PathEnv       string         `json:"pathEnv"`
+	Format        string         `json:"format"`
+	Reload        string         `json:"reload"`
+	DNSNames      []string       `json:"dnsNames"`
+	KeyAlgorithms []string       `json:"keyAlgorithms"`
+	MinRemaining  string         `json:"minRemaining"`
+	Deprecated    *deprecation   `json:"deprecated"`
 }
 
 type contractOverlay struct {
@@ -726,6 +729,53 @@ func deprecatedWarning(n string, d *deprecation) string {
 		by = " (replaced by " + d.ReplacedBy + ")"
 	}
 	return fmt.Sprintf("%s is deprecated: %s%s", n, d.Message, by)
+}
+
+// conditionHolds is an input's requiredIf (SPEC.md 4.2.1) as vet writes
+// it, "TLS_ENABLED is true", the value as JSON; "" when the condition does
+// not hold. The condition variable's value is its argument's literal, else
+// an overlay's, else its default; where it is not known here (a reference,
+// an Output, or a value a profile may set), docuconf lint and the SDK
+// check it instead.
+func (c *contract) conditionHolds(cond map[string]any, args inputs, overlayValues map[string]map[string]any) string {
+	for n, want := range cond {
+		cv, ok := c.vars[n]
+		if !ok {
+			return ""
+		}
+		var got any
+		if s, set := args[n]; set {
+			if s.kind != "value" {
+				return ""
+			}
+			x, known := plain(s.fields)
+			if !known {
+				return ""
+			}
+			got = x
+		} else {
+			inOverlay := false
+			for _, o := range c.overlayOrder {
+				if x, ok := overlayValues[o][n]; ok {
+					got, inOverlay = x, true
+					break
+				}
+			}
+			if !inOverlay {
+				if c.profileSupplies(n) {
+					return ""
+				}
+				got = cv.Default
+			}
+		}
+		g, _ := json.Marshal(got)
+		w, _ := json.Marshal(want)
+		if got != nil && string(g) == string(w) {
+			return n + " is " + string(w)
+		}
+		return ""
+	}
+	return ""
 }
 
 func (c *contract) profileSupplies(n string) bool {

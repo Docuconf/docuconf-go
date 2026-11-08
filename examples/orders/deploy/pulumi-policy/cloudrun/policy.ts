@@ -425,6 +425,29 @@ function checkContainer(c: PackContract, comp: Component, w: Workload, ct: Conta
     const set = ct.env.some((e) => (e.name === n || (v.encoding === "indexed" && e.name.startsWith(n + "__"))) && (e.ref || (e.value !== undefined && !v.secret)));
     if (!set) add("missing_required", `${n}: is required, and set neither by the platform nor by the selected profile`);
   }
+  // An input whose requiredIf holds (SPEC.md 4.2.1), on the condition
+  // variable's value in the container, else its default. A reference, or
+  // a value a profile may set, is left to the SDK.
+  const supplied = (n: string) => Object.values(profiles).some((m) => n in m);
+  for (const [n, v] of Object.entries(c.vars)) {
+    const cond = v["requiredIf"] as Obj | undefined;
+    if (!cond || supplied(n)) continue;
+    for (const [cn, want] of Object.entries(cond)) {
+      const cv = c.vars[cn];
+      if (!cv || supplied(cn) || comp.args[cn] === UNKNOWN) continue;
+      const e = ct.env.find((e) => e.name === cn);
+      if (e?.ref) continue;
+      let got: string | undefined = e === undefined ? undefined : literal[cn] ?? e.value;
+      if (got === undefined && cv["default"] !== undefined) got = String(cv["default"]);
+      if (got === undefined) continue;
+      const same = typeof want === "boolean" ? got.toLowerCase() === String(want) : typeof want === "number" ? /^[+-]?[0-9]+$/.test(got) && Number(got) === want : got === want;
+      if (!same) continue;
+      const a = comp.args[n];
+      if (a === UNKNOWN || sourceOf(a) === "injected") continue;
+      const set = ct.env.some((e) => (e.name === n || (v.encoding === "indexed" && e.name.startsWith(n + "__"))) && (e.ref || (e.value !== undefined && !v.secret)));
+      if (!set) add("missing_required", `${n}: is required when ${cn} is ${JSON.stringify(want)}, and set neither by the platform nor by the selected profile`);
+    }
+  }
   return out;
 }
 
