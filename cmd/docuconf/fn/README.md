@@ -68,11 +68,11 @@ declares the Deployment, and function-docuconf configures it. Its test,
 
 ## Build
 
-The function shares the CLI's validation, rendering and OCI code, so it is
-built from `cmd/docuconf`:
+The function shares the CLI's validation, rendering and OCI code, so its
+image is built with `cmd/docuconf` as the context, from the repository root:
 
 ```sh
-docker build -f fn/Dockerfile -t function-docuconf cmd/docuconf
+docker build -f cmd/docuconf/fn/Dockerfile -t function-docuconf cmd/docuconf
 crossplane xpkg build -f cmd/docuconf/fn/package --embed-runtime-image=function-docuconf -o function-docuconf.xpkg
 crossplane xpkg push -f function-docuconf.xpkg ghcr.io/<you>/function-docuconf:v0.1.0
 ```

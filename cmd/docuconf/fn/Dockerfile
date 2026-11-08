@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1
 #
 # function-docuconf's runtime image. Build it, and the Crossplane package,
-# from cmd/docuconf, the module it shares code with:
+# from the repository root, with cmd/docuconf, the module it shares code
+# with, as the context:
 #
-#   docker build -f fn/Dockerfile -t function-docuconf cmd/docuconf
+#   docker build -f cmd/docuconf/fn/Dockerfile -t function-docuconf cmd/docuconf
 #   crossplane xpkg build -f cmd/docuconf/fn/package --embed-runtime-image=function-docuconf
 #
 # Cross-compile on the build machine's own architecture; no emulation needed.

@@ -24,7 +24,7 @@ jobs:
           go vet ./...
           go test -race ./...
       - name: Image
-        run: docker build -f fn/Dockerfile -t function-docuconf:ci cmd/docuconf
+        run: docker build -f cmd/docuconf/fn/Dockerfile -t function-docuconf:ci cmd/docuconf
       - name: The image serves
         run: |
           docker run -d --name fn -p 9443:9443 function-docuconf:ci --insecure
