@@ -1,0 +1,80 @@
+description: >
+  Conditional requirements (SPEC §4.2.1): an input with requiredIf is
+  required while its condition variable has the value, compared on the
+  variable's loaded value (the environment, else the selected profile,
+  else its default), and optional otherwise. A condition variable with a
+  violation of its own makes nothing required.
+requires: [required-if, profiles, files]
+vars:
+  APP_ENV:
+    type: string
+    description: Which profile file the app loads
+    default: development
+  TLS_ENABLED:
+    type: bool
+    description: Serve HTTPS instead of HTTP
+    default: false
+  TLS_CLIENT_CA_SUBJECT:
+    type: string
+    description: Subject of the CA that signs client certificates
+    requiredIf: {TLS_ENABLED: true}
+  LOG_FORMAT:
+    type: enum
+    description: Log output format
+    values: [text, json]
+    default: text
+  LOG_SCHEMA_URL:
+    type: url
+    description: JSON schema the structured logs follow
+    requiredIf: {LOG_FORMAT: json}
+  PORT:
+    type: int
+    description: Port to listen on
+    default: 443
+  ACME_EMAIL:
+    type: string
+    description: Contact address for certificate renewal
+    requiredIf: {PORT: 443}
+files:
+  allowlist:
+    type: text
+    description: Client names allowed over TLS
+    requiredIf: {TLS_ENABLED: true}
+    path: /etc/relay/allowlist/allow.txt
+profiles:
+  selector: APP_ENV
+  default: development
+  defaults:
+    production: {TLS_ENABLED: true}
+cases:
+  - name: conditions off, conditional inputs optional
+    values: {PORT: 8080}
+  - name: a condition on a variable's default
+    env: {}
+    errors: [{var: ACME_EMAIL, code: missing_required}]
+  - name: conditions on, every conditional input missing
+    env: {TLS_ENABLED: "true", LOG_FORMAT: json, PORT: "443"}
+    errors:
+      - {var: TLS_CLIENT_CA_SUBJECT, code: missing_required}
+      - {var: LOG_SCHEMA_URL, code: missing_required}
+      - {var: ACME_EMAIL, code: missing_required}
+      - {var: allowlist, code: file_missing}
+  - name: conditions on, every conditional input set
+    env: {TLS_ENABLED: "TRUE", TLS_CLIENT_CA_SUBJECT: "CN=Client CA", LOG_FORMAT: json, LOG_SCHEMA_URL: "https://logs.example.com/v1.json", PORT: "+443", ACME_EMAIL: ops@example.com}
+    files:
+      /etc/relay/allowlist/allow.txt: "billing\n"
+    expect: {TLS_ENABLED: true, TLS_CLIENT_CA_SUBJECT: "CN=Client CA", LOG_FORMAT: json, LOG_SCHEMA_URL: "https://logs.example.com/v1.json", PORT: 443, ACME_EMAIL: ops@example.com, allowlist: "billing\n"}
+  - name: the selected profile turns a condition on
+    env: {APP_ENV: production, PORT: "8080"}
+    errors:
+      - {var: TLS_CLIENT_CA_SUBJECT, code: missing_required}
+      - {var: allowlist, code: file_missing}
+  - name: the environment beats the profile's condition
+    env: {APP_ENV: production, TLS_ENABLED: "false", PORT: "8080"}
+    expect: {APP_ENV: production, TLS_ENABLED: false, PORT: 8080}
+  - name: an empty value is unset for a conditional url
+    env: {LOG_FORMAT: json, LOG_SCHEMA_URL: "", PORT: "8080"}
+    errors: [{var: LOG_SCHEMA_URL, code: missing_required}]
+  - name: an invalid condition variable makes nothing required
+    env: {TLS_ENABLED: "yes", PORT: "8080"}
+    errors: [{var: TLS_ENABLED, code: invalid_type}]

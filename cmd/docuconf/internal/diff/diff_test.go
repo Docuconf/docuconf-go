@@ -57,6 +57,19 @@ func TestContracts(t *testing.T) {
 		}, want: []want{{Notable, "var", "PORT", "deprecated", "is deprecated: the platform should stop setting it (Use LISTEN_PORT); it is replaced by LISTEN_PORT"}}},
 		{name: "optional to required", mutate: func(c map[string]any) { v(c, "PORT")["required"] = true; delete(v(c, "PORT"), "default") },
 			want: []want{{Breaking, "var", "PORT", "required", "becomes required"}, {Notable, "var", "PORT", "default", "loses its default, 8080"}}},
+		{name: "add conditionally required var", mutate: func(c map[string]any) {
+			vars(c)["CA"] = map[string]any{"name": "CA", "type": "string", "description": "Client CA subject", "required": false, "secret": false, "requiredIf": map[string]any{"LOG_LEVEL": "debug"}}
+		}, want: []want{{Breaking, "var", "CA", "", `a variable required when LOG_LEVEL is "debug" is added`}}},
+		{name: "optional to conditionally required", mutate: func(c map[string]any) {
+			v(c, "NAME")["requiredIf"] = map[string]any{"LOG_LEVEL": "debug"}
+		}, want: []want{{Breaking, "var", "NAME", "requiredIf", `becomes required when LOG_LEVEL is "debug"`}}},
+		{name: "file becomes conditionally required", mutate: func(c map[string]any) {
+			f(c, "serving-tls")["requiredIf"] = map[string]any{"PORT": json.Number("443")}
+		}, want: []want{{Breaking, "file", "serving-tls", "requiredIf", "becomes required when PORT is 443"}}},
+		{name: "required to conditionally required", mutate: func(c map[string]any) {
+			v(c, "UPSTREAM")["required"] = false
+			v(c, "UPSTREAM")["requiredIf"] = map[string]any{"LOG_LEVEL": "warn"}
+		}, compat: []want{{Compatible, "var", "UPSTREAM", "requiredIf", `becomes required only when LOG_LEVEL is "warn"`}}},
 		{name: "required to optional", mutate: func(c map[string]any) { v(c, "UPSTREAM")["required"] = false },
 			compat: []want{{Compatible, "var", "UPSTREAM", "required", "becomes optional"}}},
 		{name: "change type", mutate: func(c map[string]any) { v(c, "NAME")["type"] = "url" },
@@ -215,4 +228,35 @@ func describe(cs []Change) string {
 		fmt.Fprintf(&b, "  %s %s %s %s: %s\n", c.Class, c.Kind, c.Input, c.Field, c.Message)
 	}
 	return b.String()
+}
+
+// TestConditionChanges compares contracts that both have a requiredIf.
+func TestConditionChanges(t *testing.T) {
+	with := func(cond string) []byte {
+		return []byte(strings.Replace(base, `"maxLength": 40}`, `"maxLength": 40`+cond+`}`, 1))
+	}
+	for _, tc := range []struct {
+		old, new string
+		want     want
+	}{
+		{`, "requiredIf": {"LOG_LEVEL": "debug"}`, `, "requiredIf": {"LOG_LEVEL": "warn"}`,
+			want{Breaking, "var", "NAME", "requiredIf", `is now required when LOG_LEVEL is "warn", instead of when LOG_LEVEL is "debug"`}},
+		{`, "requiredIf": {"LOG_LEVEL": "debug"}`, ``,
+			want{Compatible, "var", "NAME", "requiredIf", `is no longer required when LOG_LEVEL is "debug"`}},
+		{`, "requiredIf": {"LOG_LEVEL": "debug"}`, `, "requiredIf": {"LOG_LEVEL": "debug"}`, want{}},
+	} {
+		got, err := Contracts(with(tc.old), with(tc.new))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tc.want == (want{}) {
+			if len(got) != 0 {
+				t.Errorf("unchanged condition reported:\n%s", describe(got))
+			}
+			continue
+		}
+		if !has(got, tc.want) || len(got) != 1 {
+			t.Errorf("want only %q; got:\n%s", tc.want.message, describe(got))
+		}
+	}
 }

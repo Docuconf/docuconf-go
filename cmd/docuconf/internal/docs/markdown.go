@@ -77,7 +77,7 @@ func generatedBy(m *Model) string {
 
 // summary counts the inputs.
 func summary(m *Model) string {
-	var vars, files, required, secrets int
+	var vars, files, required, conditional, secrets int
 	for _, g := range m.Groups {
 		for _, in := range g.Inputs {
 			if in.Kind == KindVar {
@@ -88,14 +88,21 @@ func summary(m *Model) string {
 			if in.Required {
 				required++
 			}
+			if in.RequiredIf != nil {
+				conditional++
+			}
 			if in.Secret {
 				secrets++
 			}
 		}
 	}
-	return fmt.Sprintf("%s reads %s and %s. %s required, and %s secret.",
+	req := capitalize(isAre(required)) + " required"
+	if conditional > 0 {
+		req += fmt.Sprintf(", %d only under a condition", conditional)
+	}
+	return fmt.Sprintf("%s reads %s and %s. %s, and %s secret.",
 		code(m.Service.Name), countWords(vars, "environment variable", "environment variables"),
-		countWords(files, "file", "files"), capitalize(isAre(required)), isAre(secrets))
+		countWords(files, "file", "files"), req, isAre(secrets))
 }
 
 func countWords(n int, one, many string) string {
@@ -155,6 +162,9 @@ func (r *mdRenderer) contents(b *strings.Builder) {
 				var notes []string
 				if in.Required {
 					notes = append(notes, "required")
+				}
+				if c := in.RequiredIf; c != nil {
+					notes = append(notes, "required when "+c.When())
 				}
 				if in.Secret {
 					notes = append(notes, "secret")
@@ -221,7 +231,11 @@ func (r *mdRenderer) input(b *strings.Builder, in Input, level int) {
 	b.WriteString("| Property | Value |\n|---|---|\n")
 	row := func(k, v string) { fmt.Fprintf(b, "| %s | %s |\n", k, cell(v)) }
 	row("Type", typeText(in))
-	row("Required", yesNo(in.Required))
+	if c := in.RequiredIf; c != nil {
+		row("Required", "only when "+r.link(KindVar, c.Var)+" is "+valueCode(c.Value))
+	} else {
+		row("Required", yesNo(in.Required))
+	}
 	if in.Secret {
 		row("Secret", "yes: never write its value in code, docs or a values file")
 	} else {

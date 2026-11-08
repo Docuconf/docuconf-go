@@ -114,6 +114,12 @@ func common(name, kind, typ string, f fields) Input {
 	if s, ok := f["schema"]; ok {
 		in.Fields = schemaFields(s, f["secret"] == true)
 	}
+	if c, ok := f["requiredIf"].(map[string]any); ok {
+		for n, x := range c {
+			v, _ := json.Marshal(x)
+			in.RequiredIf = &RequiredIf{Var: n, Value: v}
+		}
+	}
 	if d, ok := f["deprecated"].(map[string]any); ok {
 		msg, _ := d["message"].(string)
 		by, _ := d["replacedBy"].(string)

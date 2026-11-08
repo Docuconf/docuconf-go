@@ -39,6 +39,45 @@ import (
 		if contract.files != _|_ for n, f in contract.files if f.required {n},
 	])
 
+	// Inputs required while a variable has a value (SPEC §4.2.1), as
+	// if/then. The condition holds on the variable's value in values, or,
+	// when values leaves it out, on its default; where an overlay or a
+	// profile may set it instead, only a value in values counts, and
+	// docuconf vet checks the rest.
+	let _conditional = [
+		for n, v in contract.vars if v.requiredIf != _|_ && _profile[n] == _|_ for c, x in v.requiredIf {
+			{input: n, kind: "values", cond: c, value: x}
+		},
+		if contract.files != _|_ for n, f in contract.files if f.requiredIf != _|_ for c, x in f.requiredIf {
+			{input: n, kind: "files", cond: c, value: x}
+		},
+	]
+	let _byDefault = {
+		for n, v in contract.vars if v.default != _|_ && _overlayable[n] == _|_ && _profile[n] == _|_ {(n): v.default}
+	}
+	let _holdsWhenUnset = [for r in _conditional if _byDefault[r.cond] != _|_ if _byDefault[r.cond] == r.value {r.input}]
+	let _conditionalRules = [for r in _conditional {
+		if: [
+			if _byDefault[r.cond] != _|_ if _byDefault[r.cond] == r.value {
+				properties: values: properties: (r.cond): const: r.value
+			},
+			{
+				required: ["values"]
+				properties: values: {required: [r.cond], properties: (r.cond): const: r.value}
+			},
+		][0]
+		// One way to supply it is a plain required, which Helm reports by
+		// the input's name.
+		let ways = [
+			{required: [r.kind], properties: (r.kind): required: [r.input]},
+			if r.kind == "values" && _overlayable[r.input] != _|_ for o in _overlayNames {
+				required: ["overlays"]
+				properties: overlays: {required: [o], properties: (o): required: [r.input]}
+			},
+		]
+		then: [if len(ways) == 1 {ways[0]}, {anyOf: ways}][0]
+	}]
+
 	out: {
 		"$schema": "http://json-schema.org/draft-07/schema#"
 		type:      "object"
@@ -96,18 +135,19 @@ import (
 					}
 				}
 			}
-			if len(_requiredEither) > 0 {
-				allOf: [for n in _requiredEither {
-					anyOf: [
-						{required: ["values"], properties: values: required: [n]},
-						for o in _overlayNames {required: ["overlays"], properties: overlays: {required: [o], properties: (o): required: [n]}},
-					]
-				}]
+			let _either = [for n in _requiredEither {
+				anyOf: [
+					{required: ["values"], properties: values: required: [n]},
+					for o in _overlayNames {required: ["overlays"], properties: overlays: {required: [o], properties: (o): required: [n]}},
+				]
+			}]
+			if len(_either)+len(_conditionalRules) > 0 {
+				allOf: list.Concat([_either, _conditionalRules])
 			}
 			let req = list.Concat([[if len(_requiredVars) > 0 {"values"}], [if len(_requiredFiles) > 0 {"files"}]])
 			if len(req) > 0 {required: req}
 		}
-		if len(_requiredAll) > 0 || len(_requiredFiles) > 0 {required: ["docuconf"]}
+		if len(_requiredAll) > 0 || len(_requiredFiles) > 0 || len(_holdsWhenUnset) > 0 {required: ["docuconf"]}
 	}
 }
 

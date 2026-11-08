@@ -159,6 +159,7 @@ output "helm_values" {
 		cs = append(cs, g.checks(v, "var."+v.Name)...)
 	}
 	cs = append(cs, g.suppliedChecks()...)
+	cs = append(cs, g.requiredIfChecks("helm", g.c.Files, true)...)
 	for _, f := range g.c.Files {
 		cs = append(cs, g.fileChecks(f, "var."+f.Name)...)
 	}

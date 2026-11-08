@@ -69,6 +69,14 @@ import "strings"
 	// Absent when the input has no group (or an empty one).
 	group?:      string & !=""
 	required:    bool
+	// Required only while a variable has a value (SPEC §4.2.1).
+	requiredIf?: close({
+		var:   =~"^[A-Z][A-Z0-9_]*$"
+		value: bool | int | string
+	})
+	if required {
+		requiredIf?: _|_
+	}
 	secret:      bool
 	description: strings.MinRunes(5)
 	// CommonMark, from the contract. Renderers demote its headings (§14.4).

@@ -262,6 +262,9 @@ output "ecs_environment" {
 			fmt.Fprintf(&b, "\n  precondition {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, c.msg)
 		}
 	}
+	for _, c := range g.requiredIfChecks("ecs", nil, false) {
+		fmt.Fprintf(&b, "\n  precondition {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, c.msg)
+	}
 	b.WriteString(`}
 
 # The container definition's secrets: each { name, valueFrom }, which ECS resolves when the task starts.
@@ -294,6 +297,9 @@ func (g *gen) ecsReadme() []byte {
 		req := ""
 		if boolean(v.Raw, "required") && !g.profileSupplies(v) {
 			req = "yes"
+		}
+		if w := whenText(v.Raw); w != "" && !g.profileSupplies(v) {
+			req = "when " + w
 		}
 		typ := v.Type
 		if v.Type == "list" {

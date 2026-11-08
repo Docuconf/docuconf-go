@@ -89,6 +89,7 @@ type Input struct {
 	TypeLabel       string           `json:"typeLabel"`
 	Group           string           `json:"group,omitempty"`
 	Required        bool             `json:"required"`
+	RequiredIf      *RequiredIf      `json:"requiredIf,omitempty"`
 	Secret          bool             `json:"secret"`
 	Description     string           `json:"description"`
 	Details         string           `json:"details,omitempty"`
@@ -107,6 +108,16 @@ type Input struct {
 	Sources         []Source         `json:"sources"`
 	Errors          []string         `json:"errors"`
 }
+
+// RequiredIf is a conditional requirement (SPEC §4.2.1): the input is
+// required while variable Var has Value.
+type RequiredIf struct {
+	Var   string          `json:"var"`
+	Value json.RawMessage `json:"value"`
+}
+
+// When is the condition in Markdown: "`TLS_ENABLED` is `true`".
+func (c *RequiredIf) When() string { return code(c.Var) + " is " + valueCode(c.Value) }
 
 // Deprecated is a deprecation notice.
 type Deprecated struct {

@@ -179,6 +179,9 @@ func (v *varDecl) contract(desc, details string, docs *docResolver) (obj, error)
 	if v.required {
 		o = o.add("required", true)
 	}
+	if v.requiredIf != nil {
+		o = o.add("requiredIf", obj{}.add(v.requiredIf.name, v.requiredIf.contractValue()))
+	}
 	if v.secret {
 		o = o.add("secret", true)
 	}
@@ -348,6 +351,9 @@ func (f *fileDecl) contract(desc, details string, docs *docResolver) (obj, error
 	}
 	if f.required {
 		o = o.add("required", true)
+	}
+	if f.requiredIf != nil {
+		o = o.add("requiredIf", obj{}.add(f.requiredIf.name, f.requiredIf.contractValue()))
 	}
 	if f.secret {
 		o = o.add("secret", true)

@@ -20,12 +20,12 @@ import (
 
 // supportedTags are the conformance capability tags the Go SDK has
 // (conformance/README.md): it holds every 64-bit integer, validates json
-// values against their schema, knows the keySet type and deprecated
-// inputs, parses strictly, and loads file inputs, profiles and overlays in
-// contract-first mode. It runs every case: TestConformance fails on a skip.
+// values against their schema, knows the keySet type, deprecated inputs
+// and requiredIf, parses strictly, and loads file inputs, profiles and
+// overlays in contract-first mode. It runs every case: TestConformance fails on a skip.
 var supportedTags = map[string]bool{
 	"int64": true, "json-schema": true, "key-set": true, "deprecated": true, "strict-parsing": true,
-	"files": true, "profiles": true, "overlays": true,
+	"files": true, "profiles": true, "overlays": true, "required-if": true,
 }
 
 type conformanceCase struct {

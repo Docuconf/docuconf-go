@@ -348,6 +348,9 @@ output "containerapp_env" {
 			fmt.Fprintf(&b, "\n  precondition {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, c.msg)
 		}
 	}
+	for _, c := range g.requiredIfChecks("containerapps", g.containerappsFiles(), false) {
+		fmt.Fprintf(&b, "\n  precondition {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, c.msg)
+	}
 	b.WriteString(`}
 
 # The app's secrets for secret inputs: each { name, key_vault_secret_id, identity }.
@@ -397,6 +400,9 @@ func (g *gen) containerappsReadme() []byte {
 		if boolean(v.Raw, "required") && !g.profileSupplies(v) {
 			req = "yes"
 		}
+		if w := whenText(v.Raw); w != "" && !g.profileSupplies(v) {
+			req = "when " + w
+		}
 		typ := v.Type
 		if v.Secret {
 			typ += ", secret"
@@ -407,6 +413,9 @@ func (g *gen) containerappsReadme() []byte {
 		req := ""
 		if boolean(f.Raw, "required") {
 			req = "yes"
+		}
+		if w := whenText(f.Raw); w != "" {
+			req = "when " + w
 		}
 		fmt.Fprintf(&b, "| `%s` | %s file at `%s` | %s | `secret`, `injected` | %s |\n", f.Name, f.Type, f.path(), req, strings.ReplaceAll(str(f.Raw, "description"), "|", `\|`))
 	}

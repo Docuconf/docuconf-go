@@ -128,11 +128,35 @@ Fields common to every type:
 | `description` | — | Required. Plain text, at least 5 characters: what the input is, in one sentence or phrase. Rendered into generated docs (section 14). |
 | `details` | — | Optional. CommonMark: why the input exists and when to change it. Not blank, and at most 4000 characters (Unicode code points). Used only in generated docs, never at runtime. SDKs fill it from the language's natural doc location (section 11.2). |
 | `required` | `false` | A required variable MUST NOT have a `default`. The platform must supply it. |
+| `requiredIf` | — | `{VAR: value}`: the input is required while variable `VAR` has `value`, and optional otherwise (section 4.2.1). |
 | `secret` | `false` | The value must come from a secret reference (section 6). A secret MUST NOT have a `default` or `examples`. |
 | `group` | — | Free-form grouping for docs (`database`, `http`). |
 | `examples` | — | Example values, as strings, for docs. |
 | `deprecated` | — | `{message, replacedBy?}`, for staged removal: the platform should stop setting the input. `message` says what to use instead, or why the input is going away: not blank, and at most 500 characters. `replacedBy` names the input that replaces it. A `required` input MUST NOT be deprecated, since the platform could not stop setting it. A deprecated input the platform still sets is a warning, never an error (section 7), and SDKs SHOULD warn at boot (section 11.2). |
 | `configKey` | — | The app's own configuration key (SDKs MAY emit it even when it matches the env name): `Orders:CheckoutTimeout` in .NET, `orders.checkout-timeout` in Spring. Used in docs, so readers can find the setting in the app's config files. |
+
+#### 4.2.1 Conditional requirements
+
+Some inputs are needed only in one mode: `TLS_CLIENT_CA_SUBJECT` when `TLS_ENABLED` is `true`, `LOG_SCHEMA_URL` when `LOG_FORMAT` is `json`. `requiredIf` says so as data, so the platform catches the missing input before deploy instead of the app at boot:
+
+```cue
+TLS_CLIENT_CA_SUBJECT: {
+	type:        "string"
+	description: "Subject of the CA that signs client certificates"
+	requiredIf: TLS_ENABLED: true
+}
+```
+
+Rules, enforced by the meta-schema:
+
+- It names exactly one variable, compared for equality with one value. Richer logic (any of, not equal, several variables) belongs in the app.
+- The condition variable MUST be declared, MUST NOT be the input itself, MUST NOT be `secret`, and MUST be of type `string`, `int`, `bool` or `enum`: those compare as written, where `1m` and `60s` are the same duration. The value MUST be one that variable accepts.
+- An input with `requiredIf` MUST NOT be `required`, MUST NOT have a `default` and MUST NOT be `deprecated`, as for a required input.
+- It applies to file inputs too (section 4.6): `serving-tls` with `requiredIf: TLS_ENABLED: true` must then have a source.
+
+The condition compares the variable's **effective** value: what the platform sets, else an overlay's value (section 4.7), else the selected profile's default (section 4.4), else the variable's own `default`. A profile that turns TLS on therefore makes the TLS inputs required wherever it is selected. When the platform supplies the condition variable by reference (`configMapKeyRef`, the Downward API, an injector), its value is not known before deploy, and only the SDK checks the condition, at boot.
+
+A missing variable is reported as `missing_required`, and a missing file as `file_missing` (section 11.2), with the condition in the message: `TLS_CLIENT_CA_SUBJECT: is required when TLS_ENABLED is true`. The value is written as JSON, so a string is quoted (`LOG_FORMAT is "json"`). Generated docs say "Required when `TLS_ENABLED` is `true`" (section 14).
 
 An optional variable with no default is legal. The SDK exposes it as absent (`nil`, `undefined`, `null`, `Option`). Whether an input is optional is the app's choice: docuconf does not prescribe how systems are set up.
 
@@ -358,7 +382,7 @@ Fields common to every file input:
 | Field | Default | Rule |
 |---|---|---|
 | `type` | — | One of the file types below. |
-| `description`, `details`, `required`, `group`, `deprecated` | | As for variables. |
+| `description`, `details`, `required`, `requiredIf`, `group`, `deprecated` | | As for variables. |
 | `secret` | `false` | Content must come from a secret store. Forced to `true` for `tls` and `keystore`. |
 | `path` | — | Where the app reads the input: a directory for `tls`, a file otherwise. Absolute and normalised. |
 | `pathEnv` | — | An environment variable the platform sets to `path`, for apps that read the location from the environment (`SSL_CERT_FILE`, `ROUTES_FILE`). It MUST NOT also be declared in `vars`. |
@@ -621,6 +645,7 @@ The meta-schema provides two definitions, both exercised by `cue/test.sh`:
 - every `required` variable must be set by the platform or by the selected profile (section 4.4), and any that are not are listed in `missingRequired`,
 - every value must satisfy its variable's type and constraints (`checks.<NAME>`), and every file source must pass the checks in section 4.6.1 (`fileChecks.<name>`),
 - every required file input must have a source,
+- every input whose `requiredIf` condition holds, on the condition variable's effective value (section 4.2.1), must be set or have a source, and is listed in `missingRequired` with the condition,
 - any value or file source not declared in the contract is rejected. A typo like `DATABSE_URL` is the most common environment bug, so this check is always on; an input on its way out is marked `deprecated` instead (section 4.2),
 - every deprecated input the platform still sets, as a value, an overlay value or a file source, is listed in `deprecatedSet` with its `deprecated` notice. These are **warnings**: they never make the values invalid. `docuconf vet` prints one line per warning with its message, and exits 0 when there are only warnings,
 - the pod annotations and labels of injected sources, and the values document's shared ones, are valid after placeholder expansion and do not set one key to two values (`podChecks`, section 4.5.2).
@@ -689,6 +714,8 @@ It prints one line per breaking or notable change (`breaking: PORT: its max fall
 | Add a required variable | **breaking** | Existing values no longer validate. |
 | Remove a variable | **breaking for the platform** | Values that still set it fail the unknown-variable check. Deprecate it first. Removing an input that the old contract already marked `deprecated` is still breaking for the platform, but `diff` says it was deprecated, so a platform that heeded the warning is unaffected. |
 | Optional → required | **breaking** | |
+| Add or change a `requiredIf`, on a variable or a file input | **breaking** | Values that leave the input unset may no longer validate. |
+| Remove a `requiredIf`, or turn `required` into a `requiredIf` | compatible | |
 | Required → optional | compatible | |
 | Change `type` or `secret` | **breaking** | The value's shape changes. |
 | Secret `list` of strings → `keySet` (section 6.1) | **breaking** for the contract | `type` changes, so a strict diff and the SDK's declaration change; the wire format is identical, so the Secret that holds the keys, and the values document, need no change. |
@@ -762,6 +789,7 @@ A conforming SDK MUST:
 3. Export a contract that matches the conformance golden file for the fixture declaration (`conformance/export/golden.cue`, declared as `conformance/export/fixture.yaml` describes), compared as data by `docuconf conformance export`, so formatting does not matter. Fields equal to their meta-schema default (`required: false`, `reload: "restart"`, `minCertificates: 1`) MAY be omitted; the comparison is made after unifying with the meta-schema. Durations are written in canonical form: units in the order `h`, `m`, `s`, `ms`, `us`, `ns`, each at most once, zero units omitted, and `0s` for zero (`1h30m`, not `90m`, `1.5h` or Go's `1h30m0s`). `metadata.generator`, the `encoding` fields and `configKey` (the host's own binding key) are set by the SDK, so they are excluded from the comparison. Output MUST be deterministic: variables and file inputs sorted by name.
 4. Load from the **process environment**, as it is when the process starts, by default. That is after any injection (section 4.5.1), so injected values are validated exactly like any other, and the SDK never resolves secret references itself. Configuration is never read at build time. Reading a `.env` file is an opt-in for development, and real environment variables override it.
 5. Fail fast at boot with **all** violations reported together, each with a stable error code (`missing_required`, `invalid_type`, `out_of_range`, `pattern_mismatch`, `not_in_enum`, `invalid_scheme`, `too_few_items`, `too_many_items`, `file_missing`, `file_unreadable`, `file_too_large`, `file_malformed`, `schema_mismatch`, `certificate_invalid`, `certificate_expiring`, `certificate_name_mismatch`, `key_mismatch`, `keystore_unreadable`). Secret values are never printed. Length limits (`minLength`, `maxLength`, `itemMinLength`, `itemMaxLength`, `keyMinLength`, `keyMaxLength`, on variables and text files), `itemMin`/`itemMax` on list items, and an empty key in a `keySet`, use `out_of_range`; the number of a key set's keys uses `too_few_items` and `too_many_items`. An empty key's message is exactly `key N is empty`, and an empty list item's, where the SDK reports one, `item N is empty`, with `N` 1-based (section 4.3); conformance compares only codes, but this wording is required. A too-long secret reports its length, never its value. An expired or not-yet-valid certificate, a disallowed key algorithm, a broken chain or a PEM certificate that does not parse is `certificate_invalid`; a `tls.crt`, `tls.key` or CA bundle that holds no PEM certificate or key at all, and a CA bundle with too few certificates, is `file_malformed`.
+   An input whose `requiredIf` condition holds on the condition variable's loaded value (the environment, else an overlay or profile, else its default) and that is unset is `missing_required`, and a file input it requires whose file is absent is `file_missing`, as for a required one, with the condition in both messages; a condition variable that has a violation of its own does not make anything required (section 4.2.1).
 6. Expose typed values: a struct, a class, or an inferred TypeScript type. Not a string map.
 7. Check every file input at boot, covering what the platform could not see:
    - the path exists and is readable, within `maxSize`;
@@ -804,11 +832,10 @@ A conformance runner, one per SDK, runs every case in `cases.json` through the S
 
 1. Proposals arising from [`docs/EDGE_CASES.md`](../docs/EDGE_CASES.md), each tracked in an issue:
    - **roles**, for one image running several processes ([#22](https://github.com/Docuconf/docuconf-go/issues/22));
-   - **`requiredIf`**, for conditional requirements ([#23](https://github.com/Docuconf/docuconf-go/issues/23));
    - **well-known fragments**, for variables read by frameworks and libraries, and for sharing declarations between services ([#24](https://github.com/Docuconf/docuconf-go/issues/24));
    - **platform-authored contracts**, for third-party images ([#25](https://github.com/Docuconf/docuconf-go/issues/25)).
 
-Resolved in this draft: optional variables with no default are allowed (section 4.2), and docuconf does not prescribe how systems are set up; the unknown-variable check stays strict, and inputs are removed in stages by marking them `deprecated`, which the platform sees as a warning (sections 4.2, 7 and 9); build-time variables are not covered: contracts are runtime only, and build-time variables belong to Docker and compilers (section 11.1); sharing variables between services is not a contract feature of its own (the Go library's `AddShared` no longer exists), since well-known fragments would cover it (question 1); an app does not declare injector hints, because the injector is a platform concern: platform engineers add pod annotations, webhooks or other options in their own documents (section 4.5.2); the docs model turns a `json` variable's or config file's JSON Schema into a field table, keeping the raw schema for what the table cannot express (section 14.3); a key set is a first-class type, `keySet`, which SDKs give verifier helpers and the docs give rotation steps (sections 4.3 and 6.1); generated docs come from one generator, `docuconf docs` in the CLI, through a versioned docs model that any renderer can read, and SDKs export an optional `details` beside the required `description` instead of generating docs themselves (section 14); per-item bounds for `int` lists (`itemMin`, `itemMax`, section 4.3); length limits for fixed-width hosts: `maxLength` on `url` and `json` values, and `itemMinLength`/`itemMaxLength` on `string` lists, counted in characters (section 4.3); config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1), with the pod annotations and labels that enable them (section 4.5.2); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
+Resolved in this draft: conditional requirements are `requiredIf`, one variable compared for equality, which sees profile defaults and reports `missing_required` (section 4.2.1, [#23](https://github.com/Docuconf/docuconf-go/issues/23)); optional variables with no default are allowed (section 4.2), and docuconf does not prescribe how systems are set up; the unknown-variable check stays strict, and inputs are removed in stages by marking them `deprecated`, which the platform sees as a warning (sections 4.2, 7 and 9); build-time variables are not covered: contracts are runtime only, and build-time variables belong to Docker and compilers (section 11.1); sharing variables between services is not a contract feature of its own (the Go library's `AddShared` no longer exists), since well-known fragments would cover it (question 1); an app does not declare injector hints, because the injector is a platform concern: platform engineers add pod annotations, webhooks or other options in their own documents (section 4.5.2); the docs model turns a `json` variable's or config file's JSON Schema into a field table, keeping the raw schema for what the table cannot express (section 14.3); a key set is a first-class type, `keySet`, which SDKs give verifier helpers and the docs give rotation steps (sections 4.3 and 6.1); generated docs come from one generator, `docuconf docs` in the CLI, through a versioned docs model that any renderer can read, and SDKs export an optional `details` beside the required `description` instead of generating docs themselves (section 14); per-item bounds for `int` lists (`itemMin`, `itemMax`, section 4.3); length limits for fixed-width hosts: `maxLength` on `url` and `json` values, and `itemMinLength`/`itemMaxLength` on `string` lists, counted in characters (section 4.3); config-file overlays, rendered from `configKey` into a file of their own rather than replacing a baked-in one (section 4.7); values and files supplied at runtime by injectors (section 4.5.1), with the pod annotations and labels that enable them (section 4.5.2); non-secret values may come from `configMapKeyRef`, the Downward API and resource fields (section 4.5); a `json` variable type exists, with schemas generated from code (sections 4.3 and 4.6).
 
 Planned after beta, without changing anything in v1alpha1: several profiles at once through an optional `profiles.separator`, later profiles winning, while a single profile name keeps its meaning (section 4.4); profiles for file inputs, so a baked-in file can be the default for some environments; and translatable `description` and `details`. Deferred: file inputs that take a whole directory of arbitrary files ([#26](https://github.com/Docuconf/docuconf-go/issues/26)).
 
@@ -882,7 +909,7 @@ The model is versioned like the contract (section 9): `v1alpha1` may change, `v1
 | `service` | The contract's `metadata`: name, `appVersion` when set, and the generator. |
 | `profiles`, `overlays` | Present when the contract has them (sections 4.4 and 4.7): the selector, the default profile and the profile names; each overlay's format, path, key separator and reload. |
 | `groups` | Every input, by `group`. Inputs with no group, or `group: ""`, form the group with `name: ""` and `title: "General"`, which comes first; the named groups follow in code point order, titled with their name. Within a group, variables come first, then files, each sorted by name. A group always has at least one input. |
-| `groups[].inputs[]` | One input. `kind` is `var` or `file`; `type` is the contract type and `typeLabel` a phrase for it ("list of integers", "key set", "YAML config file"). `required`, `secret`, `group`, `description`, `details`, `deprecated` (`message`, `replacedBy`) and, for variables, `configKey` and `examples` are copied from the contract. |
+| `groups[].inputs[]` | One input. `kind` is `var` or `file`; `type` is the contract type and `typeLabel` a phrase for it ("list of integers", "key set", "YAML config file"). `required`, `secret`, `group`, `description`, `details`, `deprecated` (`message`, `replacedBy`) and, for variables, `configKey` and `examples` are copied from the contract. `requiredIf` is `{var, value}`, the contract's condition. |
 | `default`, `defaultEnv` | Variables only. The contract's default as a typed platform value, and as the process environment holds it, in the wire format: one entry, or one per item for an `indexed` list. |
 | `profileSelector`, `profileDefaults` | Variables only. Whether the variable selects the profile, and its default in each profile file, by profile name. |
 | `wire` | Variables only. `encoding` and `separator` for lists, key sets and durations; `text`, how the value is written in the process environment; `platform`, how it is written in a values file. |
