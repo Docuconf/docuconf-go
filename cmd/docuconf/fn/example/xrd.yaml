@@ -1,0 +1,29 @@
+# An app: its image, and the platform's values for it.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: apps.example.org
+spec:
+  group: example.org
+  names:
+    kind: App
+    plural: apps
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [image]
+              properties:
+                image: {type: string}
+                config:
+                  type: object
+                  properties:
+                    values: {type: object, x-kubernetes-preserve-unknown-fields: true}
+                    files: {type: object, x-kubernetes-preserve-unknown-fields: true}

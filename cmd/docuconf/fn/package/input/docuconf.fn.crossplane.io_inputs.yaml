@@ -1,0 +1,90 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: inputs.docuconf.fn.crossplane.io
+spec:
+  group: docuconf.fn.crossplane.io
+  names:
+    categories:
+    - crossplane
+    kind: Input
+    listKind: InputList
+    plural: inputs
+    singular: input
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        description: Input configures function-docuconf for one workload.
+        type: object
+        required:
+        - target
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          image:
+            description: The app's image. Its contract is pulled from the registry (docuconf push), and the workload runs it pinned by digest.
+            type: object
+            properties:
+              fromFieldPath:
+                type: string
+                description: A field path in the composite resource, such as spec.image.
+              value:
+                type: string
+                description: Used when fromFieldPath is unset.
+          contract:
+            description: The contract itself, CUE or JSON, committed beside the composition instead of pulled with the image; or oci://IMAGE.
+            type: string
+          values:
+            description: A values document (SPEC.md section 7) from the composite resource, with fixed entries on top. Until fromFieldPath is set, the function waits.
+            type: object
+            properties:
+              fromFieldPath:
+                type: string
+              set:
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+          files:
+            description: The file sources document (SPEC.md section 4.6.1), as values.
+            type: object
+            properties:
+              fromFieldPath:
+                type: string
+              set:
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+          overlays:
+            description: The overlay values document (SPEC.md section 4.7), as values.
+            type: object
+            properties:
+              fromFieldPath:
+                type: string
+              set:
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+          policy:
+            description: The environment's policy, CUE, as for docuconf vet -policy.
+            type: string
+          target:
+            description: The composed workload that receives the configuration.
+            type: object
+            required:
+            - resource
+            properties:
+              resource:
+                type: string
+                description: 'The desired composed resource''s name: a Deployment, StatefulSet, DaemonSet, Job, CronJob or Pod an earlier function declares.'
+              container:
+                type: string
+                description: The app's container; the first one by default.
+          allowEnvFrom:
+            description: Let the target container keep envFrom, whose keys the contract cannot check.
+            type: boolean

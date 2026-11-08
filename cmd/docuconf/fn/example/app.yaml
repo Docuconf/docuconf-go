@@ -1,0 +1,18 @@
+# An App for the orders service: the contract comes with its image.
+apiVersion: example.org/v1alpha1
+kind: App
+metadata:
+  name: orders
+  namespace: orders
+spec:
+  image: registry.example.com/orders-api:2.3.0
+  config:
+    values:
+      DATABASE_URL:
+        secretKeyRef: {name: orders-db, key: url}
+      WEBHOOK_KEYS:
+        secretKeyRef: {name: orders-webhooks, key: keys}
+      LOG_LEVEL: warn
+    files:
+      serving-tls:
+        secret: {name: orders-tls}
