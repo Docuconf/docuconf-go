@@ -7,6 +7,31 @@ on:
     paths-ignore: ["docs/**"]
 
 jobs:
+  # function-docuconf, the Crossplane function in cmd/docuconf/fn: its own
+  # module, on the Go its dependencies need, and its image.
+  function:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: cmd/docuconf/fn/go.mod
+          cache-dependency-path: cmd/docuconf/fn/go.sum
+      - name: Test
+        working-directory: cmd/docuconf/fn
+        run: |
+          go build ./...
+          go vet ./...
+          go test -race ./...
+      - name: Image
+        run: docker build -f fn/Dockerfile -t function-docuconf:ci cmd/docuconf
+      - name: The image serves
+        run: |
+          docker run -d --name fn -p 9443:9443 function-docuconf:ci --insecure
+          for i in $(seq 1 20); do (exec 3<>/dev/tcp/127.0.0.1/9443) 2>/dev/null && exit 0; sleep 1; done
+          docker logs fn
+          exit 1
+
   test:
     runs-on: ubuntu-latest
     steps:

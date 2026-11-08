@@ -1,0 +1,56 @@
+# An App becomes a Deployment whose configuration is checked against the
+# contract of the image it runs before anything is applied.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: app
+spec:
+  compositeTypeRef:
+    apiVersion: example.org/v1alpha1
+    kind: App
+  mode: Pipeline
+  pipeline:
+    # The workload, without its configuration.
+    - step: workload
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: deployment
+            spec:
+              selector:
+                matchLabels: {app: {{ .observed.composite.resource.metadata.name }}}
+              template:
+                metadata:
+                  labels: {app: {{ .observed.composite.resource.metadata.name }}}
+                spec:
+                  containers:
+                    - name: app
+                      image: {{ .observed.composite.resource.spec.image }}
+    # Its configuration: checked, then rendered into it.
+    - step: configuration
+      functionRef:
+        name: function-docuconf
+      input:
+        apiVersion: docuconf.fn.crossplane.io/v1alpha1
+        kind: Input
+        image:
+          fromFieldPath: spec.image
+        values:
+          fromFieldPath: spec.config.values
+        files:
+          fromFieldPath: spec.config.files
+        # The environment's rules, over the app's contract.
+        policy: |
+          secretReferences: [string]: secretKeyRef?: name: =~"^orders-"
+        target:
+          resource: deployment
+          container: app

@@ -1,0 +1,17 @@
+apiVersion: meta.pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-docuconf
+  annotations:
+    meta.crossplane.io/maintainer: docuconf contributors
+    meta.crossplane.io/source: github.com/docuconf/docuconf-go
+    meta.crossplane.io/description: |
+      Checks a workload's configuration against the docuconf contract of
+      the image it runs, with the environment's policy, before anything is
+      deployed: a ContractValid condition with one line per bad input, and
+      the rendered env, volumes and ConfigMaps in the composed workload.
+    meta.crossplane.io/readme: |
+      See https://github.com/Docuconf/docuconf-go/tree/main/cmd/docuconf/fn
+spec:
+  crossplane:
+    version: ">=v1.17.0"

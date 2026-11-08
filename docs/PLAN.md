@@ -243,7 +243,7 @@ Sizes are relative: S is about a week of one engineer's time, M two to three wee
 
 ### Phase 2: Platform integration (M)
 
-- Build `function-docuconf`. It:
+- Build `function-docuconf` (built in `cmd/docuconf/fn`, a module of its own beside the CLI whose code it shares). It:
   1. pulls the contract for the claim's image digest,
   2. unifies it with the environment's policy,
   3. sets a `ContractValid` condition with one line per bad variable,
