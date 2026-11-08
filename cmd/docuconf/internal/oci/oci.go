@@ -85,6 +85,9 @@ type Client struct {
 	Registry ociregistry.Interface
 	// Transport, if set, carries the HTTP requests (in tests).
 	Transport http.RoundTripper
+	// Env, if set, is the environment credentials are read with, in place
+	// of the process's: DOCKER_CONFIG=dir reads dir/config.json.
+	Env []string
 }
 
 // apiHost is where a registry's API is served.
@@ -109,7 +112,7 @@ func (c *Client) registry(host string) (ociregistry.Interface, error) {
 	if c.Registry != nil {
 		return c.Registry, nil
 	}
-	cfg, err := ociauth.Load(nil)
+	cfg, err := ociauth.LoadWithEnv(nil, c.Env)
 	if err != nil {
 		return nil, fmt.Errorf("reading registry credentials: %v", err)
 	}

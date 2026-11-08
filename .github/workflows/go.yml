@@ -32,6 +32,19 @@ jobs:
           docker logs fn
           exit 1
 
+  # The Crossplane demo (docs/PLAN.md, Phase 2): the example composition,
+  # rendered with function-go-templating and function-docuconf; a valid
+  # App deploys, one with a bad PORT is rejected.
+  crossplane-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache-dependency-path: cmd/docuconf/fn/go.sum
+      - run: cmd/docuconf/fn/example/demo/demo.sh
+
   test:
     runs-on: ubuntu-latest
     steps:

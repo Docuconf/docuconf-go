@@ -52,6 +52,12 @@ type Input struct {
 	// contract cannot check. It is refused otherwise.
 	// +optional
 	AllowEnvFrom bool `json:"allowEnvFrom,omitempty"`
+
+	// CheckSecrets checks that each Secret the values and file sources
+	// name exists in the composite resource's namespace, with the key
+	// they name. On by default; it needs Crossplane v2.
+	// +optional
+	CheckSecrets *bool `json:"checkSecrets,omitempty"`
 }
 
 // Source is a string from the composite resource, or a fixed one.

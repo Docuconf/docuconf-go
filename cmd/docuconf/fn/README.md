@@ -66,6 +66,13 @@ README](../../../README.md#8-deploy)). The input's schema is
 declares the Deployment, and function-docuconf configures it. Its test,
 `example_test.go`, runs the function with the example's own input and App.
 
+[example/demo/demo.sh](example/demo/demo.sh) runs it for real with `crossplane
+render`: function-go-templating and function-docuconf in Crossplane's
+development runtime, a local registry holding the orders image and its
+contract, and the Secrets the App names. The App renders into a configured
+Deployment, its image pinned by digest; the same App with `PORT: 70000` is
+rejected, and nothing renders. It needs Docker and Go, and CI runs it.
+
 ## Build
 
 The function shares the CLI's validation, rendering and OCI code, so its
@@ -77,5 +84,36 @@ crossplane xpkg build -f cmd/docuconf/fn/package --embed-runtime-image=function-
 crossplane xpkg push -f function-docuconf.xpkg ghcr.io/<you>/function-docuconf:v0.1.0
 ```
 
-It pulls from registries anonymously. Registry credentials, and checking
-that referenced Secrets exist, are not supported yet.
+## Secrets
+
+The function checks that each Secret the values and file sources name
+exists in the composite resource's namespace (its claim's, for a claim),
+with the key they name, and adds a line for each that does not:
+`DATABASE_URL: Secret orders-db has no key url`. It reads only the Secrets'
+keys, never their data. A Secret the composition itself creates, or an
+ExternalSecret that makes it, is still syncing rather than missing, and the
+function waits for it. It asks Crossplane for the Secrets as required
+resources, which Crossplane v2 supplies; with an older one it warns and
+skips the check. `checkSecrets: false` turns it off.
+
+## Private registries
+
+To pull contracts from a private registry, give the step a credential named
+`registry`: a Secret of type `kubernetes.io/dockerconfigjson`, as for an
+image pull secret.
+
+```yaml
+    - step: configuration
+      functionRef:
+        name: function-docuconf
+      credentials:
+        - name: registry
+          source: Secret
+          secretRef:
+            namespace: crossplane-system
+            name: registry-pull
+      input: ...
+```
+
+The function writes it where only that request reads it, and removes it
+after.
