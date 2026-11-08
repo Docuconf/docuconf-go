@@ -11,8 +11,12 @@
 //	docuconf check  -contract contract.cue
 //	docuconf exec   -contract contract.cue -- program [args...]
 //	docuconf docs   contract.cue [--format model|markdown|agents] [-o file | --check file]
+//	docuconf diff   old.cue contract.cue [-accept PORT]
 //	docuconf push   -contract contract.cue registry.example.com/orders:1.4.0
 //	docuconf pull   registry.example.com/orders@sha256:... -o contract.cue
+//
+// diff classifies the changes between two versions of a contract (spec
+// section 9) and exits 1 on a breaking change -accept does not name.
 //
 // push attaches a contract to the image it describes, as an OCI artifact
 // whose subject is the image (spec section 8); pull reads it back, or the
@@ -77,6 +81,7 @@ Usage:
   docuconf check  -contract <contract.cue> [-env-file .env]
   docuconf exec   -contract <contract.cue> [-env-file .env] [-no-defaults] -- <program> [args...]
   docuconf docs   <contract.cue | docs.json> [--format model|markdown|agents] [-o file | --check file]
+  docuconf diff   <old contract> <new contract> [-accept INPUT,...] [-format text|json] [-all]
   docuconf push   [-contract contract.cue] <image>
   docuconf pull   <image> [-o contract.cue]
 
@@ -118,6 +123,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runPulumi(args[1:], stdout, stderr)
 	case "lint":
 		err = runLint(args[1:], stdout, stderr)
+	case "diff":
+		err = runDiff(args[1:], stdout, stderr)
 	case "push":
 		err = runPush(args[1:], stdout, stderr)
 	case "pull":

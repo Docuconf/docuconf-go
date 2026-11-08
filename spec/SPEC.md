@@ -668,6 +668,20 @@ A contract describes a specific build of an application. It MUST travel with the
 
 `docuconf diff old.cue new.cue` classifies every change. CI SHOULD block merges with an unacknowledged breaking change.
 
+```sh
+git show origin/main:contract.cue > /tmp/base.cue
+docuconf diff /tmp/base.cue contract.cue                 # exit 1 on a breaking change
+docuconf diff /tmp/base.cue contract.cue -accept PORT    # acknowledged: the platform's values landed first
+```
+
+It prints one line per breaking or notable change (`breaking: PORT: its max falls from 65535 to 1024: values in between no longer validate`), and the compatible ones too with `-all`; `-format json` lists every change with its class, kind (`var`, `file`, `overlay`, `profile` or `contract`), input, field and message. It exits 1 when a breaking change is not acknowledged by `-accept`, which takes input names (`*` for all; `profiles` for the profiles' selector), 2 on bad usage, and 0 otherwise. Either contract may be `oci://IMAGE`. Beyond the table:
+
+- A constraint is compared by meaning, not text: a bound that rises or falls, an allowed value removed or added, durations as durations and integers exactly. A changed `pattern` is breaking, since whether one RE2 pattern accepts everything another does is not decided.
+- A `schema` is compared structurally: a narrower `type`, a newly `required` property, a removed `enum` value, a tighter bound or `pattern`, a property a closed object (`additionalProperties: false`) no longer lists, recursively through `properties`, `items` and `additionalProperties`. A change to a keyword it does not model (`anyOf`, `$ref`, …) is breaking, and says so.
+- A list's or duration's `encoding` or `separator` is notable: the platform renders the new wire form, so values need no change, but an env set outside docuconf does.
+- A profile that no longer supplies a required variable is breaking: the platform must now set it where it selects that profile. A changed profile value, or a new one, is notable.
+- Renaming the service (`metadata.name`) or changing `apiVersion` is notable.
+
 | Change | Class | Why |
 |---|---|---|
 | Add an optional variable | compatible | |
