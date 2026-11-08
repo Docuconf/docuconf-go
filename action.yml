@@ -87,7 +87,7 @@ runs:
         base="$RUNNER_TEMP/docuconf-base-$(basename "$CONTRACT")"
         if ! git show "FETCH_HEAD:$CONTRACT" > "$base" 2>/dev/null; then
           echo "$CONTRACT is new on this branch: nothing to compare." | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "breaking=0" >> "$GITHUB_OUTPUT"
+          { echo "breaking=0"; echo "code=0"; } >> "$GITHUB_OUTPUT"
           exit 0
         fi
         out="$RUNNER_TEMP/docuconf-diff.txt"
@@ -103,7 +103,9 @@ runs:
           esac
         done < "$out"
         breaking=$(grep -c '^breaking: ' "$out" || true)
-        echo "breaking=$breaking" >> "$GITHUB_OUTPUT"
+        # Outputs of a failed step are lost, so this step succeeds and the
+        # last one fails the action.
+        { echo "breaking=$breaking"; echo "code=$code"; } >> "$GITHUB_OUTPUT"
         {
           echo "### docuconf diff: \`$CONTRACT\` against \`$BASE_REF\`"
           echo
@@ -115,7 +117,14 @@ runs:
             echo "$breaking breaking change(s). Land the platform's values first, then acknowledge them with the action's \`accept\` input (input names, or \`*\`)."
           fi
         } >> "$GITHUB_STEP_SUMMARY"
-        exit "$code"
+        exit 0
+
+    - name: Fail on a breaking change
+      if: inputs.command == 'diff' && steps.diff.outputs.code != '0'
+      shell: bash
+      env:
+        CODE: ${{ steps.diff.outputs.code }}
+      run: exit "${CODE:-2}"
 
     - name: docuconf vet
       if: inputs.command == 'vet'

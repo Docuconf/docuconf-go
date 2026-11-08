@@ -1,0 +1,15 @@
+# The orders app's own repository: hold a breaking contract change until
+# someone acknowledges it with the config-breaking label (README.md, "Check
+# in CI"). As .github/workflows/contract.yaml there.
+name: contract
+on: pull_request
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docuconf/docuconf-go@v0.2.0
+        with:
+          command: diff
+          contract: contract.cue
+          accept: ${{ contains(github.event.pull_request.labels.*.name, 'config-breaking') && '*' || '' }}
