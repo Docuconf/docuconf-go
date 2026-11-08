@@ -1,0 +1,18 @@
+# The example App, with the image in the demo's registry.
+apiVersion: example.org/v1alpha1
+kind: App
+metadata:
+  name: orders
+  namespace: orders
+spec:
+  image: localhost:5000/orders-api:2.3.0
+  config:
+    values:
+      DATABASE_URL:
+        secretKeyRef: {name: orders-db, key: url}
+      WEBHOOK_KEYS:
+        secretKeyRef: {name: orders-webhooks, key: keys}
+      LOG_LEVEL: warn
+    files:
+      serving-tls:
+        secret: {name: orders-tls}
