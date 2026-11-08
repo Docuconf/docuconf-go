@@ -371,6 +371,38 @@ ENTRYPOINT ["docuconf", "exec", "-contract", "/etc/docuconf/contract.cue", "--",
 
 The checks are the SDK's: contract-first mode loads variables, files, profiles and overlays, and it reads `json`, `yaml` and `toml` config files and `pkcs12` keystores (not `jks`).
 
+### Check in CI: the GitHub Action
+
+The repository is a GitHub Action ([action.yml](action.yml)) that runs `docuconf diff` and `docuconf vet` in a workflow, with one annotation per problem and the result in the job summary. In the app's repository, it holds a breaking contract change until someone acknowledges it, here with a pull request label:
+
+```yaml
+on: pull_request
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docuconf/docuconf-go@v0.2.0
+        with:
+          command: diff
+          contract: contract.cue
+          accept: ${{ contains(github.event.pull_request.labels.*.name, 'config-breaking') && '*' || '' }}
+```
+
+In the platform's repository, it checks each environment's values against the contract, a file or `oci://IMAGE`:
+
+```yaml
+      - uses: docuconf/docuconf-go@v0.2.0
+        with:
+          command: vet
+          contract: oci://registry.example.com/orders@sha256:...
+          values: deploy/prod/values.yaml
+          files: deploy/prod/files.yaml
+          policy: policy/prod.cue
+```
+
+The action builds the CLI at its own ref; `version: v0.2.0` installs that release with `go install` instead. `diff` compares the contract with the pull request's base branch, or `base-ref`, and sets the `breaking` output.
+
 ### Conformance
 
 `go test ./...` runs the shared conformance suite (spec section 12) from [`conformance/cases.json`](conformance/cases.json) through `LoadContract`, one subtest per case id. To run another copy of the suite, set `DOCUCONF_CONFORMANCE` to its `cases.json`:

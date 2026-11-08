@@ -1,0 +1,17 @@
+# The platform's repository: check the production values against the
+# contract attached to the image it deploys (README.md, "Check in CI").
+# As .github/workflows/orders.yaml there, with the image's digest.
+name: orders
+on: pull_request
+jobs:
+  vet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docuconf/docuconf-go@v0.2.0
+        with:
+          command: vet
+          contract: oci://registry.example.com/orders@sha256:...
+          values: deploy/prod/values.yaml
+          files: deploy/prod/files.yaml
+          policy: policy/prod.cue

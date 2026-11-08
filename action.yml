@@ -1,0 +1,175 @@
+name: docuconf
+description: Check docuconf configuration in CI. diff blocks a breaking contract change until it is acknowledged; vet checks the platform's values against the contract.
+author: docuconf contributors
+branding:
+  icon: check-square
+  color: green
+
+inputs:
+  command:
+    description: "What to run: diff (the contract against the pull request's base branch) or vet (values against the contract)."
+    required: true
+  contract:
+    description: "The contract: a path in the repository, or oci://IMAGE (vet only)."
+    default: contract.cue
+  base-ref:
+    description: "diff: the git ref to compare with. Defaults to the pull request's base branch."
+    default: ""
+  accept:
+    description: "diff: inputs whose breaking changes are acknowledged, comma-separated; * for all. Often set from a pull request label (README.md)."
+    default: ""
+  values:
+    description: "vet: the values file."
+    default: ""
+  files:
+    description: "vet: the file sources file."
+    default: ""
+  overlays:
+    description: "vet: the overlay values file."
+    default: ""
+  policy:
+    description: "vet: an environment policy (CUE)."
+    default: ""
+  version:
+    description: "The docuconf CLI to use: action (built from this action's own ref, the default) or a module version such as v0.2.0."
+    default: action
+  go-version:
+    description: "The Go toolchain that builds the CLI."
+    default: "1.25"
+
+outputs:
+  breaking:
+    description: "diff: the number of breaking changes not acknowledged."
+    value: ${{ steps.diff.outputs.breaking }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v6
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: false
+    - name: Install the docuconf CLI
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        bin="$RUNNER_TEMP/docuconf-bin"
+        mkdir -p "$bin"
+        if [ "$VERSION" = action ]; then
+          (cd "$ACTION_PATH/cmd/docuconf" && go build -o "$bin/docuconf" .)
+        else
+          GOBIN="$bin" go install "github.com/docuconf/docuconf-go/cmd/docuconf@$VERSION"
+        fi
+        echo "$bin" >> "$GITHUB_PATH"
+        "$bin/docuconf" help >/dev/null
+
+    - name: docuconf diff
+      id: diff
+      if: inputs.command == 'diff'
+      shell: bash
+      env:
+        CONTRACT: ${{ inputs.contract }}
+        BASE_REF: ${{ inputs.base-ref || github.base_ref }}
+        ACCEPT: ${{ inputs.accept }}
+      run: |
+        # The runner starts bash with -e; docuconf's exit code is read below.
+        set +e -uo pipefail
+        if [ -z "$BASE_REF" ]; then
+          echo "::error title=docuconf diff::no base-ref, and this is not a pull_request event"
+          exit 2
+        fi
+        if ! git fetch --quiet --depth=1 origin "$BASE_REF"; then
+          echo "::error title=docuconf diff::cannot fetch $BASE_REF"
+          exit 2
+        fi
+        base="$RUNNER_TEMP/docuconf-base-$(basename "$CONTRACT")"
+        if ! git show "FETCH_HEAD:$CONTRACT" > "$base" 2>/dev/null; then
+          echo "$CONTRACT is new on this branch: nothing to compare." | tee -a "$GITHUB_STEP_SUMMARY"
+          { echo "breaking=0"; echo "code=0"; } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        out="$RUNNER_TEMP/docuconf-diff.txt"
+        docuconf diff "$base" "$CONTRACT" -accept "$ACCEPT" > "$out"
+        code=$?
+        cat "$out"
+        # One annotation per change, on the contract.
+        while IFS= read -r line; do
+          case "$line" in
+            "breaking (accepted): "*) echo "::notice file=$CONTRACT,title=docuconf diff::${line}" ;;
+            "breaking: "*) echo "::error file=$CONTRACT,title=docuconf diff::${line#breaking: }" ;;
+            "notable: "*) echo "::warning file=$CONTRACT,title=docuconf diff::${line#notable: }" ;;
+          esac
+        done < "$out"
+        breaking=$(grep -c '^breaking: ' "$out" || true)
+        # Outputs of a failed step are lost, so this step succeeds and the
+        # last one fails the action.
+        { echo "breaking=$breaking"; echo "code=$code"; } >> "$GITHUB_OUTPUT"
+        {
+          echo "### docuconf diff: \`$CONTRACT\` against \`$BASE_REF\`"
+          echo
+          echo '```'
+          cat "$out"
+          echo '```'
+          if [ "$breaking" -gt 0 ]; then
+            echo
+            echo "$breaking breaking change(s). Land the platform's values first, then acknowledge them with the action's \`accept\` input (input names, or \`*\`)."
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit 0
+
+    - name: Fail on a breaking change
+      if: inputs.command == 'diff' && steps.diff.outputs.code != '0'
+      shell: bash
+      env:
+        CODE: ${{ steps.diff.outputs.code }}
+      run: exit "${CODE:-2}"
+
+    - name: docuconf vet
+      if: inputs.command == 'vet'
+      shell: bash
+      env:
+        CONTRACT: ${{ inputs.contract }}
+        VALUES: ${{ inputs.values }}
+        FILES: ${{ inputs.files }}
+        OVERLAYS: ${{ inputs.overlays }}
+        POLICY: ${{ inputs.policy }}
+      run: |
+        # The runner starts bash with -e; docuconf's exit code is read below.
+        set +e -uo pipefail
+        args=(vet -contract "$CONTRACT")
+        [ -n "$VALUES" ] && args+=(-values "$VALUES")
+        [ -n "$FILES" ] && args+=(-files "$FILES")
+        [ -n "$OVERLAYS" ] && args+=(-overlays "$OVERLAYS")
+        [ -n "$POLICY" ] && args+=(-policy "$POLICY")
+        out="$RUNNER_TEMP/docuconf-vet.txt"
+        docuconf "${args[@]}" > "$out" 2>&1
+        code=$?
+        cat "$out"
+        annotate="${VALUES:-$CONTRACT}"
+        while IFS= read -r line; do
+          [ -z "$line" ] && continue
+          case "$line" in
+            warning:*) echo "::warning file=$annotate,title=docuconf vet::${line#warning: }" ;;
+            *) if [ "$code" -ne 0 ]; then echo "::error file=$annotate,title=docuconf vet::$line"; fi ;;
+          esac
+        done < "$out"
+        {
+          echo "### docuconf vet: \`${VALUES:-no values}\` against \`$CONTRACT\`"
+          echo
+          echo '```'
+          if [ -s "$out" ]; then cat "$out"; else echo "valid"; fi
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit "$code"
+
+    - name: Unknown command
+      if: inputs.command != 'diff' && inputs.command != 'vet'
+      shell: bash
+      env:
+        COMMAND: ${{ inputs.command }}
+      run: |
+        echo "::error title=docuconf::command must be diff or vet, not $COMMAND"
+        exit 2

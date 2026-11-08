@@ -1,0 +1,85 @@
+name: action
+
+# The docuconf GitHub Action (action.yml at the repository root), run
+# against the orders example: diff with the base branch and vet of its
+# values, each passing and failing as it should.
+on:
+  push:
+    branches: [main]
+    paths: ["action.yml", "cmd/docuconf/**", "examples/orders/contract.cue", "examples/orders/deploy/*.yaml", ".github/workflows/action.yml"]
+  pull_request:
+    paths: ["action.yml", "cmd/docuconf/**", "examples/orders/contract.cue", "examples/orders/deploy/*.yaml", ".github/workflows/action.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: The contract against main
+        uses: ./
+        with:
+          command: diff
+          contract: examples/orders/contract.cue
+          base-ref: main
+      # A breaking change fails the step, and -accept lets it through.
+      - name: Tighten PORT
+        run: |
+          sed -i 's/max:         65535/max:         1024/' examples/orders/contract.cue
+          grep -q 'max:         1024' examples/orders/contract.cue
+      - name: A breaking change
+        id: breaking
+        continue-on-error: true
+        uses: ./
+        with:
+          command: diff
+          contract: examples/orders/contract.cue
+          base-ref: main
+      - name: Failed, with one breaking change
+        env:
+          OUTCOME: ${{ steps.breaking.outcome }}
+          BREAKING: ${{ steps.breaking.outputs.breaking }}
+        run: |
+          test "$OUTCOME" = failure
+          test "$BREAKING" = 1
+      - name: The same change, acknowledged
+        uses: ./
+        with:
+          command: diff
+          contract: examples/orders/contract.cue
+          base-ref: main
+          accept: PORT
+      - name: An unknown command
+        id: unknown
+        continue-on-error: true
+        uses: ./
+        with:
+          command: nope
+      - run: test "${{ steps.unknown.outcome }}" = failure
+
+  vet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: The example's values
+        uses: ./
+        with:
+          command: vet
+          contract: examples/orders/contract.cue
+          values: examples/orders/deploy/values.yaml
+          files: examples/orders/deploy/files.yaml
+      - name: A bad value
+        run: |
+          printf 'PORT: 70000\n' >> examples/orders/deploy/values.yaml
+      - name: Bad values
+        id: bad
+        continue-on-error: true
+        uses: ./
+        with:
+          command: vet
+          contract: examples/orders/contract.cue
+          values: examples/orders/deploy/values.yaml
+          files: examples/orders/deploy/files.yaml
+      - run: test "${{ steps.bad.outcome }}" = failure
