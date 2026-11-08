@@ -45,9 +45,12 @@ for port in 9443 9444; do
 	for _ in $(seq 1 30); do (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null && break; sleep 1; done
 done
 
+# The CLI renders in a Crossplane container; on the host's network it
+# reaches the functions on localhost.
 render() {
 	"$work/crossplane" render "$1" "$example/composition.yaml" "$here/functions.yaml" \
-		--required-resources "$here/secrets.yaml" --include-full-xr
+		--required-resources "$here/secrets.yaml" --include-full-xr \
+		--crossplane-docker-network host --timeout 5m
 }
 
 step "The App: rendered into a configured Deployment"
