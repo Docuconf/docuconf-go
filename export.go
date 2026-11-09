@@ -102,11 +102,14 @@ func ExportType(t reflect.Type, meta Meta) ([]byte, error) {
 		return desc, details
 	}
 
-	vars := slices.Clone(d.vars)
+	vars := d.allVars()
 	slices.SortFunc(vars, func(a, b *varDecl) int { return strings.Compare(a.name, b.name) })
 	var varsObj obj
 	for _, v := range vars {
-		desc, details := describe(v.name+" ("+v.goPath+")", v.desc, v.index)
+		desc, details := v.desc, ""
+		if v.index != nil {
+			desc, details = describe(v.name+" ("+v.goPath+")", v.desc, v.index)
+		}
 		o, err := v.contract(desc, details, docs)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("%s: %v", v.name, err))
@@ -141,6 +144,9 @@ func ExportType(t reflect.Type, meta Meta) ([]byte, error) {
 		add("apiVersion", "docuconf.dev/v1alpha1").
 		add("kind", "ConfigContract").
 		add("metadata", metadata)
+	if len(d.includes) > 0 {
+		doc = doc.add("includes", stringsToList(d.includes))
+	}
 	if varsObj == nil {
 		varsObj = obj{}
 	}

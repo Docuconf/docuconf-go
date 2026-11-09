@@ -53,6 +53,9 @@ func Agents(m *Model) []byte {
 		"Validate before proposing a change: `docuconf vet -contract contract.cue -values values.yaml -files files.yaml` for platform values, and `docuconf check -contract contract.cue` in a running environment. Both print every problem and exit 1.",
 		"Do not invent inputs. " + code(name) + " reads only the " + countWords(len(vars), "environment variable", "environment variables") + " and " + countWords(len(files), "file", "files") + " below; `vet` rejects a value for anything else. A new input needs a change to the app's declaration and a new contract export.",
 	}
+	if inc := m.Service.Includes; len(inc) > 0 {
+		rules = append(rules, "Some variables come from the well-known "+plural(len(inc), "fragment", "fragments")+" "+join(inc, "and")+": a runtime or library reads them, not the app's code, so do not look for them in the code. Set them like any other input.")
+	}
 	if len(required) > 0 {
 		rules = append(rules, "Set every required input that has no default: "+join(required, "and")+".")
 	}

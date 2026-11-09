@@ -660,3 +660,15 @@ func TestHelmRequiredIf(t *testing.T) {
 		}
 	}
 }
+
+// A contract that includes a well-known fragment (SPEC §4.8): the
+// platform may set the fragment's variables, checked like any other.
+func TestVetFragments(t *testing.T) {
+	worker := examples + "/worker_contract.cue"
+	out, errOut, code := docuconf(t, "vet", "-contract", worker, "-values", write(t, "values.yaml", "QUEUE_URL: amqps://mq/jobs\nGOMAXPROCS: 4\nGOGC: \"off\"\n"))
+	if code != 0 || out != "worker: ok\n" {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+	}
+	out, _, code = docuconf(t, "vet", "-contract", worker, "-values", write(t, "values.yaml", "QUEUE_URL: amqps://mq/jobs\nGOMAXPROCS: 0\n"))
+	requireLines(t, out, code, "GOMAXPROCS: 0 is below min 1")
+}
