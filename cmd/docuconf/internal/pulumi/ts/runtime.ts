@@ -40,6 +40,7 @@ export interface ContractVar {
   deprecated?: { message: string; replacedBy?: string };
   secret?: boolean;
   required?: boolean;
+  requiredIf?: Record<string, unknown>;
   encoding?: string;
   separator?: string;
   items?: string;
@@ -51,6 +52,7 @@ export interface ContractFile {
   type: string;
   secret?: boolean;
   required?: boolean;
+  requiredIf?: Record<string, unknown>;
   path: string;
   pathEnv?: string;
   format?: string;
@@ -606,6 +608,33 @@ function profileSupplies(c: Contract, n: string): boolean {
 }
 
 /**
+ * The input's requiredIf (SPEC.md 4.2.1), as vet writes it: "TLS_ENABLED is
+ * true", the value as JSON; undefined when the condition does not hold. The
+ * condition variable's value is its argument's literal, else an overlay's,
+ * else its default; where it is not known here (a reference, an Output, or
+ * a value a profile may set), docuconf lint and the SDK check it instead.
+ */
+function conditionHolds(c: Contract, cond: Record<string, unknown> | undefined, args: Args, overlayValues: Record<string, unknown>): string | undefined {
+  for (const [n, want] of Object.entries(cond ?? {})) {
+    const cv = c.vars[n];
+    if (!cv) return undefined;
+    const a = args[n];
+    let got: unknown;
+    if (a !== undefined && a !== null) {
+      if (!isObj(a) || !("value" in a) || hasOutput(a["value"])) return undefined;
+      got = a["value"];
+    } else {
+      const o = Object.keys(c.overlays ?? {}).find((o) => isObj(overlayValues[o]) && (overlayValues[o] as Obj)[n] !== undefined);
+      if (o !== undefined) got = (overlayValues[o] as Obj)[n];
+      else if (profileSupplies(c, n)) return undefined;
+      else got = cv["default"];
+    }
+    return got === want ? `${n} is ${JSON.stringify(want)}` : undefined;
+  }
+  return undefined;
+}
+
+/**
  * The checks that need no resolved Input: which arguments and sources are
  * set, inline content, overlays, and anything else the program writes as a
  * literal. Returns the problems and the deprecation warnings.
@@ -629,6 +658,8 @@ export function structureProblems(
     const srcs = varSources(v);
     if (a === undefined || a === null) {
       if (v.required && inOverlay(n).length === 0 && !profileSupplies(c, n)) problems.push(`${n}: required, but not set (missing_required)`);
+      const when = conditionHolds(c, v.requiredIf, args, overlayValues);
+      if (when && inOverlay(n).length === 0 && !profileSupplies(c, n)) problems.push(`${n}: is required when ${when}, but not set (missing_required)`);
       continue;
     }
     if (pulumi.Output.isInstance(a)) {
@@ -672,6 +703,8 @@ export function structureProblems(
     const srcs = fileSources(f);
     if (a === undefined || a === null) {
       if (f.required) problems.push(`${n}: is a required file input; set one of ${orList(srcs)}`);
+      const when = conditionHolds(c, f.requiredIf, args, overlayValues);
+      if (when) problems.push(`${n}: is a required file input when ${when}; set one of ${orList(srcs)}`);
       continue;
     }
     const kind = sourceOf(a, FILE_SOURCES);
@@ -1023,6 +1056,8 @@ export function targetProblems(c: Contract, target: Target, args: Args): { probl
     const srcs = targetVarSources(v, target);
     if (a === undefined || a === null) {
       if (v.required && !profileSupplies(c, n)) problems.push(`${n}: required, but not set (missing_required)`);
+      const when = conditionHolds(c, v.requiredIf, args, {});
+      if (when && !profileSupplies(c, n)) problems.push(`${n}: is required when ${when}, but not set (missing_required)`);
       continue;
     }
     const kind = sourceOf(a, TARGET_SOURCES);
@@ -1065,10 +1100,16 @@ export function targetProblems(c: Contract, target: Target, args: Args): { probl
       warnings.push(...r.warnings);
     }
   }
+  for (const [n, f] of Object.entries(c.files ?? {})) {
+    const when = files.has(n) ? undefined : conditionHolds(c, f.requiredIf, args, {});
+    if (when) problems.push(`${n}: is a required file input when ${when}, and the ${target} target cannot mount it; deploy it on a target that can (kubernetes)`);
+  }
   for (const [n, f] of files) {
     const a = args[n];
     if (a === undefined || a === null) {
       if (f.required) problems.push(`${n}: is a required file input; set one of secret or injected`);
+      const when = conditionHolds(c, f.requiredIf, args, {});
+      if (when) problems.push(`${n}: is a required file input when ${when}; set one of secret or injected`);
       continue;
     }
     const kind = sourceOf(a, ["secret", "injected"]);

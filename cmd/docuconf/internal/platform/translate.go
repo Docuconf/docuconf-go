@@ -165,6 +165,19 @@ func (t *translator) overlayProblem(key string, rest []string, e errors.Error) {
 	t.explained[key] = true
 }
 
+// requiredWhen is " when TLS_ENABLED is true" for an input with a
+// requiredIf condition (SPEC §4.2), the value written as JSON.
+func requiredWhen(def cue.Value) string {
+	for c, x := range fields(def.LookupPath(cue.ParsePath("requiredIf"))) {
+		b, err := x.MarshalJSON()
+		if err != nil {
+			return ""
+		}
+		return fmt.Sprintf(" when %s is %s", c, b)
+	}
+	return ""
+}
+
 func fields(v cue.Value) map[string]cue.Value {
 	out := map[string]cue.Value{}
 	it, _ := v.Fields()
@@ -395,10 +408,10 @@ func (t *translator) validate(err error) {
 			}
 			t.add("%s: source is not valid: %s", name, errMsg(e))
 		case "missingRequired":
-			if _, ok := t.fileDefs[name]; ok {
-				t.add("%s: is a required file input, and has no source", name)
+			if f, ok := t.fileDefs[name]; ok {
+				t.add("%s: is a required file input%s, and has no source", name, requiredWhen(f))
 			} else {
-				t.add("%s: is required, and set neither by the platform nor by the selected profile", name)
+				t.add("%s: is required%s, and set neither by the platform nor by the selected profile", name, requiredWhen(t.vars[name]))
 			}
 		case "contract":
 			t.add("contract: %s", e.Error())

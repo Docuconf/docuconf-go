@@ -120,6 +120,9 @@ func describeFile(f File) string {
 	if boolean(f.Raw, "required") {
 		tags = append(tags, "required")
 	}
+	if w := whenText(f.Raw); w != "" {
+		tags = append(tags, "required when "+w)
+	}
 	if f.Secret {
 		tags = append(tags, "secret")
 	}

@@ -1,0 +1,325 @@
+{
+  "apiVersion": "docs.docuconf.dev/v1alpha1",
+  "kind": "ConfigDocs",
+  "service": {
+    "name": "relay-api",
+    "generator": {
+      "language": "go",
+      "sdk": "docuconf-go",
+      "version": "0.1.0"
+    }
+  },
+  "profiles": {
+    "selector": "APP_ENV",
+    "default": "development",
+    "names": [
+      "production"
+    ]
+  },
+  "groups": [
+    {
+      "name": "",
+      "title": "General",
+      "inputs": [
+        {
+          "name": "APP_ENV",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "required": false,
+          "secret": false,
+          "description": "Deployment environment; selects config/{env}.yaml",
+          "default": "development",
+          "defaultEnv": [
+            {
+              "name": "APP_ENV",
+              "value": "development"
+            }
+          ],
+          "profileSelector": true,
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a string"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "fieldRef",
+              "text": "a pod field from the Downward API (`fieldRef`), such as `metadata.namespace`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "name": "LOG_FORMAT",
+          "kind": "var",
+          "type": "enum",
+          "typeLabel": "enum",
+          "required": false,
+          "secret": false,
+          "description": "Log output format",
+          "default": "text",
+          "defaultEnv": [
+            {
+              "name": "LOG_FORMAT",
+              "value": "text"
+            }
+          ],
+          "wire": {
+            "text": "one of the values, exactly as listed",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "values",
+              "params": {
+                "values": [
+                  "text",
+                  "json"
+                ]
+              },
+              "text": "one of `text` or `json`"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "not_in_enum"
+          ]
+        },
+        {
+          "name": "LOG_SCHEMA_URL",
+          "kind": "var",
+          "type": "url",
+          "typeLabel": "URL",
+          "required": false,
+          "requiredIf": {
+            "var": "LOG_FORMAT",
+            "value": "json"
+          },
+          "secret": false,
+          "description": "JSON schema the structured logs follow",
+          "wire": {
+            "text": "an absolute URL, `scheme://...`, as is",
+            "platform": "a string"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "missing_required",
+            "invalid_type"
+          ]
+        },
+        {
+          "name": "TLS_CLIENT_CA_SUBJECT",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "required": false,
+          "requiredIf": {
+            "var": "TLS_ENABLED",
+            "value": true
+          },
+          "secret": false,
+          "description": "Subject of the CA that signs client certificates",
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a string"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "fieldRef",
+              "text": "a pod field from the Downward API (`fieldRef`), such as `metadata.namespace`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "missing_required"
+          ]
+        },
+        {
+          "name": "TLS_ENABLED",
+          "kind": "var",
+          "type": "bool",
+          "typeLabel": "boolean",
+          "required": false,
+          "secret": false,
+          "description": "Serve HTTPS instead of HTTP",
+          "default": false,
+          "defaultEnv": [
+            {
+              "name": "TLS_ENABLED",
+              "value": "false"
+            }
+          ],
+          "profileDefaults": [
+            {
+              "profile": "production",
+              "value": true
+            }
+          ],
+          "wire": {
+            "text": "`true` or `false`",
+            "platform": "a boolean"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type"
+          ]
+        },
+        {
+          "name": "serving-tls",
+          "kind": "file",
+          "type": "tls",
+          "typeLabel": "TLS key pair",
+          "required": false,
+          "requiredIf": {
+            "var": "TLS_ENABLED",
+            "value": true
+          },
+          "secret": true,
+          "description": "Certificate the relay serves HTTPS with",
+          "file": {
+            "path": "/etc/relay/tls",
+            "reload": "restart",
+            "contents": "a directory holding `tls.crt` and `tls.key` (PEM), as a `kubernetes.io/tls` Secret lays them out",
+            "reloadText": "the app reads the file at startup; a changed source needs a rollout"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "secret",
+              "note": "the whole `kubernetes.io/tls` Secret, with no key",
+              "text": "a Kubernetes Secret (`secret`), one key per file"
+            },
+            {
+              "kind": "certificate",
+              "text": "a cert-manager Certificate (`certificate`)"
+            },
+            {
+              "kind": "csi",
+              "text": "the Secrets Store CSI driver (`csi`)"
+            },
+            {
+              "kind": "injected",
+              "note": "the injector writes the file at the path",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "file_missing",
+            "file_unreadable",
+            "file_malformed",
+            "certificate_invalid",
+            "key_mismatch"
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": "missing_required",
+      "meaning": "A required input is not set, and has no default.",
+      "fix": "Set it through one of its allowed sources."
+    },
+    {
+      "code": "invalid_type",
+      "meaning": "The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`).",
+      "fix": "Write the value in the input's wire format. For an injected secret, make sure the injector runs."
+    },
+    {
+      "code": "not_in_enum",
+      "meaning": "The value is not one of the allowed values.",
+      "fix": "Use one of the listed values, spelled exactly as listed."
+    },
+    {
+      "code": "file_missing",
+      "meaning": "The file is not at its path.",
+      "fix": "Give the input a source, and check that it is mounted at the declared path (or that its path variable points at it)."
+    },
+    {
+      "code": "file_unreadable",
+      "meaning": "The file exists but cannot be read.",
+      "fix": "Check the mount, the file mode and the user the app runs as."
+    },
+    {
+      "code": "file_malformed",
+      "meaning": "The file does not parse in its format, is a directory, is not UTF-8 text, or holds too few certificates.",
+      "fix": "Fix the content so it parses in the declared format."
+    },
+    {
+      "code": "certificate_invalid",
+      "meaning": "A certificate does not parse, has expired or is not yet valid, uses a key algorithm that is not allowed, or does not chain to `ca.crt`.",
+      "fix": "Issue a valid certificate that meets the input's constraints."
+    },
+    {
+      "code": "key_mismatch",
+      "meaning": "`tls.key` does not match the certificate in `tls.crt`.",
+      "fix": "Supply the key and certificate from the same issuance."
+    }
+  ]
+}

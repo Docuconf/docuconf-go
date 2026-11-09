@@ -99,7 +99,7 @@ func LoadContract(contractJSON []byte, opts Options) (map[string]any, error) {
 	layers, viols := loadLayers(c, environ, root, logger)
 	res := checkLayeredVars(vars, environ, layers, logger)
 	viols = append(viols, res.viols...)
-	loaded := loadContractFiles(files, environ, res.raw, opts, logger)
+	loaded := loadContractFiles(files, vars, environ, res, opts, logger)
 	out := make(map[string]any, len(vars)+len(files))
 	for _, f := range loaded {
 		viols = append(viols, f.viols...)
@@ -128,7 +128,8 @@ type loadedFile struct {
 
 // loadContractFiles binds each file input to a value of its Go type, the
 // way load binds a struct's fields, so both paths run the same checks.
-func loadContractFiles(files []*fileDecl, environ, raw map[string]string, opts Options, logger *slog.Logger) []loadedFile {
+func loadContractFiles(files []*fileDecl, vars []*varDecl, environ map[string]string, res varResults, opts Options, logger *slog.Logger) []loadedFile {
+	raw := res.raw
 	now := opts.Now
 	if now == nil {
 		now = time.Now
@@ -151,7 +152,7 @@ func loadContractFiles(files []*fileDecl, environ, raw map[string]string, opts O
 			p = filepath.Join(root, p)
 		}
 		b := &fileBinding{
-			decl:     f,
+			decl:     f.requiredNow(vars, res),
 			path:     p,
 			now:      now,
 			interval: interval,
@@ -206,7 +207,7 @@ var contractFields = map[string][]string{
 	typeJSON:     {"schema", "maxLength"},
 }
 
-var commonFields = []string{"name", "type", "description", "details", "required", "secret", "default", "group", "examples", "deprecated", "configKey"}
+var commonFields = []string{"name", "type", "description", "details", "required", "requiredIf", "secret", "default", "group", "examples", "deprecated", "configKey"}
 
 // Go types that stand for each contract type, for messages and parsing.
 var contractGoTypes = map[string]reflect.Type{
@@ -297,6 +298,28 @@ func declareContract(contractJSON []byte) (*contractDecl, error) {
 			}
 		}
 	}
+	byName := func(n string) *varDecl {
+		for _, v := range vars {
+			if v.name == n {
+				return v
+			}
+		}
+		return nil
+	}
+	for _, v := range vars {
+		if v.requiredIf != nil {
+			for _, p := range v.requiredIf.resolve(v.name, byName) {
+				problemf("%s: %s", v.name, p)
+			}
+		}
+	}
+	for _, f := range files {
+		if f.requiredIf != nil {
+			for _, p := range f.requiredIf.resolve(f.name, byName) {
+				problemf("file input %s: %s", f.name, p)
+			}
+		}
+	}
 	c := &contractDecl{vars: vars, files: files}
 	if x, ok := root["profiles"]; ok {
 		c.profiles = contractProfiles(x, vars, problemf)
@@ -321,7 +344,7 @@ var contractFileFields = map[string][]string{
 	fileBinary:   {},
 }
 
-var commonFileFields = []string{"name", "type", "description", "details", "required", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated"}
+var commonFileFields = []string{"name", "type", "description", "details", "required", "requiredIf", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated"}
 
 // contractFile builds one file input, reporting problems with it.
 func contractFile(name string, o map[string]any, problem func(string, ...any)) *fileDecl {
@@ -412,6 +435,18 @@ func contractFile(name string, o map[string]any, problem func(string, ...any)) *
 		checkDetails(d, fail)
 	}
 	f.required, _ = boolean("required")
+	if x, ok := o["requiredIf"]; ok {
+		c, err := contractCondition(x)
+		switch {
+		case err != nil:
+			fail("%v", err)
+		case f.required:
+			fail("a required file input cannot also have requiredIf")
+		case o["deprecated"] != nil:
+			fail("a file input with requiredIf cannot be deprecated")
+		}
+		f.requiredIf = c
+	}
 	f.secret, _ = boolean("secret")
 	if f.typ == fileTLS || f.typ == fileKeystore {
 		f.secret = true // always secret (SPEC §4.6)
@@ -623,6 +658,20 @@ func contractVar(name string, o map[string]any, problem func(string, ...any)) *v
 		checkDetails(d, fail)
 	}
 	v.required = boolean("required")
+	if x, ok := o["requiredIf"]; ok {
+		c, err := contractCondition(x)
+		switch {
+		case err != nil:
+			fail("%v", err)
+		case v.required:
+			fail("a required variable cannot also have requiredIf")
+		case o["default"] != nil:
+			fail("a variable with requiredIf must not have a default")
+		case o["deprecated"] != nil:
+			fail("a variable with requiredIf cannot be deprecated")
+		}
+		v.requiredIf = c
+	}
 	v.secret = boolean("secret")
 	if v.typ == typeKeySet {
 		// A key set is always secret (SPEC §4.3).
@@ -910,11 +959,11 @@ func checkDetails(d string, fail func(string, ...any)) {
 }
 
 var (
-	varFieldOrder = []string{"type", "description", "details", "required", "secret", "default", "group", "examples", "deprecated", "configKey",
+	varFieldOrder = []string{"type", "description", "details", "required", "requiredIf", "secret", "default", "group", "examples", "deprecated", "configKey",
 		"minLength", "maxLength", "pattern", "min", "max", "encoding", "schemes", "values", "items", "separator",
 		"minItems", "maxItems", "itemMin", "itemMax", "itemMinLength", "itemMaxLength",
 		"minKeys", "maxKeys", "keyMinLength", "keyMaxLength", "schema"}
-	fileFieldOrder = []string{"type", "format", "description", "details", "required", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated",
+	fileFieldOrder = []string{"type", "format", "description", "details", "required", "requiredIf", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated",
 		"schema", "dnsNames", "keyAlgorithms", "minRemaining", "requireCA", "minCertificates", "passwordVar", "pattern", "minLength", "maxLength"}
 )
 

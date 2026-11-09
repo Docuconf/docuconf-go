@@ -279,7 +279,7 @@ func load(ptr any, opts Options, parse bool) error {
 			return fmt.Errorf("docuconf: %s: %w", f.goPath, err)
 		}
 		b := &fileBinding{
-			decl:     f,
+			decl:     f.requiredNow(d.vars, res),
 			path:     p,
 			now:      now,
 			interval: interval,
@@ -484,6 +484,7 @@ func checkLayeredVars(vars []*varDecl, environ map[string]string, layers map[str
 			}
 		}
 	}
+	checkRequiredIf(vars, &res)
 	return res
 }
 

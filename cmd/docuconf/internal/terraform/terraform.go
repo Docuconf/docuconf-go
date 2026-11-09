@@ -401,6 +401,9 @@ func describeVar(v Var) string {
 	if boolean(v.Raw, "required") {
 		tags = append(tags, "required")
 	}
+	if w := whenText(v.Raw); w != "" {
+		tags = append(tags, "required when "+w)
+	}
 	if v.Secret {
 		tags = append(tags, "secret")
 	}
@@ -893,6 +896,7 @@ output "kubernetes_env" {
 		pre(g.checks(v, "var."+v.Name))
 	}
 	pre(g.suppliedChecks())
+	pre(g.requiredIfChecks("kubernetes", g.c.Files, true))
 	// Pod metadata keys and label values, after placeholder expansion
 	// (#PodMetadata), named by the input that asks for them.
 	id := func(c string) string { return c }
@@ -979,6 +983,9 @@ func (g *gen) readme() []byte {
 		if g.required(v) {
 			req = "yes"
 		}
+		if w := whenText(v.Raw); w != "" && !g.profileSupplies(v) {
+			req = "when " + w
+		}
 		typ := v.Type
 		if v.Type == "list" {
 			typ = fmt.Sprintf("list of %s, %s", str(v.Raw, "items"), str(v.Raw, "encoding"))
@@ -994,6 +1001,9 @@ func (g *gen) readme() []byte {
 			req := ""
 			if boolean(f.Raw, "required") {
 				req = "yes"
+			}
+			if w := whenText(f.Raw); w != "" {
+				req = "when " + w
 			}
 			typ := f.Type
 			if fm := str(f.Raw, "format"); fm != "" {

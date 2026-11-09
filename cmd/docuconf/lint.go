@@ -239,7 +239,8 @@ func vetDocs(p *platform.Platform, d lint.Docs, policy cue.Value, policyFile str
 		case !inBase[l]:
 			f.Code = "policy_mismatch"
 			f.Message = fmt.Sprintf("%s (policy %s)", l, filepath.Base(policyFile))
-		case strings.Contains(l, "is required, and set neither") || strings.Contains(l, "is a required file input"):
+		case strings.Contains(l, ", and set neither by the platform nor by the selected profile") || strings.Contains(l, ": is a required file input"):
+			// Required, or required while a requiredIf condition holds.
 			f.Code = "missing_required"
 		}
 		out = append(out, f)

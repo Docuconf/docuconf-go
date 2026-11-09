@@ -154,6 +154,9 @@ func targetProblems(c *contract, args inputs) ([]string, []string) {
 			if v.Required && !c.profileSupplies(n) {
 				problems = append(problems, n+": required, but not set (missing_required)")
 			}
+			if when := c.conditionHolds(v.RequiredIf, args, nil); when != "" && !c.profileSupplies(n) {
+				problems = append(problems, fmt.Sprintf("%s: is required when %s, but not set (missing_required)", n, when))
+			}
 			continue
 		}
 		if !has(srcs, s.kind) {
@@ -201,12 +204,20 @@ func targetProblems(c *contract, args inputs) ([]string, []string) {
 			warnings = append(warnings, deprecatedWarning(n, v.Deprecated))
 		}
 	}
+	for _, n := range c.fileOrder {
+		if when := c.conditionHolds(c.files[n].RequiredIf, args, nil); when != "" && !files[n] {
+			problems = append(problems, fmt.Sprintf("%s: is a required file input when %s, and the %s target cannot mount it; deploy it on a target that can (kubernetes)", n, when, target))
+		}
+	}
 	for _, n := range targetFiles(c) {
 		f := c.files[n]
 		s, ok := args[n]
 		if !ok {
 			if f.Required {
 				problems = append(problems, n+": is a required file input; set one of secret or injected")
+			}
+			if when := c.conditionHolds(f.RequiredIf, args, nil); when != "" {
+				problems = append(problems, fmt.Sprintf("%s: is a required file input when %s; set one of secret or injected", n, when))
 			}
 			continue
 		}

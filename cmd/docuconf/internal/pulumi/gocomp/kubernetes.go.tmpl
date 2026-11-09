@@ -802,6 +802,9 @@ func structureProblems(c *contract, args inputs, overlayValues map[string]map[st
 			if v.Required && len(inOverlay(n)) == 0 && !c.profileSupplies(n) {
 				problems = append(problems, n+": required, but not set (missing_required)")
 			}
+			if when := c.conditionHolds(v.RequiredIf, args, overlayValues); when != "" && len(inOverlay(n)) == 0 && !c.profileSupplies(n) {
+				problems = append(problems, fmt.Sprintf("%s: is required when %s, but not set (missing_required)", n, when))
+			}
 			continue
 		}
 		if !has(srcs, s.kind) {
@@ -851,6 +854,9 @@ func structureProblems(c *contract, args inputs, overlayValues map[string]map[st
 		if !ok {
 			if f.Required {
 				problems = append(problems, fmt.Sprintf("%s: is a required file input; set one of %s", n, orList(srcs)))
+			}
+			if when := c.conditionHolds(f.RequiredIf, args, overlayValues); when != "" {
+				problems = append(problems, fmt.Sprintf("%s: is a required file input when %s; set one of %s", n, when, orList(srcs)))
 			}
 			continue
 		}

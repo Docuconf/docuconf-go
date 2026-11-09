@@ -66,6 +66,7 @@ type varDecl struct {
 
 	typ        string
 	required   bool
+	requiredIf *condition // required while another variable has a value
 	secret     bool
 	loadFile   bool
 	expand     bool
@@ -132,17 +133,19 @@ type fileDecl struct {
 	srcType reflect.Type
 	field   string
 
-	typ        string
-	required   bool
-	secret     bool
-	path       string
-	pathEnv    string
-	reload     string
-	maxSize    *int64
-	desc       string
-	group      string
-	deprecated string
-	replacedBy string // deprecated.replacedBy
+	typ         string
+	required    bool
+	requiredIf  *condition
+	requiredWhy string // the condition that made it required, for messages
+	secret      bool
+	path        string
+	pathEnv     string
+	reload      string
+	maxSize     *int64
+	desc        string
+	group       string
+	deprecated  string
+	replacedBy  string // deprecated.replacedBy
 
 	format string // config: json|yaml; keystore: pkcs12
 
@@ -362,6 +365,13 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 			problem("unknown env tag option %q", o)
 		}
 	}
+	if s, ok := tag.Lookup("requiredIf"); ok {
+		c, err := parseConditionTag(s)
+		if err != nil {
+			problem("%v", err)
+		}
+		v.requiredIf = c
+	}
 	v.def, v.hasDef = tag.Lookup("envDefault")
 	v.desc = tag.Get("desc")
 	v.group = tag.Get("group")
@@ -399,6 +409,16 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 
 	if v.required && v.hasDef {
 		problem("a required variable must not have a default")
+	}
+	if _, ok := tag.Lookup("requiredIf"); ok {
+		switch {
+		case v.required:
+			problem("a required variable cannot also have requiredIf: it is always required")
+		case v.hasDef:
+			problem("a variable with requiredIf must not have a default")
+		case tag.Get("deprecated") != "":
+			problem("a variable with requiredIf cannot be deprecated: deprecating it asks the platform to stop setting it")
+		}
 	}
 	if v.secret && v.hasDef {
 		problem("a secret variable must not have a default")
@@ -755,6 +775,13 @@ func (d *declaration) crossCheck() {
 		}
 		vars[v.name] = v
 	}
+	for _, v := range d.vars {
+		if v.requiredIf != nil {
+			for _, p := range v.requiredIf.resolve(v.name, d.varByName) {
+				d.problemf("%s (%s): %s", v.name, v.goPath, p)
+			}
+		}
+	}
 	names := map[string]string{}
 	mounts := map[string]string{}
 	pathEnvs := map[string]string{}
@@ -781,6 +808,11 @@ func (d *declaration) crossCheck() {
 				d.problemf("file inputs %s and %s share pathEnv %s", other, f.name, f.pathEnv)
 			}
 			pathEnvs[f.pathEnv] = f.name
+		}
+		if f.requiredIf != nil {
+			for _, p := range f.requiredIf.resolve(f.name, d.varByName) {
+				d.problemf("file input %s (%s): %s", f.name, f.goPath, p)
+			}
 		}
 		if f.typ == fileKeystore && f.passwordVar != "" {
 			pv, ok := vars[f.passwordVar]

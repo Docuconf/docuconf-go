@@ -47,10 +47,14 @@ type fileBinding struct {
 // missing reports a required file that is not there, naming the variable
 // that moves it when the input has one.
 func (b *fileBinding) missing(p string) Violation {
-	if b.decl.pathEnv != "" {
-		return b.violation(CodeFileMissing, "%s does not exist (mount it there, or set %s)", p, b.decl.pathEnv)
+	why := ""
+	if b.decl.requiredWhy != "" {
+		why = fmt.Sprintf(", and is required when %s", b.decl.requiredWhy)
 	}
-	return b.violation(CodeFileMissing, "%s does not exist", p)
+	if b.decl.pathEnv != "" {
+		return b.violation(CodeFileMissing, "%s does not exist%s (mount it there, or set %s)", p, why, b.decl.pathEnv)
+	}
+	return b.violation(CodeFileMissing, "%s does not exist%s", p, why)
 }
 
 func (b *fileBinding) violation(code Code, format string, args ...any) Violation {

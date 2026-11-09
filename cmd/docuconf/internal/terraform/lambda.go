@@ -221,6 +221,9 @@ output "lambda_environment" {
 			fmt.Fprintf(&b, "\n  precondition {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, c.msg)
 		}
 	}
+	for _, c := range g.requiredIfChecks("lambda", nil, false) {
+		fmt.Fprintf(&b, "\n  precondition {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, c.msg)
+	}
 	fmt.Fprintf(&b, `
   precondition {
     condition     = local.lambda_environment_size <= %[1]d
@@ -252,6 +255,9 @@ func (g *gen) lambdaReadme() []byte {
 		req := ""
 		if boolean(v.Raw, "required") && !g.profileSupplies(v) {
 			req = "yes"
+		}
+		if w := whenText(v.Raw); w != "" && !g.profileSupplies(v) {
+			req = "when " + w
 		}
 		typ := v.Type
 		if v.Secret {

@@ -107,6 +107,7 @@ var renderCases = []struct {
 		"TIMEOUT":   "1m30s",
 		"REGION":    "eu-west-1",
 		"PROFILE":   "prod",
+		"TRACE_URL": "https://trace.example/v1",
 	})},
 	{"durations", vals(map[string]any{
 		"BACKOFF":   "1500ms",
@@ -170,7 +171,7 @@ var renderCases = []struct {
 		"keystore": map[string]any{"csi": map[string]any{"driver": "other.csi.example.com", "secretProviderClass": "kitchen-ks"}},
 		"model":    map[string]any{"configMap": map[string]any{"name": "kitchen-model", "key": "rank.bin"}},
 	}}},
-	{"overlays", doc{drop: []string{"TENANT"}, overlays: map[string]any{
+	{"overlays", doc{drop: []string{"TENANT"}, values: map[string]any{"DEBUG_SINK": "stderr"}, overlays: map[string]any{
 		"appjson": map[string]any{"WORKERS": 4, "BACKOFF": "1500ms", "FEATURES": map[string]any{"a": []any{1, map[string]any{"b": true}}}, "TENANT": "acme"},
 		"appyaml": map[string]any{"LOG_LEVEL": "debug", "PORTS": []any{80, 443}, "CACHE_TTL": "90s", "REGION": "eu"},
 		"apptoml": map[string]any{"GREETING": `hé "q" <&>`, "TIMEOUT": "2m"},
@@ -786,6 +787,13 @@ var rejectCases = []rejectCase{
 		want: "LOG_LEVEL: overlay appyaml holds values, not references; give a literal, or supply the reference in the environment"},
 	{name: "overlay_required", doc: doc{drop: []string{"TENANT"}},
 		want: "TENANT: is required, and set neither by the platform nor by the selected profile"},
+	// Conditional requirements (SPEC.md 4.2.1).
+	{name: "required_if", doc: vals(map[string]any{"DEBUG": true}),
+		want: "TRACE_URL: is required when DEBUG is true, and set neither by the platform nor by the selected profile"},
+	{name: "required_if_overlay", doc: doc{overlays: map[string]any{"appjson": map[string]any{"LOG_LEVEL": "debug"}}},
+		want: `DEBUG_SINK: is required when LOG_LEVEL is "debug", and set neither by the platform nor by the selected profile`},
+	{name: "required_if_file", doc: vals(map[string]any{"WORKERS": 64}),
+		want: "rules: is a required file input when WORKERS is 64, and has no source"},
 	{name: "overlay_toml_object", doc: doc{overlays: map[string]any{"apptoml": map[string]any{"FEATURES": map[string]any{"a": 1}}}},
 		want: "FEATURES: Terraform has no TOML encoder for objects, so a json value with objects cannot go in TOML overlay apptoml", vetAccepts: true},
 }

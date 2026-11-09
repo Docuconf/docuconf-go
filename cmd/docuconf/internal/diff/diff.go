@@ -144,6 +144,8 @@ func (d *differ) inputs(kind string, old, new obj, changed func(name string, o, 
 		switch {
 		case o == nil && b(n["required"]):
 			d.add(Breaking, kind, name, "", "a required %s is added: the platform must supply it before deploying this version", what)
+		case o == nil && condition(n) != "":
+			d.add(Breaking, kind, name, "", "a %s required when %s is added: the platform must supply it wherever that holds before deploying this version", what, condition(n))
 		case o == nil:
 			d.add(Compatible, kind, name, "", "an optional %s is added", what)
 		case n == nil:
@@ -160,12 +162,33 @@ func (d *differ) inputs(kind string, old, new obj, changed func(name string, o, 
 	}
 }
 
+// condition is an input's requiredIf (SPEC.md section 4.2.1) as messages
+// write it, "TLS_ENABLED is true", or "" when it has none.
+func condition(in obj) string {
+	for c, x := range m(in["requiredIf"]) {
+		v, _ := json.Marshal(x)
+		return fmt.Sprintf("%s is %s", c, v)
+	}
+	return ""
+}
+
 // common compares what variables and file inputs share.
 func (d *differ) common(kind, name string, o, n obj) {
-	if !b(o["required"]) && b(n["required"]) {
+	oc, nc := condition(o), condition(n)
+	switch {
+	case !b(o["required"]) && b(n["required"]):
 		d.add(Breaking, kind, name, "required", "becomes required: the platform must supply it")
-	} else if b(o["required"]) && !b(n["required"]) {
+	case b(o["required"]) && nc != "":
+		d.add(Compatible, kind, name, "requiredIf", "becomes required only when %s", nc)
+	case b(o["required"]) && !b(n["required"]):
 		d.add(Compatible, kind, name, "required", "becomes optional")
+	case oc == nc:
+	case oc == "":
+		d.add(Breaking, kind, name, "requiredIf", "becomes required when %s: the platform must supply it wherever that holds", nc)
+	case nc == "":
+		d.add(Compatible, kind, name, "requiredIf", "is no longer required when %s", oc)
+	default:
+		d.add(Breaking, kind, name, "requiredIf", "is now required when %s, instead of when %s: the platform must supply it wherever that holds", nc, oc)
 	}
 	switch od, nd := m(o["deprecated"]), m(n["deprecated"]); {
 	case od == nil && nd != nil:

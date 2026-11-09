@@ -298,6 +298,9 @@ output "cloudrun_env" {
 			fmt.Fprintf(&b, "\n  precondition {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, c.msg)
 		}
 	}
+	for _, c := range g.requiredIfChecks("cloudrun", g.cloudrunFiles(), false) {
+		fmt.Fprintf(&b, "\n  precondition {\n    condition     = %s\n    error_message = %s\n  }\n", c.cond, c.msg)
+	}
 	b.WriteString("}\n\n# The revision's secret volumes for file inputs: each { name, secret = { secret, default_mode, items } }.\noutput \"cloudrun_volumes\" {\n  description = \"The revision template's volumes, for a dynamic \\\"volumes\\\" block.\"\n  value       = local.cloudrun_volumes\n")
 	for _, f := range g.cloudrunFiles() {
 		for _, c := range g.cloudrunFileChecks(f, "var."+f.Name) {
@@ -336,6 +339,9 @@ func (g *gen) cloudrunReadme() []byte {
 		if boolean(v.Raw, "required") && !g.profileSupplies(v) {
 			req = "yes"
 		}
+		if w := whenText(v.Raw); w != "" && !g.profileSupplies(v) {
+			req = "when " + w
+		}
 		typ := v.Type
 		if v.Secret {
 			typ += ", secret"
@@ -346,6 +352,9 @@ func (g *gen) cloudrunReadme() []byte {
 		req := ""
 		if boolean(f.Raw, "required") {
 			req = "yes"
+		}
+		if w := whenText(f.Raw); w != "" {
+			req = "when " + w
 		}
 		fmt.Fprintf(&b, "| `%s` | %s file at `%s` | %s | `secret`, `injected` | %s |\n", f.Name, f.Type, f.path(), req, strings.ReplaceAll(str(f.Raw, "description"), "|", `\|`))
 	}

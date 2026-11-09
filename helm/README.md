@@ -7,7 +7,7 @@ Helm-based platform the same guarantees as the CUE/Crossplane path:
 | Check | Where it runs |
 | --- | --- |
 | Types, ranges, patterns, enum values, URL schemes, list bounds | `values.schema.json`, on every `helm lint`, `template`, `install` and `upgrade` |
-| Required inputs, unknown names (typos) | `values.schema.json` |
+| Required inputs, unknown names (typos), inputs required while a `requiredIf` condition holds on a value in `values` or a default | `values.schema.json` |
 | Secrets given only as `secretKeyRef` or `injected`, never as literals | `values.schema.json` |
 | Structured config-file content against the file's own JSON Schema | `values.schema.json` |
 | Wire encodings (lists, durations), `$` escaping, file projections, content-hashed ConfigMaps | the library chart's templates, identical to the CUE renderer |

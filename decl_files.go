@@ -33,6 +33,7 @@ var fileTags = map[string][]string{
 	"deprecated":      nil,
 	"replacedBy":      nil,
 	"secret":          nil,
+	"requiredIf":      nil,
 	"format":          {fileConfig, fileKeystore},
 	"dnsNames":        {fileTLS},
 	"keyAlgorithms":   {fileTLS},
@@ -118,6 +119,18 @@ func (d *declaration) addFile(src reflect.Type, sf reflect.StructField, idx []in
 		} else {
 			f.maxSize = &n
 		}
+	}
+	if s, ok := tag.Lookup("requiredIf"); ok {
+		c, err := parseConditionTag(s)
+		switch {
+		case err != nil:
+			problem("%v", err)
+		case f.required:
+			problem("a required file input cannot also have requiredIf: it is always required")
+		case tag.Get("deprecated") != "":
+			problem("a file input with requiredIf cannot be deprecated: deprecating it asks the platform to stop supplying it")
+		}
+		f.requiredIf = c
 	}
 	f.desc = tag.Get("desc")
 	f.group = tag.Get("group")

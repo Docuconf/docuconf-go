@@ -31,6 +31,7 @@
 // File inputs follow the same rule. docuconf adds:
 //
 //	secret:"true"           the value comes from a Secret; never printed, no default
+//	requiredIf:"TLS_ENABLED=true"  required while another variable has a value
 //	min:"1" max:"65535"     int, float and duration bounds (durations as "1s")
 //	minLength maxLength     string length in characters; maxLength also
 //	                        bounds a url, and a JSON[T] value as received
@@ -81,6 +82,18 @@
 // and the message, never the value, when one is set, and docuconf vet
 // warns about it too. A required input cannot be deprecated.
 //
+// # Conditional requirements
+//
+// A requiredIf tag makes an input required only while another variable
+// has one value: requiredIf:"TLS_ENABLED=true" (SPEC §4.2.1). The value is
+// read as that variable reads it, so it must be a string, int, bool or
+// enum variable, and not a secret. At boot the condition is checked on
+// the variable's loaded value, or its default; an input it then requires
+// is reported as missing_required (a file input as file_missing), with
+// the condition in the message. An input with requiredIf is not also
+// required, has no default and is not deprecated. It works on file
+// inputs too.
+//
 // # File inputs
 //
 // A field of a docuconf file type is a file input. Its file tag names the
@@ -96,7 +109,7 @@
 // Tags for every file type: path (required; absolute), pathEnv (a variable
 // the platform sets to the path; it overrides path at runtime), reload
 // ("restart" or "watch"), maxSize (bytes, or with a Ki, Mi or Gi suffix),
-// secret, desc, group, deprecated, replacedBy. Per type:
+// secret, requiredIf, desc, group, deprecated, replacedBy. Per type:
 //
 //	TLSKeyPair  dnsNames:"a,b" keyAlgorithms:"ECDSA,RSA" minRemaining:"720h" requireCA:"true"
 //	CABundle    minCertificates:"2"

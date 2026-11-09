@@ -464,7 +464,7 @@ var errorCatalog = []ErrorInfo{
 // varErrors returns the codes the SDK may report for a variable.
 func varErrors(typ string, f fields) []string {
 	var c codes
-	c.add("missing_required", f["required"] == true)
+	c.add("missing_required", f["required"] == true || f.has("requiredIf"))
 	c.add("invalid_type", typ != "string" && typ != "enum" || f["secret"] == true)
 	switch typ {
 	case "string":
@@ -508,7 +508,7 @@ var keySetRotation = &Rotation{
 // fileErrors returns the codes the SDK may report for a file input.
 func fileErrors(typ string, f fields) []string {
 	var c codes
-	c.add("file_missing", f["required"] == true || f.has("pathEnv"))
+	c.add("file_missing", f["required"] == true || f.has("requiredIf") || f.has("pathEnv"))
 	c.add("file_unreadable", true)
 	c.add("file_too_large", f.has("maxSize"))
 	c.add("file_malformed", true)

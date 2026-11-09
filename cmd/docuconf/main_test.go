@@ -7,6 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"cuelang.org/go/cue"
+	"cuelang.org/go/cue/cuecontext"
+	"cuelang.org/go/encoding/jsonschema"
 )
 
 const (
@@ -599,5 +603,60 @@ contract.#Contract & {
 	out, _, code = docuconf(t, "vet", "-contract", contract)
 	if code != 0 || out != "svc: ok\n" {
 		t.Fatalf("exit %d, stdout:\n%s", code, out)
+	}
+}
+
+// Inputs required only while a variable has a value (SPEC §4.2): set by
+// the platform, or by the selected profile.
+func TestVetRequiredIf(t *testing.T) {
+	relay := examples + "/relay_contract.cue"
+	for _, ok := range []string{"{}\n", "TLS_ENABLED: false\n", "TLS_ENABLED: {configMapKeyRef: {name: relay, key: tls}}\n"} {
+		out, errOut, code := docuconf(t, "vet", "-contract", relay, "-values", write(t, "values.yaml", ok))
+		if code != 0 || out != "relay-api: ok\n" {
+			t.Fatalf("%s: exit %d\nstdout:\n%s\nstderr:\n%s", ok, code, out, errOut)
+		}
+	}
+	out, _, code := docuconf(t, "vet", "-contract", relay, "-values", write(t, "values.yaml", "TLS_ENABLED: true\nLOG_FORMAT: json\n"))
+	requireLines(t, out, code,
+		`LOG_SCHEMA_URL: is required when LOG_FORMAT is "json", and set neither by the platform nor by the selected profile`,
+		"TLS_CLIENT_CA_SUBJECT: is required when TLS_ENABLED is true, and set neither by the platform nor by the selected profile",
+		"serving-tls: is a required file input when TLS_ENABLED is true, and has no source",
+	)
+	out, _, code = docuconf(t, "vet", "-contract", relay, "-values", write(t, "values.yaml", "APP_ENV: production\nTLS_CLIENT_CA_SUBJECT: CN=CA\n"))
+	requireLines(t, out, code,
+		"serving-tls: is a required file input when TLS_ENABLED is true, and has no source",
+	)
+}
+
+// The chart's values schema requires an input while its requiredIf
+// condition holds (SPEC §4.2.1). Checked with CUE's JSON Schema decoder,
+// which reads if/then as Helm's validator does.
+func TestHelmRequiredIf(t *testing.T) {
+	dir := t.TempDir()
+	if _, errOut, code := docuconf(t, "helm", "-contract", examples+"/relay_contract.cue", "-chart", dir); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	ctx := cuecontext.New()
+	schema := ctx.CompileString(read(t, filepath.Join(dir, "values.schema.json")))
+	f, err := jsonschema.Extract(schema, &jsonschema.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := ctx.BuildFile(f)
+	for doc, ok := range map[string]bool{
+		`{}`: true,
+		`{"docuconf": {"values": {"TLS_ENABLED": false}}}`:                                                 true,
+		`{"docuconf": {"values": {"TLS_ENABLED": {"configMapKeyRef": {"name": "a", "key": "b"}}}}}`:        true,
+		`{"docuconf": {"values": {"TLS_ENABLED": true}}}`:                                                  false,
+		`{"docuconf": {"values": {"TLS_ENABLED": true, "TLS_CLIENT_CA_SUBJECT": "CN=CA"}}}`:                false,
+		`{"docuconf": {"values": {"LOG_FORMAT": "json"}}}`:                                                 false,
+		`{"docuconf": {"values": {"LOG_FORMAT": "json", "LOG_SCHEMA_URL": "https://logs.example.com/s"}}}`: true,
+		`{"docuconf": {"values": {"TLS_ENABLED": true, "TLS_CLIENT_CA_SUBJECT": "CN=CA"},
+		  "files": {"serving-tls": {"certificate": {"name": "relay", "secretName": "relay-tls"}}}}}`: true,
+	} {
+		err := s.Unify(ctx.CompileString(doc)).Validate(cue.Concrete(true))
+		if (err == nil) != ok {
+			t.Errorf("%s: want valid %v, got %v", doc, ok, err)
+		}
 	}
 }
