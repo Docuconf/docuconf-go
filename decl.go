@@ -184,6 +184,10 @@ type declaration struct {
 	vars     []*varDecl
 	files    []*fileDecl
 	problems []string
+	// includes are the well-known fragments the struct includes, and
+	// fragmentVars their variables it does not declare itself (SPEC §4.8).
+	includes     []string
+	fragmentVars []*varDecl
 }
 
 type declOptions struct {
@@ -199,6 +203,7 @@ func declare(t reflect.Type, opts declOptions) (*declaration, error) {
 	}
 	d := &declaration{root: t}
 	d.walk(t, nil, opts.prefix, t.Name(), opts, map[reflect.Type]bool{})
+	d.resolveFragments()
 	d.crossCheck()
 	if len(d.problems) > 0 {
 		return d, &DeclarationError{Problems: d.problems}
@@ -220,6 +225,10 @@ func (d *declaration) walk(t reflect.Type, index []int, prefix, goPath string, o
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
+		if f.Type == fragmentsType {
+			d.addIncludes(f, goPath+"."+f.Name)
+			continue
+		}
 		if !f.IsExported() {
 			continue // caarlos0/env cannot set it either
 		}

@@ -22,6 +22,7 @@ func Build(contractJSON []byte) (*Model, error) {
 			AppVersion string    `json:"appVersion"`
 			Generator  Generator `json:"generator"`
 		} `json:"metadata"`
+		Includes []string          `json:"includes"`
 		Vars     map[string]fields `json:"vars"`
 		Files    map[string]fields `json:"files"`
 		Overlays map[string]fields `json:"overlays"`
@@ -37,7 +38,7 @@ func Build(contractJSON []byte) (*Model, error) {
 	m := &Model{
 		APIVersion: APIVersion,
 		Kind:       Kind,
-		Service:    Service{Name: c.Metadata.Name, AppVersion: c.Metadata.AppVersion, Generator: c.Metadata.Generator},
+		Service:    Service{Name: c.Metadata.Name, AppVersion: c.Metadata.AppVersion, Generator: c.Metadata.Generator, Includes: c.Includes},
 		Groups:     []Group{},
 		Errors:     []ErrorInfo{},
 	}

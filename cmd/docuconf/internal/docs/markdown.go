@@ -31,6 +31,9 @@ func Markdown(m *Model) []byte {
 	b.WriteString(generatedBy(m))
 	b.WriteString("\n\n")
 	b.WriteString(summary(m))
+	if inc := m.Service.Includes; len(inc) > 0 {
+		fmt.Fprintf(&b, "\n\nIt includes the well-known %s %s: variables a runtime or library reads rather than the app's own code, which the platform may set.", plural(len(inc), "fragment", "fragments"), join(inc, "and"))
+	}
 	b.WriteString("\n\n## Contents\n\n")
 	r.contents(&b)
 	b.WriteString(body)

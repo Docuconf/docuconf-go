@@ -31,6 +31,10 @@ import (
 			version:  string
 		}
 	}
+	// Well-known fragments the app includes (fragments.cue, SPEC §4.8).
+	// Their variables are in vars, inline: the app's own declaration of
+	// one replaces the fragment's.
+	includes?: [...#FragmentRef] & list.UniqueItems()
 	vars: [N=#EnvName]: #Var & {name: N}
 	files?: [N=#InputName]: #File & {name: N}
 	// Config files the platform may mount over the app's own (overlays.cue).
@@ -78,6 +82,12 @@ import (
 			for n, f in files if f.requiredIf != _|_ {
 				(n): #RequiredIfCondition & {input: n, condition: f.requiredIf, "vars": vars}
 			}
+		}
+	}
+
+	if includes != _|_ {
+		for r in includes for n, _ in #Fragments[r].vars {
+			_fragmentVarDeclared: "\(r)/\(n)": true & vars[n] != _|_
 		}
 	}
 
