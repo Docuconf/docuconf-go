@@ -1,0 +1,258 @@
+{
+  "apiVersion": "docs.docuconf.dev/v1alpha1",
+  "kind": "ConfigDocs",
+  "service": {
+    "name": "worker",
+    "generator": {
+      "language": "go",
+      "sdk": "docuconf-go",
+      "version": "0.1.0"
+    },
+    "includes": [
+      "go-runtime@1"
+    ]
+  },
+  "groups": [
+    {
+      "name": "",
+      "title": "General",
+      "inputs": [
+        {
+          "name": "GODEBUG",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "required": false,
+          "secret": false,
+          "description": "Comma-separated runtime debugging settings, name=value",
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a string"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "fieldRef",
+              "text": "a pod field from the Downward API (`fieldRef`), such as `metadata.namespace`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "name": "GOGC",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "required": false,
+          "secret": false,
+          "description": "Garbage collection target percentage, or off",
+          "examples": [
+            "100",
+            "off"
+          ],
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "pattern",
+              "params": {
+                "pattern": "^(-?[0-9]+|off)$"
+              },
+              "text": "matches the RE2 pattern `^(-?[0-9]+|off)$`"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "fieldRef",
+              "text": "a pod field from the Downward API (`fieldRef`), such as `metadata.namespace`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "pattern_mismatch"
+          ]
+        },
+        {
+          "name": "GOMAXPROCS",
+          "kind": "var",
+          "type": "int",
+          "typeLabel": "integer",
+          "required": false,
+          "secret": false,
+          "description": "Maximum number of OS threads running Go code at once",
+          "wire": {
+            "text": "a base-10 integer with no leading `+` or zeros, such as `8080`",
+            "platform": "an integer"
+          },
+          "constraints": [
+            {
+              "rule": "range",
+              "params": {
+                "min": 1
+              },
+              "text": "at least 1"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "resourceFieldRef",
+              "text": "a container resource limit or request (`resourceFieldRef`), such as `limits.memory`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "invalid_type",
+            "out_of_range"
+          ]
+        },
+        {
+          "name": "GOMEMLIMIT",
+          "kind": "var",
+          "type": "string",
+          "typeLabel": "string",
+          "required": false,
+          "secret": false,
+          "description": "Soft memory limit for the Go runtime",
+          "default": "900MiB",
+          "defaultEnv": [
+            {
+              "name": "GOMEMLIMIT",
+              "value": "900MiB"
+            }
+          ],
+          "wire": {
+            "text": "the text as is; it is never trimmed",
+            "platform": "a string"
+          },
+          "constraints": [],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "fieldRef",
+              "text": "a pod field from the Downward API (`fieldRef`), such as `metadata.namespace`"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": []
+        },
+        {
+          "name": "QUEUE_URL",
+          "kind": "var",
+          "type": "url",
+          "typeLabel": "URL",
+          "required": true,
+          "secret": false,
+          "description": "Queue the worker reads jobs from",
+          "wire": {
+            "text": "an absolute URL, `scheme://...`, as is",
+            "platform": "a string"
+          },
+          "constraints": [
+            {
+              "rule": "schemes",
+              "params": {
+                "schemes": [
+                  "amqp",
+                  "amqps"
+                ]
+              },
+              "text": "`amqp` or `amqps` URL"
+            }
+          ],
+          "sources": [
+            {
+              "kind": "literal",
+              "text": "a literal value in the platform's values file"
+            },
+            {
+              "kind": "configMapKeyRef",
+              "text": "a key of a ConfigMap (`configMapKeyRef`), checked at boot"
+            },
+            {
+              "kind": "injected",
+              "text": "supplied when the container starts by an injector (`injected`), such as Bank-Vaults, `op run` or the Vault Agent injector; checked at boot"
+            }
+          ],
+          "errors": [
+            "missing_required",
+            "invalid_type",
+            "invalid_scheme"
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": "missing_required",
+      "meaning": "A required input is not set, and has no default.",
+      "fix": "Set it through one of its allowed sources."
+    },
+    {
+      "code": "invalid_type",
+      "meaning": "The value does not parse as the input's type in its wire format, or a secret still holds an unresolved injector reference (`vault:`, `op://`, `ref+`).",
+      "fix": "Write the value in the input's wire format. For an injected secret, make sure the injector runs."
+    },
+    {
+      "code": "out_of_range",
+      "meaning": "A number, duration, length, list item or key is outside the input's bounds; an empty key always is.",
+      "fix": "Use a value within the input's constraints."
+    },
+    {
+      "code": "pattern_mismatch",
+      "meaning": "The value does not match the input's pattern.",
+      "fix": "Use a value that matches the pattern."
+    },
+    {
+      "code": "invalid_scheme",
+      "meaning": "The URL's scheme is not one of the allowed schemes.",
+      "fix": "Use a URL with an allowed scheme."
+    }
+  ]
+}

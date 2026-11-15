@@ -82,6 +82,14 @@
 // and the message, never the value, when one is set, and docuconf vet
 // warns about it too. A required input cannot be deprecated.
 //
+// # Well-known fragments
+//
+// Variables a runtime or library reads, such as GOMAXPROCS or OTEL_*, are
+// included rather than declared (SPEC §4.8): a blank field of type
+// Fragments with an include tag, _ docuconf.Fragments
+// `include:"go-runtime@1,otel@1"`. The export carries their variables,
+// and Parse checks them at boot without setting a field.
+//
 // # Conditional requirements
 //
 // A requiredIf tag makes an input required only while another variable

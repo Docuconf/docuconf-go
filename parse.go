@@ -244,7 +244,7 @@ func load(ptr any, opts Options, parse bool) error {
 		return err
 	}
 	warnUndeclared(d, environ, opts.Prefix, logger)
-	res := checkVars(d.vars, environ, logger)
+	res := checkVars(d.allVars(), environ, logger)
 	viols, flagged, values := res.viols, res.flagged, res.raw
 
 	if parse {
@@ -614,7 +614,7 @@ func injectorScheme(raw string) string {
 func warnUndeclared(d *declaration, environ map[string]string, prefix string, logger *slog.Logger) {
 	declared := map[string]bool{}
 	var names []string
-	for _, v := range d.vars {
+	for _, v := range d.allVars() {
 		declared[v.name] = true
 		names = append(names, strings.TrimPrefix(v.name, prefix))
 	}

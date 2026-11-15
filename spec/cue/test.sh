@@ -55,6 +55,12 @@ for f in testdata/invalid/*.cue; do
     head -3 <<<"$out"; fail=1
   fi
 done
+# spec/fragments.json is the well-known fragments as JSON, for SDKs.
+if diff -u ../fragments.json <("$CUE" export ./contract -e '#Fragments' --out json); then
+  echo "PASS fragments.json"
+else
+  echo "FAIL fragments.json is out of date: cue export ./contract -e '#Fragments' --out json >../fragments.json"; fail=1
+fi
 for m in testdata/docs/*/docs.json ../../examples/orders/docs.json; do
   if "$CUE" vet -c -d '#DocsModel' ./docs json: - <"$m"; then
     echo "PASS docs model $m"

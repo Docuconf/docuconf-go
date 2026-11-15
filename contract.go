@@ -923,7 +923,7 @@ func ContractCUE(contractJSON []byte, pkg string) ([]byte, error) {
 	if !dnsLabelRe.MatchString(name) {
 		return nil, &DeclarationError{Problems: []string{fmt.Sprintf("metadata.name %q must be a DNS label ([a-z0-9-], at most 63 characters)", name)}}
 	}
-	out := ordered(root, []string{"apiVersion", "kind", "metadata", "vars", "files"}, func(k string, v any) any {
+	out := ordered(root, []string{"apiVersion", "kind", "metadata", "includes", "vars", "files"}, func(k string, v any) any {
 		switch k {
 		case "metadata":
 			return ordered(v, []string{"name", "appVersion", "generator"}, func(k string, v any) any {

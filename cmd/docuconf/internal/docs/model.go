@@ -42,6 +42,9 @@ type Service struct {
 	Name       string    `json:"name"`
 	AppVersion string    `json:"appVersion,omitempty"`
 	Generator  Generator `json:"generator"`
+	// Includes are the well-known fragments the contract includes (SPEC
+	// §4.8), whose variables a runtime or library reads.
+	Includes []string `json:"includes,omitempty"`
 }
 
 // Generator is the SDK that exported the contract.

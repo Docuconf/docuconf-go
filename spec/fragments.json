@@ -1,0 +1,361 @@
+{
+    "go-runtime@1": {
+        "description": "The Go runtime",
+        "vars": {
+            "GOMAXPROCS": {
+                "name": "GOMAXPROCS",
+                "description": "Maximum number of OS threads running Go code at once",
+                "required": false,
+                "secret": false,
+                "type": "int",
+                "min": 1
+            },
+            "GOMEMLIMIT": {
+                "name": "GOMEMLIMIT",
+                "description": "Soft memory limit for the Go runtime, in bytes with an optional unit suffix, or off",
+                "required": false,
+                "secret": false,
+                "examples": [
+                    "512MiB",
+                    "off"
+                ],
+                "type": "string",
+                "pattern": "^([0-9]+(B|KiB|MiB|GiB|TiB)?|off)$"
+            },
+            "GOGC": {
+                "name": "GOGC",
+                "description": "Garbage collection target percentage, or off",
+                "required": false,
+                "secret": false,
+                "examples": [
+                    "100",
+                    "off"
+                ],
+                "type": "string",
+                "pattern": "^(-?[0-9]+|off)$"
+            },
+            "GODEBUG": {
+                "name": "GODEBUG",
+                "description": "Comma-separated runtime debugging settings, name=value",
+                "required": false,
+                "secret": false,
+                "type": "string"
+            }
+        }
+    },
+    "node@1": {
+        "description": "The Node.js runtime",
+        "vars": {
+            "NODE_ENV": {
+                "name": "NODE_ENV",
+                "description": "The environment frameworks and libraries tune themselves for, such as production",
+                "required": false,
+                "secret": false,
+                "examples": [
+                    "production",
+                    "development"
+                ],
+                "type": "string"
+            },
+            "NODE_OPTIONS": {
+                "name": "NODE_OPTIONS",
+                "description": "Command-line options for the node process, such as --max-old-space-size",
+                "required": false,
+                "secret": false,
+                "type": "string"
+            },
+            "UV_THREADPOOL_SIZE": {
+                "name": "UV_THREADPOOL_SIZE",
+                "description": "Size of the libuv thread pool for file system, DNS and crypto work",
+                "required": false,
+                "secret": false,
+                "type": "int",
+                "min": 1,
+                "max": 1024
+            }
+        }
+    },
+    "otel@1": {
+        "description": "OpenTelemetry SDK configuration",
+        "vars": {
+            "OTEL_SERVICE_NAME": {
+                "name": "OTEL_SERVICE_NAME",
+                "description": "Service name reported in telemetry",
+                "required": false,
+                "secret": false,
+                "type": "string"
+            },
+            "OTEL_RESOURCE_ATTRIBUTES": {
+                "name": "OTEL_RESOURCE_ATTRIBUTES",
+                "description": "Resource attributes, comma-separated key=value pairs",
+                "required": false,
+                "secret": false,
+                "type": "string"
+            },
+            "OTEL_EXPORTER_OTLP_ENDPOINT": {
+                "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                "description": "Base URL of the OTLP collector",
+                "required": false,
+                "secret": false,
+                "type": "url",
+                "schemes": [
+                    "http",
+                    "https"
+                ]
+            },
+            "OTEL_EXPORTER_OTLP_PROTOCOL": {
+                "name": "OTEL_EXPORTER_OTLP_PROTOCOL",
+                "description": "Transport protocol for OTLP export",
+                "required": false,
+                "secret": false,
+                "type": "enum",
+                "values": [
+                    "grpc",
+                    "http/protobuf",
+                    "http/json"
+                ]
+            },
+            "OTEL_EXPORTER_OTLP_HEADERS": {
+                "name": "OTEL_EXPORTER_OTLP_HEADERS",
+                "description": "Headers sent with every OTLP export, comma-separated key=value pairs",
+                "required": false,
+                "secret": true,
+                "type": "string"
+            },
+            "OTEL_TRACES_SAMPLER": {
+                "name": "OTEL_TRACES_SAMPLER",
+                "description": "Sampler for traces",
+                "required": false,
+                "secret": false,
+                "type": "enum",
+                "values": [
+                    "always_on",
+                    "always_off",
+                    "traceidratio",
+                    "parentbased_always_on",
+                    "parentbased_always_off",
+                    "parentbased_traceidratio",
+                    "jaeger_remote",
+                    "parentbased_jaeger_remote",
+                    "xray"
+                ]
+            },
+            "OTEL_TRACES_SAMPLER_ARG": {
+                "name": "OTEL_TRACES_SAMPLER_ARG",
+                "description": "Argument for the sampler, such as the ratio for traceidratio",
+                "required": false,
+                "secret": false,
+                "type": "string"
+            },
+            "OTEL_TRACES_EXPORTER": {
+                "name": "OTEL_TRACES_EXPORTER",
+                "description": "Trace exporters, comma-separated, such as otlp or none",
+                "required": false,
+                "secret": false,
+                "type": "string"
+            },
+            "OTEL_METRICS_EXPORTER": {
+                "name": "OTEL_METRICS_EXPORTER",
+                "description": "Metric exporters, comma-separated, such as otlp or none",
+                "required": false,
+                "secret": false,
+                "type": "string"
+            },
+            "OTEL_LOGS_EXPORTER": {
+                "name": "OTEL_LOGS_EXPORTER",
+                "description": "Log exporters, comma-separated, such as otlp or none",
+                "required": false,
+                "secret": false,
+                "type": "string"
+            },
+            "OTEL_PROPAGATORS": {
+                "name": "OTEL_PROPAGATORS",
+                "description": "Context propagators, comma-separated, such as tracecontext,baggage",
+                "required": false,
+                "secret": false,
+                "type": "string"
+            },
+            "OTEL_SDK_DISABLED": {
+                "name": "OTEL_SDK_DISABLED",
+                "description": "Disable the OpenTelemetry SDK entirely",
+                "required": false,
+                "secret": false,
+                "type": "bool"
+            }
+        }
+    },
+    "aws-sdk@1": {
+        "description": "The AWS SDKs",
+        "vars": {
+            "AWS_REGION": {
+                "name": "AWS_REGION",
+                "description": "AWS Region the SDK sends requests to",
+                "required": false,
+                "secret": false,
+                "examples": [
+                    "eu-west-1"
+                ],
+                "type": "string",
+                "pattern": "^[a-z]{2}(-[a-z]+)+-[0-9]+$"
+            },
+            "AWS_DEFAULT_REGION": {
+                "name": "AWS_DEFAULT_REGION",
+                "description": "AWS Region the SDK falls back to when AWS_REGION is unset",
+                "required": false,
+                "secret": false,
+                "type": "string",
+                "pattern": "^[a-z]{2}(-[a-z]+)+-[0-9]+$"
+            },
+            "AWS_ROLE_ARN": {
+                "name": "AWS_ROLE_ARN",
+                "description": "IAM role the SDK assumes with a web identity token",
+                "required": false,
+                "secret": false,
+                "type": "string",
+                "pattern": "^arn:aws[a-z-]*:iam::[0-9]{12}:role/.+$"
+            },
+            "AWS_WEB_IDENTITY_TOKEN_FILE": {
+                "name": "AWS_WEB_IDENTITY_TOKEN_FILE",
+                "description": "Path of the web identity token the SDK exchanges for credentials",
+                "required": false,
+                "secret": false,
+                "type": "string"
+            },
+            "AWS_STS_REGIONAL_ENDPOINTS": {
+                "name": "AWS_STS_REGIONAL_ENDPOINTS",
+                "description": "Whether STS calls go to the regional or the global endpoint",
+                "required": false,
+                "secret": false,
+                "type": "enum",
+                "values": [
+                    "regional",
+                    "legacy"
+                ]
+            },
+            "AWS_ENDPOINT_URL": {
+                "name": "AWS_ENDPOINT_URL",
+                "description": "Endpoint every AWS service client uses instead of its default",
+                "required": false,
+                "secret": false,
+                "type": "url",
+                "schemes": [
+                    "http",
+                    "https"
+                ]
+            }
+        }
+    },
+    "rails@1": {
+        "description": "Ruby on Rails and Puma",
+        "vars": {
+            "RAILS_ENV": {
+                "name": "RAILS_ENV",
+                "description": "The Rails environment, which selects config/environments/{env}.rb",
+                "required": false,
+                "secret": false,
+                "examples": [
+                    "production"
+                ],
+                "type": "string"
+            },
+            "RAILS_MAX_THREADS": {
+                "name": "RAILS_MAX_THREADS",
+                "description": "Threads per Puma worker, and the database pool size",
+                "required": false,
+                "secret": false,
+                "type": "int",
+                "min": 1
+            },
+            "WEB_CONCURRENCY": {
+                "name": "WEB_CONCURRENCY",
+                "description": "Number of Puma worker processes",
+                "required": false,
+                "secret": false,
+                "type": "int",
+                "min": 0
+            },
+            "RAILS_LOG_TO_STDOUT": {
+                "name": "RAILS_LOG_TO_STDOUT",
+                "description": "Log to standard output when set to any value",
+                "required": false,
+                "secret": false,
+                "type": "string"
+            },
+            "RAILS_SERVE_STATIC_FILES": {
+                "name": "RAILS_SERVE_STATIC_FILES",
+                "description": "Serve files in public/ from Rails when set to any value",
+                "required": false,
+                "secret": false,
+                "type": "string"
+            },
+            "RAILS_MASTER_KEY": {
+                "name": "RAILS_MASTER_KEY",
+                "description": "Key that decrypts config/credentials.yml.enc",
+                "required": false,
+                "secret": true,
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+            }
+        }
+    },
+    "dotnet-runtime@1": {
+        "description": ".NET and ASP.NET Core hosting",
+        "vars": {
+            "ASPNETCORE_URLS": {
+                "name": "ASPNETCORE_URLS",
+                "description": "Addresses Kestrel listens on, separated by semicolons",
+                "required": false,
+                "secret": false,
+                "examples": [
+                    "http://+:8080"
+                ],
+                "type": "string"
+            },
+            "ASPNETCORE_HTTP_PORTS": {
+                "name": "ASPNETCORE_HTTP_PORTS",
+                "description": "HTTP ports Kestrel listens on, on every address",
+                "required": false,
+                "secret": false,
+                "separator": ";",
+                "type": "list",
+                "items": "int",
+                "encoding": "csv",
+                "itemMin": 1,
+                "itemMax": 65535
+            },
+            "ASPNETCORE_HTTPS_PORTS": {
+                "name": "ASPNETCORE_HTTPS_PORTS",
+                "description": "HTTPS ports Kestrel listens on, on every address",
+                "required": false,
+                "secret": false,
+                "separator": ";",
+                "type": "list",
+                "items": "int",
+                "encoding": "csv",
+                "itemMin": 1,
+                "itemMax": 65535
+            },
+            "DOTNET_GCHEAPHARDLIMIT": {
+                "name": "DOTNET_GCHEAPHARDLIMIT",
+                "description": "Maximum GC heap size, in bytes, as a hexadecimal number",
+                "required": false,
+                "secret": false,
+                "type": "string",
+                "pattern": "^(0[xX])?[0-9A-Fa-f]+$"
+            },
+            "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": {
+                "name": "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT",
+                "description": "Run without culture data, as in a container image without ICU",
+                "required": false,
+                "secret": false,
+                "type": "enum",
+                "values": [
+                    "true",
+                    "false",
+                    "1",
+                    "0"
+                ]
+            }
+        }
+    }
+}

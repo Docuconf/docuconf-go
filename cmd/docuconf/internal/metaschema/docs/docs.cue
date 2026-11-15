@@ -22,6 +22,8 @@ import "strings"
 			sdk:      string
 			version:  string
 		})
+		// The well-known fragments the contract includes (SPEC §4.8).
+		includes?: [...=~"^[a-z][a-z0-9-]*@[1-9][0-9]*$"]
 	})
 	// The profile selector and the profiles with defaults (SPEC §4.4).
 	profiles?: close({
