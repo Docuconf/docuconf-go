@@ -84,10 +84,12 @@ Usage:
   docuconf diff   <old contract> <new contract> [-accept INPUT,...] [-format text|json] [-all]
   docuconf push   [-contract contract.cue] <image>
   docuconf pull   <image> [-o contract.cue]
+  docuconf catalog resolve|push <image> | list | check <dir>
 
 Wherever a contract file is expected, oci://<image> reads the contract
 attached to the image instead (docuconf push), and terraform and pulumi
-record the image's digest for docuconf lint.
+record the image's digest for docuconf lint. catalog:<image> reads the
+contract a catalog has for a third-party image (docuconf catalog).
 
 Run "docuconf <command> -h" for a command's flags.
 `
@@ -129,6 +131,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runPush(args[1:], stdout, stderr)
 	case "pull":
 		err = runPull(args[1:], stdout, stderr)
+	case "catalog":
+		err = runCatalog(args[1:], stdout, stderr)
 	case "check":
 		err = runCheck(args[1:], stdout, stderr)
 	case "exec":

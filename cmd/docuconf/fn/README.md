@@ -96,6 +96,24 @@ function waits for it. It asks Crossplane for the Secrets as required
 resources, which Crossplane v2 supplies; with an older one it warns and
 skips the check. `checkSecrets: false` turns it off.
 
+## Third-party images
+
+For an image no docuconf SDK built, `contract: catalog:postgres:16` takes
+the community catalog's contract (SPEC.md section 8.1). For an
+organization's own catalog, attach its contract to the mirrored image
+with `docuconf catalog push -for postgres:16 registry.internal/postgres:16`,
+and the function pulls it like any other. An image with no contract at
+all can opt out, with a reason that stays on the `ContractValid`
+condition:
+
+```yaml
+noContract:
+  reason: vendor image without a contract; review by 2027-03
+```
+
+The workload is passed through unchanged, annotated
+`docuconf.dev/contract: none`.
+
 ## Private registries
 
 To pull contracts from a private registry, give the step a credential named

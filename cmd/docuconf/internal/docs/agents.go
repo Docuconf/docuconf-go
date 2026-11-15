@@ -70,13 +70,14 @@ func Agents(m *Model) []byte {
 	}
 
 	g := m.Service.Generator
-	b.WriteString("\n## Using this config in code\n\n")
-	fmt.Fprintf(&b, "- The app declares these inputs in its own code with a docuconf SDK (this contract was exported by %s %s, %s). The contract and the docs are generated from that declaration: edit the declaration, never the generated files.\n",
-		code(g.SDK), code(g.Version), g.Language)
-	b.WriteString("- Read configuration through the SDK's typed values, not by reading environment variables or files directly: the SDK validates every input at boot and fails with all problems listed.\n")
-	b.WriteString("- `config key` below is where a setting lives in the app's own configuration (its options class, settings file or config path). Search the code for it, or for the variable name, to find where it is read.\n")
-	b.WriteString("- A file input is read from its `path`. For local runs, `DOCUCONF_FILE_ROOT=./dev` makes the SDK read every path under `./dev`.\n")
-	b.WriteString("- Descriptions and details below are the app authors' own documentation of each input.\n")
+	if g.Language == "manual" {
+		// A third-party image's contract, from a catalog (SPEC §8.1).
+		b.WriteString("\n## Where this contract comes from\n\n")
+		fmt.Fprintf(&b, "- This contract was written by hand (%s %s) for a third-party image whose code no docuconf SDK reads: the image's own entrypoint reads these inputs. Set them through the platform; to change what is declared, edit the contract in its catalog, not generated files.\n", code(g.SDK), code(g.Version))
+		b.WriteString("- Descriptions and details below are the catalog authors' documentation of each input.\n")
+	} else {
+		writeUsingInCode(&b, g)
+	}
 
 	b.WriteString("\n## Setting values\n\n")
 	for _, s := range []struct{ kind, title string }{{KindVar, "Environment variables"}, {KindFile, "Files"}} {
@@ -269,4 +270,15 @@ func listOrNone(prefix string, xs []string, suffix string) string {
 		return ""
 	}
 	return prefix + join(xs, "and") + suffix
+}
+
+// writeUsingInCode is the section for a contract an SDK exported.
+func writeUsingInCode(b *strings.Builder, g Generator) {
+	b.WriteString("\n## Using this config in code\n\n")
+	fmt.Fprintf(b, "- The app declares these inputs in its own code with a docuconf SDK (this contract was exported by %s %s, %s). The contract and the docs are generated from that declaration: edit the declaration, never the generated files.\n",
+		code(g.SDK), code(g.Version), g.Language)
+	b.WriteString("- Read configuration through the SDK's typed values, not by reading environment variables or files directly: the SDK validates every input at boot and fails with all problems listed.\n")
+	b.WriteString("- `config key` below is where a setting lives in the app's own configuration (its options class, settings file or config path). Search the code for it, or for the variable name, to find where it is read.\n")
+	b.WriteString("- A file input is read from its `path`. For local runs, `DOCUCONF_FILE_ROOT=./dev` makes the SDK read every path under `./dev`.\n")
+	b.WriteString("- Descriptions and details below are the app authors' own documentation of each input.\n")
 }

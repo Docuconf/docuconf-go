@@ -13,6 +13,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+// NoContract is an exception from the contract a workload needs.
+type NoContract struct {
+	// Reason says why the workload has no contract, and until when.
+	Reason string `json:"reason"`
+}
+
 // Input configures function-docuconf for one workload.
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:categories=crossplane
@@ -27,9 +33,18 @@ type Input struct {
 
 	// Contract is the contract itself, CUE or JSON, for platforms that
 	// commit it beside the composition instead of pulling it with the
-	// image (SPEC.md section 8). It may also be oci://IMAGE.
+	// image (SPEC.md section 8). It may also be oci://IMAGE, or
+	// catalog:IMAGE, the community catalog's contract for a third-party
+	// image (section 8.1).
 	// +optional
 	Contract string `json:"contract,omitempty"`
+
+	// NoContract runs the workload without a contract: an image that has
+	// none and is in no catalog. Its reason is required, and is the
+	// ContractValid condition's message, so the exception stays visible.
+	// The workload is passed through unchanged.
+	// +optional
+	NoContract *NoContract `json:"noContract,omitempty"`
 
 	// Values, Files and Overlays are the values, file sources and overlay
 	// values documents of SPEC.md section 7.

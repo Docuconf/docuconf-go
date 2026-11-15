@@ -41,8 +41,18 @@ spec:
                 type: string
                 description: Used when fromFieldPath is unset.
           contract:
-            description: The contract itself, CUE or JSON, committed beside the composition instead of pulled with the image; or oci://IMAGE.
+            description: The contract itself, CUE or JSON, committed beside the composition instead of pulled with the image; or oci://IMAGE; or catalog:IMAGE, the community catalog's contract for a third-party image (SPEC.md section 8.1).
             type: string
+          noContract:
+            description: Run the workload without a contract, for an image that has none and is in no catalog. The reason is the ContractValid condition's message, so the exception stays visible.
+            type: object
+            required:
+              - reason
+            properties:
+              reason:
+                description: Why the workload has no contract, and until when.
+                type: string
+                minLength: 1
           values:
             description: A values document (SPEC.md section 7) from the composite resource, with fixed entries on top. Until fromFieldPath is set, the function waits.
             type: object

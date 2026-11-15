@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/docuconf/docuconf-go/cmd/docuconf/fn/input/v1alpha1"
+	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/catalog"
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/oci"
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/platform"
 )
@@ -104,10 +105,13 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 		return rsp, nil
 	}
 	target := resource.Name(in.Target.Resource)
-	_, ok := desired[target]
+	w, ok := desired[target]
 	if !ok {
 		response.Fatal(rsp, errors.Errorf("no desired composed resource %q: an earlier function in the pipeline must declare the workload", target))
 		return rsp, nil
+	}
+	if in.NoContract != nil {
+		return f.noContract(rsp, in, desired, target, w)
 	}
 
 	// Documents and image from the composite resource. Until they are
@@ -270,11 +274,46 @@ func (f *Function) check(rsp *fnv1.RunFunctionResponse, desired map[resource.Nam
 	return rsp, nil
 }
 
-// contract finds the contract: inline, oci://, or the image's own, pulled
+// noContract passes the workload through with no contract (SPEC.md
+// section 8.1), marked so the exception stays visible: the condition
+// carries the reason, and the workload an annotation.
+func (f *Function) noContract(rsp *fnv1.RunFunctionResponse, in *v1alpha1.Input, desired map[resource.Name]*resource.DesiredComposed, target resource.Name, w *resource.DesiredComposed) (*fnv1.RunFunctionResponse, error) {
+	reason := strings.TrimSpace(in.NoContract.Reason)
+	if reason == "" {
+		response.Fatal(rsp, errors.New("input: noContract.reason is required: say why the workload has no contract"))
+		return rsp, nil
+	}
+	if in.Contract != "" {
+		response.Fatal(rsp, errors.New("input: set contract or noContract, not both"))
+		return rsp, nil
+	}
+	ann := w.Resource.GetAnnotations()
+	if ann == nil {
+		ann = map[string]string{}
+	}
+	ann[annotationContract] = "none"
+	w.Resource.SetAnnotations(ann)
+	response.ConditionTrue(rsp, ConditionType, "NoContract").WithMessage("no contract: " + reason).TargetCompositeAndClaim()
+	response.Warning(rsp, errors.Errorf("%s runs without a contract: %s", target, reason)).TargetComposite()
+	if err := response.SetDesiredComposedResources(rsp, desired); err != nil {
+		response.Fatal(rsp, errors.Wrap(err, "cannot set the desired composed resources"))
+	}
+	return rsp, nil
+}
+
+// contract finds the contract: inline, oci://, catalog:, or the image's own, pulled
 // once per pinned image. pinned is the image pinned by digest, when the
 // contract came from it.
 func (f *Function) contract(ctx context.Context, registry *oci.Client, inline, image string) (*platform.Contract, string, error) {
 	src := strings.TrimSpace(inline)
+	if ref, ok := strings.CutPrefix(src, catalog.Scheme); ok {
+		// The community catalog's contract for a third-party image.
+		m, err := catalog.Resolve([]*catalog.Catalog{catalog.Community()}, ref)
+		if err != nil {
+			return nil, "", errors.Wrap(err, "input: contract")
+		}
+		src = string(m.Contract)
+	}
 	switch {
 	case src != "" && !strings.HasPrefix(src, oci.Scheme):
 		if c, ok := f.contracts[src]; ok {
