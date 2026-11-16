@@ -37,6 +37,10 @@ import (
 	// Their variables are in vars, inline: the app's own declaration of
 	// one replaces the fragment's.
 	includes?: [...#FragmentRef] & list.UniqueItems()
+	// The roles the image runs as, one per kind of process: web, worker,
+	// migrate (SPEC §4.9). An input with roles is used only in those; one
+	// without, in every role. DOCUCONF_ROLE names the role at runtime.
+	roles?: [#RoleName, ...#RoleName] & list.UniqueItems()
 	vars: [N=#EnvName]: #Var & {name: N}
 	files?: [N=#InputName]: #File & {name: N}
 	// Config files the platform may mount over the app's own (overlays.cue).
@@ -87,6 +91,24 @@ import (
 		}
 	}
 
+	if roles != _|_ {
+		// The platform sets the workload's role, which the SDK reads at boot.
+		_roleVariable: true & vars.DOCUCONF_ROLE != _|_
+		if vars.DOCUCONF_ROLE != _|_ {
+			_roleVariableNamesTheRoles: true & vars.DOCUCONF_ROLE.type == "enum" && vars.DOCUCONF_ROLE.required && vars.DOCUCONF_ROLE.values == roles && vars.DOCUCONF_ROLE.roles == _|_
+		}
+	}
+	_inputRoles: {
+		for n, v in vars if v.roles != _|_ for r in v.roles {
+			"\(n)/\(r)": true & roles != _|_ && list.Contains([if roles != _|_ for x in roles {x}], r)
+		}
+		if files != _|_ {
+			for n, f in files if f.roles != _|_ for r in f.roles {
+				"\(n)/\(r)": true & roles != _|_ && list.Contains([if roles != _|_ for x in roles {x}], r)
+			}
+		}
+	}
+
 	if includes != _|_ {
 		for r in includes for n, _ in #Fragments[r].vars {
 			_fragmentVarDeclared: "\(r)/\(n)": true & vars[n] != _|_
@@ -120,6 +142,9 @@ import (
 }
 
 #EnvName: =~"^[A-Z][A-Z0-9_]*$"
+
+// #RoleName names a role an image runs as (SPEC §4.9), as a DNS label.
+#RoleName: =~"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"
 
 // #RequiredIf makes an input required only while one variable has one
 // value (SPEC §4.2), e.g. {TLS_ENABLED: true}. It is one variable,
@@ -178,6 +203,8 @@ import (
 		default?: _|_
 	}
 
+	// The roles that use it (SPEC §4.9); every role when absent.
+	roles?: [#RoleName, ...#RoleName] & list.UniqueItems()
 	// Required only while another variable has a value (SPEC §4.2). Like
 	// a required variable, it has no default.
 	requiredIf?: #RequiredIf

@@ -672,3 +672,66 @@ func TestVetFragments(t *testing.T) {
 	out, _, code = docuconf(t, "vet", "-contract", worker, "-values", write(t, "values.yaml", "QUEUE_URL: amqps://mq/jobs\nGOMAXPROCS: 0\n"))
 	requireLines(t, out, code, "GOMAXPROCS: 0 is below min 1")
 }
+
+// One image, several processes (SPEC §4.9): each workload is checked
+// against the inputs its role uses, named in DOCUCONF_ROLE.
+func TestVetRoles(t *testing.T) {
+	shop := examples + "/shop_contract.cue"
+	db := "DATABASE_URL: {secretKeyRef: {name: shop-db, key: url}}\n"
+	for _, ok := range []string{
+		"DOCUCONF_ROLE: web\nALLOWED_ORIGINS: [\"https://shop.example\"]\n" + db,
+		"DOCUCONF_ROLE: worker\nQUEUES: [default, mail]\n" + db,
+		"DOCUCONF_ROLE: migrate\nSTATEMENT_TIMEOUT: 30m\n" + db,
+	} {
+		out, errOut, code := docuconf(t, "vet", "-contract", shop, "-values", write(t, "values.yaml", ok))
+		if code != 0 || out != "shop: ok\n" {
+			t.Fatalf("%s: exit %d\nstdout:\n%s\nstderr:\n%s", ok, code, out, errOut)
+		}
+	}
+	out, _, code := docuconf(t, "vet", "-contract", shop, "-values", write(t, "values.yaml", "DOCUCONF_ROLE: worker\nPORT: 8080\n"+db))
+	requireLines(t, out, code,
+		"PORT: is not used by role worker, which this workload runs (DOCUCONF_ROLE)",
+		"QUEUES: is required, and set neither by the platform nor by the selected profile",
+	)
+	out, _, code = docuconf(t, "vet", "-contract", shop, "-values", write(t, "values.yaml", db))
+	requireLines(t, out, code, "DOCUCONF_ROLE: is required: the contract declares roles web, worker, migrate, and the platform names the workload's role")
+	out, _, code = docuconf(t, "vet", "-contract", shop, "-values", write(t, "values.yaml", "DOCUCONF_ROLE: cron\n"+db))
+	requireLines(t, out, code, `DOCUCONF_ROLE: "cron" is not one of web, worker, migrate`)
+
+	out, errOut, code := docuconf(t, "render", "-contract", shop, "-values", write(t, "values.yaml", "DOCUCONF_ROLE: worker\nQUEUES: [default]\n"+db))
+	if code != 0 || !strings.Contains(out, "- name: DOCUCONF_ROLE\n    value: worker\n") || strings.Contains(out, "PORT") {
+		t.Errorf("exit %d\n%s%s", code, out, errOut)
+	}
+}
+
+// The generators make one module, component or chart per role (spec/IAC.md
+// 4.1): only that role's inputs, and DOCUCONF_ROLE fixed to it.
+func TestGenerateForRole(t *testing.T) {
+	shop := examples + "/shop_contract.cue"
+	if _, errOut, code := docuconf(t, "terraform", "-contract", shop, "-out", t.TempDir()); code != 2 || !strings.Contains(errOut, "declares roles web, worker, migrate, and each workload runs one") {
+		t.Fatalf("a module for every role: exit %d: %s", code, errOut)
+	}
+	if _, errOut, code := docuconf(t, "terraform", "-contract", shop, "-role", "cron", "-out", t.TempDir()); code != 2 || !strings.Contains(errOut, `"cron" is not one of the shop contract's roles`) {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	dir := t.TempDir()
+	if _, errOut, code := docuconf(t, "terraform", "-contract", shop, "-role", "worker", "-out", dir); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	vars := read(t, filepath.Join(dir, "variables.tf"))
+	for _, want := range []string{`variable "QUEUES"`, `variable "DATABASE_URL"`, `variable "DOCUCONF_ROLE"`} {
+		if !strings.Contains(vars, want) {
+			t.Errorf("no %s", want)
+		}
+	}
+	for _, not := range []string{"ALLOWED_ORIGINS", `variable "PORT"`, "STATEMENT_TIMEOUT"} {
+		if strings.Contains(vars, not) {
+			t.Errorf("the worker's module has %s", not)
+		}
+	}
+	for _, args := range [][]string{{"pulumi", "-contract", shop, "-role", "web", "-out", t.TempDir()}, {"helm", "-contract", shop, "-role", "migrate", "-chart", t.TempDir()}} {
+		if _, errOut, code := docuconf(t, args...); code != 0 {
+			t.Errorf("%v: exit %d: %s", args[:1], code, errOut)
+		}
+	}
+}

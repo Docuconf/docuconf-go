@@ -45,6 +45,8 @@ type Service struct {
 	// Includes are the well-known fragments the contract includes (SPEC
 	// §4.8), whose variables a runtime or library reads.
 	Includes []string `json:"includes,omitempty"`
+	// Roles are the roles the image runs as (SPEC §4.9).
+	Roles []string `json:"roles,omitempty"`
 }
 
 // Generator is the SDK that exported the contract.
@@ -93,6 +95,7 @@ type Input struct {
 	Group           string           `json:"group,omitempty"`
 	Required        bool             `json:"required"`
 	RequiredIf      *RequiredIf      `json:"requiredIf,omitempty"`
+	Roles           []string         `json:"roles,omitempty"`
 	Secret          bool             `json:"secret"`
 	Description     string           `json:"description"`
 	Details         string           `json:"details,omitempty"`

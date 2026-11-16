@@ -34,6 +34,7 @@ var fileTags = map[string][]string{
 	"replacedBy":      nil,
 	"secret":          nil,
 	"requiredIf":      nil,
+	"roles":           nil,
 	"format":          {fileConfig, fileKeystore},
 	"dnsNames":        {fileTLS},
 	"keyAlgorithms":   {fileTLS},
@@ -132,6 +133,7 @@ func (d *declaration) addFile(src reflect.Type, sf reflect.StructField, idx []in
 		}
 		f.requiredIf = c
 	}
+	f.roles = inputRoles(tag, problem)
 	f.desc = tag.Get("desc")
 	f.group = tag.Get("group")
 	f.deprecated = tag.Get("deprecated")

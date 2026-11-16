@@ -23,6 +23,7 @@ func Build(contractJSON []byte) (*Model, error) {
 			Generator  Generator `json:"generator"`
 		} `json:"metadata"`
 		Includes []string          `json:"includes"`
+		Roles    []string          `json:"roles"`
 		Vars     map[string]fields `json:"vars"`
 		Files    map[string]fields `json:"files"`
 		Overlays map[string]fields `json:"overlays"`
@@ -38,7 +39,7 @@ func Build(contractJSON []byte) (*Model, error) {
 	m := &Model{
 		APIVersion: APIVersion,
 		Kind:       Kind,
-		Service:    Service{Name: c.Metadata.Name, AppVersion: c.Metadata.AppVersion, Generator: c.Metadata.Generator, Includes: c.Includes},
+		Service:    Service{Name: c.Metadata.Name, AppVersion: c.Metadata.AppVersion, Generator: c.Metadata.Generator, Includes: c.Includes, Roles: c.Roles},
 		Groups:     []Group{},
 		Errors:     []ErrorInfo{},
 	}
@@ -114,6 +115,12 @@ func common(name, kind, typ string, f fields) Input {
 	}
 	if s, ok := f["schema"]; ok {
 		in.Fields = schemaFields(s, f["secret"] == true)
+	}
+	if rs, ok := f["roles"].([]any); ok {
+		for _, r := range rs {
+			s, _ := r.(string)
+			in.Roles = append(in.Roles, s)
+		}
 	}
 	if c, ok := f["requiredIf"].(map[string]any); ok {
 		for n, x := range c {

@@ -260,3 +260,34 @@ func TestConditionChanges(t *testing.T) {
 		}
 	}
 }
+
+// TestRoleChanges compares contracts whose image runs several roles.
+func TestRoleChanges(t *testing.T) {
+	contract := func(roles, portRoles string) []byte {
+		return []byte(`{"apiVersion": "docuconf.dev/v1alpha1", "kind": "Contract", "metadata": {"name": "shop"}, "roles": ` + roles + `,
+			"vars": {"PORT": {"type": "int", "description": "Listen port", "required": true, "secret": false` + portRoles + `}}}`)
+	}
+	for _, tc := range []struct {
+		old, new []byte
+		want     []want
+	}{
+		{contract(`["web", "worker"]`, `, "roles": ["web", "worker"]`), contract(`["web", "worker"]`, `, "roles": ["web"]`),
+			[]want{{Breaking, "var", "PORT", "roles", "is no longer used by role worker"}}},
+		{contract(`["web", "worker"]`, `, "roles": ["web"]`), contract(`["web", "worker"]`, ``),
+			[]want{{Breaking, "var", "PORT", "roles", "is now used, and required, in role worker"}}},
+		{contract(`["web", "worker"]`, `, "roles": ["web"]`), contract(`["web"]`, `, "roles": ["web"]`),
+			[]want{{Breaking, "contract", "", "roles", "role worker is removed"}}},
+		{contract(`["web"]`, ``), contract(`["web", "worker"]`, `, "roles": ["web"]`),
+			[]want{{Compatible, "contract", "", "roles", "role worker is added"}}},
+	} {
+		got, err := Contracts(tc.old, tc.new)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range tc.want {
+			if !has(got, w) {
+				t.Errorf("no %q; got:\n%s", w.message, describe(got))
+			}
+		}
+	}
+}

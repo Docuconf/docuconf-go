@@ -30,6 +30,7 @@ type translator struct {
 	fileDefs      map[string]cue.Value
 	secrets       []string // literal values to scrub from every line
 	explained     map[string]bool
+	outOfRole     map[string]string // inputs the workload's role does not use
 	out           []string
 	// refs are target-form references the policy sees (ValidateRefs), and
 	// unknown the fields of them it constrains but they do not carry.
@@ -43,6 +44,7 @@ func newTranslator(c *Contract, values, files, overlays cue.Value) *translator {
 		files:       files,
 		overlays:    overlays,
 		vars:        fields(c.Value.LookupPath(cue.ParsePath("vars"))),
+		outOfRole:   c.OutOfRole,
 		fileDefs:    fields(c.Value.LookupPath(cue.ParsePath("files"))),
 		overlayDefs: fields(c.Value.LookupPath(cue.ParsePath("overlays"))),
 		explained:   map[string]bool{},
@@ -85,6 +87,10 @@ func (t *translator) declaredOnly(ctx *cue.Context, v cue.Value, declared map[st
 	for it != nil && it.Next() {
 		name := selName(it.Selector())
 		if _, ok := declared[name]; !ok {
+			if role, ok := t.outOfRole[name]; ok {
+				t.add("%s: is not used by role %s, which this workload runs (DOCUCONF_ROLE)", name, role)
+				continue
+			}
 			t.add("%s: %s", name, msg)
 			continue
 		}

@@ -89,7 +89,9 @@ type sourceFile struct {
 	Files    map[string]map[string]any `json:"files"`
 	Profiles map[string]any            `json:"profiles"`
 	Overlays map[string]map[string]any `json:"overlays"`
-	Cases    []sourceCase              `json:"cases"`
+	// Roles are the contract's roles (SPEC §4.9).
+	Roles []string     `json:"roles"`
+	Cases []sourceCase `json:"cases"`
 }
 
 type sourceCase struct {
@@ -388,6 +390,9 @@ func expandVariant(p *platform.Platform, stem string, sf sourceFile, sc sourceCa
 	}
 	if sf.Overlays != nil {
 		doc["overlays"] = sf.Overlays
+	}
+	if sf.Roles != nil {
+		doc["roles"] = sf.Roles
 	}
 	data, err := json.Marshal(doc)
 	if err != nil {

@@ -1,0 +1,63 @@
+description: >
+  Roles (SPEC §4.9): one image runs several processes, each a workload
+  whose DOCUCONF_ROLE names its role. An input with roles is used only in
+  those: required there, optional in the others. DOCUCONF_ROLE is required
+  and must be one of the roles.
+requires: [roles, files]
+roles: [web, worker]
+vars:
+  DOCUCONF_ROLE:
+    type: enum
+    description: The role this workload runs
+    required: true
+    values: [web, worker]
+  DATABASE_URL:
+    type: string
+    description: Database connection string
+    required: true
+  ALLOWED_ORIGINS:
+    type: list
+    description: Origins the web server accepts
+    items: string
+    required: true
+    roles: [web]
+  PORT:
+    type: int
+    description: Port the web server listens on
+    default: 3000
+    roles: [web]
+  QUEUES:
+    type: list
+    description: Queues the worker takes jobs from
+    items: string
+    required: true
+    roles: [worker]
+files:
+  robots:
+    type: text
+    description: The robots.txt the web server serves
+    required: true
+    roles: [web]
+    path: /etc/shop/robots/robots.txt
+cases:
+  - name: a worker sets its own inputs only
+    values: {DOCUCONF_ROLE: worker, DATABASE_URL: postgres-db, QUEUES: [default, mail]}
+  - name: a worker without its required input
+    env: {DOCUCONF_ROLE: worker, DATABASE_URL: db}
+    errors: [{var: QUEUES, code: missing_required}]
+  - name: a web workload needs the web inputs and file
+    env: {DOCUCONF_ROLE: web, DATABASE_URL: db}
+    errors:
+      - {var: ALLOWED_ORIGINS, code: missing_required}
+      - {var: robots, code: file_missing}
+  - name: a web workload with its inputs
+    env: {DOCUCONF_ROLE: web, DATABASE_URL: db, ALLOWED_ORIGINS: "https://shop.example"}
+    files:
+      /etc/shop/robots/robots.txt: "User-agent: *\n"
+    expect: {DOCUCONF_ROLE: web, DATABASE_URL: db, ALLOWED_ORIGINS: ["https://shop.example"], PORT: 3000, robots: "User-agent: *\n"}
+  - name: no role
+    env: {DATABASE_URL: db, QUEUES: default}
+    errors: [{var: DOCUCONF_ROLE, code: missing_required}]
+  - name: an unknown role
+    env: {DOCUCONF_ROLE: cron, DATABASE_URL: db}
+    errors: [{var: DOCUCONF_ROLE, code: not_in_enum}]

@@ -72,9 +72,9 @@ Usage:
   docuconf export -pkg <package> [-type Config] [-name <service>] [-o contract.cue | -check contract.cue]
   docuconf vet    -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml] [-policy policy.cue]
   docuconf render -contract <contract.cue> [-values values.yaml] [-files files.yaml] [-overlays overlays.yaml]
-  docuconf helm   -contract <contract.cue> -chart <chart directory>
-  docuconf terraform -contract <contract.cue> -out <module directory> [-target kubernetes|ecs|cloudrun|containerapps|lambda] [-check]
-  docuconf pulumi -contract <contract.cue> -out <component directory> [-lang typescript|go|python] [-package name] [-target kubernetes|ecs|cloudrun|containerapps|lambda] [-check]
+  docuconf helm   -contract <contract.cue> -chart <chart directory> [-role <role>]
+  docuconf terraform -contract <contract.cue> -out <module directory> [-role <role>] [-target kubernetes|ecs|cloudrun|containerapps|lambda] [-check]
+  docuconf pulumi -contract <contract.cue> -out <component directory> [-role <role>] [-lang typescript|go|python] [-package name] [-target kubernetes|ecs|cloudrun|containerapps|lambda] [-check]
   docuconf pulumi policy -contract <contract.cue> -out <policy pack directory> [-target kubernetes|ecs|cloudrun|containerapps|lambda] [-check]
   docuconf lint terraform <plan.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-schema schema.json] [-explain] [-format text|json|sarif]
   docuconf lint pulumi <preview.json> [-dir .] [-policy policy.cue] [-contract contract.cue] [-unmanaged-env NAME,...] [-allow-env-from] [-explain] [-format text|json|sarif]
@@ -278,6 +278,7 @@ func runHelm(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("helm", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	contract := fs.String("contract", "contract.cue", "the service's contract")
+	role := fs.String("role", "", "the role the workload runs, for a contract that declares roles (DOCUCONF_ROLE)")
 	chart := fs.String("chart", ".", "the chart directory to write into")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -288,6 +289,9 @@ func runHelm(args []string, stdout, stderr io.Writer) error {
 	}
 	c, _, err := loadContract(p, *contract)
 	if err != nil {
+		return err
+	}
+	if c, err = forRole(p, c, *role); err != nil {
 		return err
 	}
 	schema, err := p.HelmValuesSchema(c)

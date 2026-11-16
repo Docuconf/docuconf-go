@@ -30,7 +30,11 @@ func Agents(m *Model) []byte {
 				secrets = append(secrets, in.Name)
 			}
 			if in.Required && len(in.Default) == 0 {
-				required = append(required, in.Name)
+				r := code(in.Name)
+				if len(in.Roles) > 0 {
+					r += " (" + join(in.Roles, "and") + " only)"
+				}
+				required = append(required, r)
 			}
 			if c := in.RequiredIf; c != nil {
 				requiredIf = append(requiredIf, code(in.Name)+" when "+c.When())
@@ -53,11 +57,14 @@ func Agents(m *Model) []byte {
 		"Validate before proposing a change: `docuconf vet -contract contract.cue -values values.yaml -files files.yaml` for platform values, and `docuconf check -contract contract.cue` in a running environment. Both print every problem and exit 1.",
 		"Do not invent inputs. " + code(name) + " reads only the " + countWords(len(vars), "environment variable", "environment variables") + " and " + countWords(len(files), "file", "files") + " below; `vet` rejects a value for anything else. A new input needs a change to the app's declaration and a new contract export.",
 	}
+	if roles := m.Service.Roles; len(roles) > 0 {
+		rules = append(rules, "The image runs as "+plural(len(roles), "role", "roles")+" "+join(roles, "or")+": each workload sets `DOCUCONF_ROLE` to its role, and sets only the inputs that role uses. An input with roles is never set in a workload of another role.")
+	}
 	if inc := m.Service.Includes; len(inc) > 0 {
 		rules = append(rules, "Some variables come from the well-known "+plural(len(inc), "fragment", "fragments")+" "+join(inc, "and")+": a runtime or library reads them, not the app's code, so do not look for them in the code. Set them like any other input.")
 	}
 	if len(required) > 0 {
-		rules = append(rules, "Set every required input that has no default: "+join(required, "and")+".")
+		rules = append(rules, "Set every required input that has no default: "+joinPlain(required, "and")+".")
 	}
 	if len(requiredIf) > 0 {
 		rules = append(rules, "Set each conditionally required input whenever its condition holds, counting the condition variable's default and profile defaults: "+joinPlain(requiredIf, "and")+".")
@@ -140,6 +147,9 @@ func agentInput(b *strings.Builder, m *Model, in Input) {
 		line("required", "only when "+c.When())
 	} else {
 		line("required", yesNo(in.Required))
+	}
+	if len(in.Roles) > 0 {
+		line("roles", "only "+join(in.Roles, "and"))
 	}
 	line("secret", yesNo(in.Secret))
 	if d := in.Deprecated; d != nil {

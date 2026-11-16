@@ -24,6 +24,8 @@ import "strings"
 		})
 		// The well-known fragments the contract includes (SPEC §4.8).
 		includes?: [...=~"^[a-z][a-z0-9-]*@[1-9][0-9]*$"]
+		// The roles the image runs as (SPEC §4.9).
+		roles?: [...string]
 	})
 	// The profile selector and the profiles with defaults (SPEC §4.4).
 	profiles?: close({
@@ -79,6 +81,8 @@ import "strings"
 	if required {
 		requiredIf?: _|_
 	}
+	// The roles that use it (SPEC §4.9); every role when absent.
+	roles?: [...string]
 	secret:      bool
 	description: strings.MinRunes(5)
 	// CommonMark, from the contract. Renderers demote its headings (§14.4).

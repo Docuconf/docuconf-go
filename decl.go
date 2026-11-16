@@ -67,6 +67,7 @@ type varDecl struct {
 	typ        string
 	required   bool
 	requiredIf *condition // required while another variable has a value
+	roles      []string   // the roles that use it; every role when nil
 	secret     bool
 	loadFile   bool
 	expand     bool
@@ -137,6 +138,7 @@ type fileDecl struct {
 	required    bool
 	requiredIf  *condition
 	requiredWhy string // the condition that made it required, for messages
+	roles       []string
 	secret      bool
 	path        string
 	pathEnv     string
@@ -188,6 +190,8 @@ type declaration struct {
 	// fragmentVars their variables it does not declare itself (SPEC §4.8).
 	includes     []string
 	fragmentVars []*varDecl
+	// roles are the roles the struct declares (SPEC §4.9).
+	roles []string
 }
 
 type declOptions struct {
@@ -204,6 +208,7 @@ func declare(t reflect.Type, opts declOptions) (*declaration, error) {
 	d := &declaration{root: t}
 	d.walk(t, nil, opts.prefix, t.Name(), opts, map[reflect.Type]bool{})
 	d.resolveFragments()
+	d.resolveRoles()
 	d.crossCheck()
 	if len(d.problems) > 0 {
 		return d, &DeclarationError{Problems: d.problems}
@@ -227,6 +232,10 @@ func (d *declaration) walk(t reflect.Type, index []int, prefix, goPath string, o
 		f := t.Field(i)
 		if f.Type == fragmentsType {
 			d.addIncludes(f, goPath+"."+f.Name)
+			continue
+		}
+		if f.Type == rolesType {
+			d.addRoles(f, goPath+"."+f.Name)
 			continue
 		}
 		if !f.IsExported() {
@@ -381,6 +390,7 @@ func (d *declaration) addVar(src reflect.Type, f reflect.StructField, idx []int,
 		}
 		v.requiredIf = c
 	}
+	v.roles = inputRoles(tag, problem)
 	v.def, v.hasDef = tag.Lookup("envDefault")
 	v.desc = tag.Get("desc")
 	v.group = tag.Get("group")

@@ -82,6 +82,10 @@ func (p *Platform) build(arg string, extra map[string][]byte) (cue.Value, error)
 type Contract struct {
 	Value cue.Value
 	Name  string
+	// Role is the role ForRole narrowed the contract to, and OutOfRole the
+	// inputs it left out, for messages (SPEC §4.9).
+	Role      string
+	OutOfRole map[string]string
 }
 
 // LoadContract reads a contract.cue. The file may be the contract itself,
@@ -235,6 +239,17 @@ func (p *Platform) ValidateWarn(c *Contract, values, files, overlays, policy cue
 // reference does not carry, such as the account of a bare parameter name:
 // it is unknown, so it is neither passed nor failed.
 func (p *Platform) ValidateRefs(c *Contract, values, files, overlays, policy, refs cue.Value) (problems, warnings, deferred []string, err error) {
+	// A workload runs one role: its values are checked against the inputs
+	// that role uses (SPEC §4.9).
+	if len(c.Roles()) > 1 || (len(c.Roles()) == 1 && c.Role == "") {
+		role, problem := roleOf(c, values)
+		if problem != "" {
+			return []string{problem}, nil, nil, nil
+		}
+		if c, err = p.ForRole(c, role); err != nil {
+			return nil, nil, nil, err
+		}
+	}
 	schemas, err := p.Schemas(c)
 	if err != nil {
 		return nil, nil, nil, err
@@ -353,6 +368,16 @@ func deprecatedWarnings(set cue.Value) []string {
 
 // Render runs #Render and returns its output as YAML.
 func (p *Platform) Render(c *Contract, values, files, overlays cue.Value) ([]byte, error) {
+	if len(c.Roles()) > 1 || (len(c.Roles()) == 1 && c.Role == "") {
+		role, problem := roleOf(c, values)
+		if problem != "" {
+			return nil, fmt.Errorf("%s", problem)
+		}
+		var err error
+		if c, err = p.ForRole(c, role); err != nil {
+			return nil, err
+		}
+	}
 	r := p.meta.LookupPath(cue.ParsePath("#Render")).
 		FillPath(cue.ParsePath("contract"), c.Value).
 		FillPath(cue.ParsePath("values"), values).
