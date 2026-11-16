@@ -554,3 +554,48 @@ func TestRegistryCredentials(t *testing.T) {
 		t.Errorf("credentials without a docker config: %v", err)
 	}
 }
+
+// TestNoContract passes the workload through, marked, with the reason as
+// the condition's message (SPEC.md section 8.1).
+func TestNoContract(t *testing.T) {
+	f := newFunction(t)
+	rsp := run(t, f, tc{input: map[string]any{"noContract": map[string]any{"reason": "vendor image, contract due in Q3"}}, xr: `{}`})
+	if msg := fatal(rsp); msg != "" {
+		t.Fatal(msg)
+	}
+	c := condition(t, rsp)
+	if c.GetStatus() != fnv1.Status_STATUS_CONDITION_TRUE || c.GetReason() != "NoContract" || c.GetMessage() != "no contract: vendor image, contract due in Q3" {
+		t.Errorf("condition: %v", c)
+	}
+	d := desired(t, rsp, "deployment")
+	if ann := d["metadata"].(map[string]any)["annotations"].(map[string]any); ann[annotationContract] != "none" {
+		t.Errorf("annotations: %v", ann)
+	}
+	if _, set := appContainer(t, d)["env"]; set {
+		t.Errorf("env rendered without a contract: %v", appContainer(t, d))
+	}
+
+	rsp = run(t, f, tc{input: map[string]any{"noContract": map[string]any{"reason": " "}}, xr: `{}`})
+	if !strings.Contains(fatal(rsp), "noContract.reason is required") {
+		t.Errorf("a blank reason was accepted: %v", rsp.GetResults())
+	}
+}
+
+// TestCatalogContract checks catalog:IMAGE, the community catalog's
+// contract for a third-party image.
+func TestCatalogContract(t *testing.T) {
+	f := newFunction(t)
+	rsp := run(t, f, tc{
+		input: map[string]any{"contract": "catalog:postgres:16", "values": map[string]any{"fromFieldPath": "spec.values"}},
+		xr:    `{"values": {"POSTGRES_HOST_AUTH_METHOD": "trust"}}`,
+	})
+	for _, want := range []string{"POSTGRES_PASSWORD: is required", `POSTGRES_HOST_AUTH_METHOD: "trust" is not one of`} {
+		if !strings.Contains(fatal(rsp), want) {
+			t.Errorf("no %q in %s", want, fatal(rsp))
+		}
+	}
+	rsp = run(t, f, tc{input: map[string]any{"contract": "catalog:redis:7"}, xr: `{}`})
+	if c := condition(t, rsp); c.GetReason() != "ContractUnavailable" || !strings.Contains(c.GetMessage(), "no catalog has a contract for docker.io/library/redis") {
+		t.Errorf("condition: %v", c)
+	}
+}

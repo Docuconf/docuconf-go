@@ -11,6 +11,7 @@ import (
 	"time"
 
 	sdk "github.com/docuconf/docuconf-go"
+	catalogs "github.com/docuconf/docuconf-go/cmd/docuconf/internal/catalog"
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/oci"
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/platform"
 )
@@ -29,9 +30,21 @@ type contractSource struct {
 	Image string
 }
 
-// loadContract reads -contract: a file, or oci://IMAGE, the contract
-// attached to an image (spec/SPEC.md section 8).
+// loadContract reads -contract: a file, oci://IMAGE, the contract
+// attached to an image (spec/SPEC.md section 8), or catalog:IMAGE, a
+// catalog's contract for a third-party image (section 8.1).
 func loadContract(p *platform.Platform, ref string) (*platform.Contract, contractSource, error) {
+	if image, ok := strings.CutPrefix(ref, catalogs.Scheme); ok {
+		m, err := resolveCatalog(image)
+		if err != nil {
+			return nil, contractSource{}, err
+		}
+		c, err := p.ParseContract(m.Entry.Contract, m.Contract)
+		if err != nil {
+			return nil, contractSource{}, fmt.Errorf("%s: %v", m, err)
+		}
+		return c, contractSource{}, nil
+	}
 	if !strings.HasPrefix(ref, oci.Scheme) {
 		c, err := p.LoadContract(ref)
 		return c, contractSource{}, err

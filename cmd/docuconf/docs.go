@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	catalogs "github.com/docuconf/docuconf-go/cmd/docuconf/internal/catalog"
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/docs"
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/oci"
 	"github.com/docuconf/docuconf-go/cmd/docuconf/internal/platform"
@@ -112,7 +113,13 @@ func runDocs(args []string, stdout, stderr io.Writer) error {
 func loadDocsModel(file string) (*docs.Model, error) {
 	var src []byte
 	var err error
-	if strings.HasPrefix(file, oci.Scheme) {
+	if image, ok := strings.CutPrefix(file, catalogs.Scheme); ok {
+		m, merr := resolveCatalog(image)
+		if merr != nil {
+			return nil, merr
+		}
+		src, file = m.Contract, m.Entry.Contract
+	} else if strings.HasPrefix(file, oci.Scheme) {
 		pulled, perr := pullContract(file)
 		if perr != nil {
 			return nil, perr

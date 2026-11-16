@@ -1,0 +1,11 @@
+# The community catalog (spec/SPEC.md section 8.1): contracts written by
+# hand for third-party images that no docuconf SDK built. docuconf embeds
+# it; an organization's catalogs, named in DOCUCONF_CATALOG, are searched
+# first.
+entries:
+  - repository: docker.io/library/postgres
+    versions: ">=13 <19"
+    contract: postgres/contract.cue
+  - repository: docker.io/library/nginx
+    versions: ">=1.19 <2"
+    contract: nginx/contract.cue
