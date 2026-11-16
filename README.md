@@ -417,6 +417,7 @@ The Go SDK supports every capability tag (`int64`, `json-schema`) and every tran
 ### More
 
 - [Contract specification](spec/SPEC.md), with its CUE meta-schema in [`spec/cue`](spec/cue)
+- Examples: [`examples/orders`](examples/orders), the service this README is taken from; [`examples/shop`](examples/shop), one image run as a web server and a worker, with roles, `requiredIf` and the `otel@1` fragment; and the [walkthrough](examples/walkthrough)
 - [Implementation plan](docs/PLAN.md) and [edge cases](docs/EDGE_CASES.md)
 - [Versioning and deprecation policy](docs/VERSIONING.md): spec stages, SDK versions and the move to `v1beta1`
 - [Security policy](SECURITY.md): how to report a vulnerability
