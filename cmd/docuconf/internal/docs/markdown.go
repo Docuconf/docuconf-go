@@ -31,6 +31,9 @@ func Markdown(m *Model) []byte {
 	b.WriteString(generatedBy(m))
 	b.WriteString("\n\n")
 	b.WriteString(summary(m))
+	if roles := m.Service.Roles; len(roles) > 0 {
+		fmt.Fprintf(&b, "\n\nThe image runs as %s %s, one per workload: the platform sets `DOCUCONF_ROLE` to the workload's role, and an input marked with roles is used only in those.", plural(len(roles), "role", "roles"), join(roles, "or"))
+	}
 	if inc := m.Service.Includes; len(inc) > 0 {
 		fmt.Fprintf(&b, "\n\nIt includes the well-known %s %s: variables a runtime or library reads rather than the app's own code, which the platform may set.", plural(len(inc), "fragment", "fragments"), join(inc, "and"))
 	}
@@ -174,6 +177,9 @@ func (r *mdRenderer) contents(b *strings.Builder) {
 				if c := in.RequiredIf; c != nil {
 					notes = append(notes, "required when "+c.When())
 				}
+				if len(in.Roles) > 0 {
+					notes = append(notes, join(in.Roles, "and")+" only")
+				}
 				if in.Secret {
 					notes = append(notes, "secret")
 				}
@@ -243,6 +249,9 @@ func (r *mdRenderer) input(b *strings.Builder, in Input, level int) {
 		row("Required", "only when "+r.link(KindVar, c.Var)+" is "+valueCode(c.Value))
 	} else {
 		row("Required", yesNo(in.Required))
+	}
+	if len(in.Roles) > 0 {
+		row("Roles", "only "+join(in.Roles, "and")+": other workloads do not set it")
 	}
 	if in.Secret {
 		row("Secret", "yes: never write its value in code, docs or a values file")

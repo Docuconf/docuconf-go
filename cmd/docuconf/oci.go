@@ -194,3 +194,17 @@ func parseInterspersed(fs *flag.FlagSet, args []string) error {
 	}
 	return fs.Parse(rest)
 }
+
+// forRole narrows a contract to one role for a generator, which makes one
+// module, component or chart per workload (spec/SPEC.md section 4.9). A
+// contract with roles needs -role; one without refuses it.
+func forRole(p *platform.Platform, c *platform.Contract, role string) (*platform.Contract, error) {
+	roles := c.Roles()
+	switch {
+	case role == "" && len(roles) > 0:
+		return nil, fmt.Errorf("the %s contract declares roles %s, and each workload runs one: generate one per role, with -role", c.Name, strings.Join(roles, ", "))
+	case role == "":
+		return c, nil
+	}
+	return p.ForRole(c, role)
+}

@@ -21,6 +21,7 @@ func runPulumi(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("pulumi", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	contract := fs.String("contract", "contract.cue", "the service's contract")
+	role := fs.String("role", "", "the role the workload runs, for a contract that declares roles (DOCUCONF_ROLE)")
 	lang := fs.String("lang", "typescript", "the component's language: typescript, go or python")
 	pkg := fs.String("package", "", "a Go component's package name (default: the contract's name, then config); a Python one's is the -out directory's name")
 	target := fs.String("target", "kubernetes", "the workload kind to render for: kubernetes, ecs, cloudrun, containerapps or lambda")
@@ -38,6 +39,9 @@ func runPulumi(args []string, stdout, stderr io.Writer) error {
 	}
 	c, src, err := loadContract(p, *contract)
 	if err != nil {
+		return err
+	}
+	if c, err = forRole(p, c, *role); err != nil {
 		return err
 	}
 	doc, err := p.ContractJSON(c)
@@ -67,6 +71,7 @@ func runPulumiPolicy(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("pulumi policy", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	contract := fs.String("contract", "contract.cue", "the service's contract")
+	role := fs.String("role", "", "the role the workload runs, for a contract that declares roles (DOCUCONF_ROLE)")
 	target := fs.String("target", "kubernetes", "the workload kind to check: kubernetes, ecs, cloudrun, containerapps or lambda")
 	out := fs.String("out", "", "the policy pack directory to write into")
 	check := fs.Bool("check", false, "compare with the policy pack in -out instead of writing; exit 1 if it is out of date (generator.version is ignored)")
@@ -82,6 +87,9 @@ func runPulumiPolicy(args []string, stdout, stderr io.Writer) error {
 	}
 	c, src, err := loadContract(p, *contract)
 	if err != nil {
+		return err
+	}
+	if c, err = forRole(p, c, *role); err != nil {
 		return err
 	}
 	doc, err := p.ContractJSON(c)

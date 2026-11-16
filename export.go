@@ -147,6 +147,9 @@ func ExportType(t reflect.Type, meta Meta) ([]byte, error) {
 	if len(d.includes) > 0 {
 		doc = doc.add("includes", stringsToList(d.includes))
 	}
+	if len(d.roles) > 0 {
+		doc = doc.add("roles", stringsToList(d.roles))
+	}
 	if varsObj == nil {
 		varsObj = obj{}
 	}
@@ -187,6 +190,9 @@ func (v *varDecl) contract(desc, details string, docs *docResolver) (obj, error)
 	}
 	if v.requiredIf != nil {
 		o = o.add("requiredIf", obj{}.add(v.requiredIf.name, v.requiredIf.contractValue()))
+	}
+	if len(v.roles) > 0 {
+		o = o.add("roles", stringsToList(v.roles))
 	}
 	if v.secret {
 		o = o.add("secret", true)
@@ -360,6 +366,9 @@ func (f *fileDecl) contract(desc, details string, docs *docResolver) (obj, error
 	}
 	if f.requiredIf != nil {
 		o = o.add("requiredIf", obj{}.add(f.requiredIf.name, f.requiredIf.contractValue()))
+	}
+	if len(f.roles) > 0 {
+		o = o.add("roles", stringsToList(f.roles))
 	}
 	if f.secret {
 		o = o.add("secret", true)

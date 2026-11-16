@@ -25,7 +25,7 @@ import (
 // overlays in contract-first mode. It runs every case: TestConformance fails on a skip.
 var supportedTags = map[string]bool{
 	"int64": true, "json-schema": true, "key-set": true, "deprecated": true, "strict-parsing": true,
-	"files": true, "profiles": true, "overlays": true, "required-if": true,
+	"files": true, "profiles": true, "overlays": true, "required-if": true, "roles": true,
 }
 
 type conformanceCase struct {

@@ -96,6 +96,7 @@ func LoadContract(contractJSON []byte, opts Options) (map[string]any, error) {
 	if root == "" {
 		root = environ[EnvFileRoot]
 	}
+	vars, files, _ = forRole(c.roles, vars, files, environ)
 	layers, viols := loadLayers(c, environ, root, logger)
 	res := checkLayeredVars(vars, environ, layers, logger)
 	viols = append(viols, res.viols...)
@@ -207,7 +208,7 @@ var contractFields = map[string][]string{
 	typeJSON:     {"schema", "maxLength"},
 }
 
-var commonFields = []string{"name", "type", "description", "details", "required", "requiredIf", "secret", "default", "group", "examples", "deprecated", "configKey"}
+var commonFields = []string{"name", "type", "description", "details", "required", "requiredIf", "roles", "secret", "default", "group", "examples", "deprecated", "configKey"}
 
 // Go types that stand for each contract type, for messages and parsing.
 var contractGoTypes = map[string]reflect.Type{
@@ -228,6 +229,7 @@ type contractDecl struct {
 	files    []*fileDecl
 	profiles *profilesDecl
 	overlays []*overlayDecl
+	roles    []string
 }
 
 // declareContract builds variable and file declarations from a contract
@@ -321,6 +323,12 @@ func declareContract(contractJSON []byte) (*contractDecl, error) {
 		}
 	}
 	c := &contractDecl{vars: vars, files: files}
+	if x, ok := root["roles"].([]any); ok {
+		for _, r := range x {
+			s, _ := r.(string)
+			c.roles = append(c.roles, s)
+		}
+	}
 	if x, ok := root["profiles"]; ok {
 		c.profiles = contractProfiles(x, vars, problemf)
 	}
@@ -344,7 +352,7 @@ var contractFileFields = map[string][]string{
 	fileBinary:   {},
 }
 
-var commonFileFields = []string{"name", "type", "description", "details", "required", "requiredIf", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated"}
+var commonFileFields = []string{"name", "type", "description", "details", "required", "requiredIf", "roles", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated"}
 
 // contractFile builds one file input, reporting problems with it.
 func contractFile(name string, o map[string]any, problem func(string, ...any)) *fileDecl {
@@ -435,6 +443,7 @@ func contractFile(name string, o map[string]any, problem func(string, ...any)) *
 		checkDetails(d, fail)
 	}
 	f.required, _ = boolean("required")
+	f.roles = strs("roles")
 	if x, ok := o["requiredIf"]; ok {
 		c, err := contractCondition(x)
 		switch {
@@ -658,6 +667,7 @@ func contractVar(name string, o map[string]any, problem func(string, ...any)) *v
 		checkDetails(d, fail)
 	}
 	v.required = boolean("required")
+	v.roles = strs("roles")
 	if x, ok := o["requiredIf"]; ok {
 		c, err := contractCondition(x)
 		switch {
@@ -923,7 +933,7 @@ func ContractCUE(contractJSON []byte, pkg string) ([]byte, error) {
 	if !dnsLabelRe.MatchString(name) {
 		return nil, &DeclarationError{Problems: []string{fmt.Sprintf("metadata.name %q must be a DNS label ([a-z0-9-], at most 63 characters)", name)}}
 	}
-	out := ordered(root, []string{"apiVersion", "kind", "metadata", "includes", "vars", "files"}, func(k string, v any) any {
+	out := ordered(root, []string{"apiVersion", "kind", "metadata", "includes", "roles", "vars", "files"}, func(k string, v any) any {
 		switch k {
 		case "metadata":
 			return ordered(v, []string{"name", "appVersion", "generator"}, func(k string, v any) any {
@@ -959,11 +969,11 @@ func checkDetails(d string, fail func(string, ...any)) {
 }
 
 var (
-	varFieldOrder = []string{"type", "description", "details", "required", "requiredIf", "secret", "default", "group", "examples", "deprecated", "configKey",
+	varFieldOrder = []string{"type", "description", "details", "required", "requiredIf", "roles", "secret", "default", "group", "examples", "deprecated", "configKey",
 		"minLength", "maxLength", "pattern", "min", "max", "encoding", "schemes", "values", "items", "separator",
 		"minItems", "maxItems", "itemMin", "itemMax", "itemMinLength", "itemMaxLength",
 		"minKeys", "maxKeys", "keyMinLength", "keyMaxLength", "schema"}
-	fileFieldOrder = []string{"type", "format", "description", "details", "required", "requiredIf", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated",
+	fileFieldOrder = []string{"type", "format", "description", "details", "required", "requiredIf", "roles", "secret", "path", "pathEnv", "reload", "maxSize", "group", "deprecated",
 		"schema", "dnsNames", "keyAlgorithms", "minRemaining", "requireCA", "minCertificates", "passwordVar", "pattern", "minLength", "maxLength"}
 )
 

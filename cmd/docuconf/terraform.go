@@ -22,6 +22,7 @@ func runTerraform(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("terraform", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	contract := fs.String("contract", "contract.cue", "the service's contract")
+	role := fs.String("role", "", "the role the workload runs, for a contract that declares roles (DOCUCONF_ROLE)")
 	target := fs.String("target", "kubernetes", "the workload kind to render for: kubernetes, ecs, cloudrun, containerapps or lambda")
 	out := fs.String("out", "", "the module directory to write into")
 	check := fs.Bool("check", false, "compare with the module in -out instead of writing; exit 1 if it is out of date (generator.version is ignored)")
@@ -37,6 +38,9 @@ func runTerraform(args []string, stdout, stderr io.Writer) error {
 	}
 	c, src, err := loadContract(p, *contract)
 	if err != nil {
+		return err
+	}
+	if c, err = forRole(p, c, *role); err != nil {
 		return err
 	}
 	doc, err := p.ContractJSON(c)

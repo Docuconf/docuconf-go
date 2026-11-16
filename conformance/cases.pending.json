@@ -1011,6 +1011,877 @@
           "code": "invalid_type"
         }
       ]
+    },
+    {
+      "id": "roles/a worker sets its own inputs only [list=csv]",
+      "source": "pending/roles.yaml",
+      "requires": [
+        "files",
+        "roles"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "files": {
+          "robots": {
+            "name": "robots",
+            "description": "The robots.txt the web server serves",
+            "required": true,
+            "secret": false,
+            "path": "/etc/shop/robots/robots.txt",
+            "reload": "restart",
+            "roles": [
+              "web"
+            ],
+            "type": "text"
+          }
+        },
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-roles",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "roles": [
+          "web",
+          "worker"
+        ],
+        "vars": {
+          "ALLOWED_ORIGINS": {
+            "name": "ALLOWED_ORIGINS",
+            "description": "Origins the web server accepts",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DOCUCONF_ROLE": {
+            "name": "DOCUCONF_ROLE",
+            "description": "The role this workload runs",
+            "required": true,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "web",
+              "worker"
+            ]
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port the web server listens on",
+            "required": false,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "type": "int",
+            "default": 3000
+          },
+          "QUEUES": {
+            "name": "QUEUES",
+            "description": "Queues the worker takes jobs from",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "worker"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_URL": "postgres-db",
+        "DOCUCONF_ROLE": "worker",
+        "QUEUES": "default,mail"
+      },
+      "expect": {
+        "ALLOWED_ORIGINS": null,
+        "DATABASE_URL": "postgres-db",
+        "DOCUCONF_ROLE": "worker",
+        "PORT": 3000,
+        "QUEUES": [
+          "default",
+          "mail"
+        ],
+        "robots": null
+      }
+    },
+    {
+      "id": "roles/a worker sets its own inputs only [list=json]",
+      "source": "pending/roles.yaml",
+      "requires": [
+        "files",
+        "roles"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "files": {
+          "robots": {
+            "name": "robots",
+            "description": "The robots.txt the web server serves",
+            "required": true,
+            "secret": false,
+            "path": "/etc/shop/robots/robots.txt",
+            "reload": "restart",
+            "roles": [
+              "web"
+            ],
+            "type": "text"
+          }
+        },
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-roles",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "roles": [
+          "web",
+          "worker"
+        ],
+        "vars": {
+          "ALLOWED_ORIGINS": {
+            "name": "ALLOWED_ORIGINS",
+            "description": "Origins the web server accepts",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DOCUCONF_ROLE": {
+            "name": "DOCUCONF_ROLE",
+            "description": "The role this workload runs",
+            "required": true,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "web",
+              "worker"
+            ]
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port the web server listens on",
+            "required": false,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "type": "int",
+            "default": 3000
+          },
+          "QUEUES": {
+            "name": "QUEUES",
+            "description": "Queues the worker takes jobs from",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "worker"
+            ],
+            "type": "list",
+            "items": "string",
+            "encoding": "json"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_URL": "postgres-db",
+        "DOCUCONF_ROLE": "worker",
+        "QUEUES": "[\"default\",\"mail\"]"
+      },
+      "expect": {
+        "ALLOWED_ORIGINS": null,
+        "DATABASE_URL": "postgres-db",
+        "DOCUCONF_ROLE": "worker",
+        "PORT": 3000,
+        "QUEUES": [
+          "default",
+          "mail"
+        ],
+        "robots": null
+      }
+    },
+    {
+      "id": "roles/a worker sets its own inputs only [list=indexed]",
+      "source": "pending/roles.yaml",
+      "requires": [
+        "files",
+        "roles"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "files": {
+          "robots": {
+            "name": "robots",
+            "description": "The robots.txt the web server serves",
+            "required": true,
+            "secret": false,
+            "path": "/etc/shop/robots/robots.txt",
+            "reload": "restart",
+            "roles": [
+              "web"
+            ],
+            "type": "text"
+          }
+        },
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-roles",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "roles": [
+          "web",
+          "worker"
+        ],
+        "vars": {
+          "ALLOWED_ORIGINS": {
+            "name": "ALLOWED_ORIGINS",
+            "description": "Origins the web server accepts",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DOCUCONF_ROLE": {
+            "name": "DOCUCONF_ROLE",
+            "description": "The role this workload runs",
+            "required": true,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "web",
+              "worker"
+            ]
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port the web server listens on",
+            "required": false,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "type": "int",
+            "default": 3000
+          },
+          "QUEUES": {
+            "name": "QUEUES",
+            "description": "Queues the worker takes jobs from",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "worker"
+            ],
+            "type": "list",
+            "items": "string",
+            "encoding": "indexed"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_URL": "postgres-db",
+        "DOCUCONF_ROLE": "worker",
+        "QUEUES__0": "default",
+        "QUEUES__1": "mail"
+      },
+      "expect": {
+        "ALLOWED_ORIGINS": null,
+        "DATABASE_URL": "postgres-db",
+        "DOCUCONF_ROLE": "worker",
+        "PORT": 3000,
+        "QUEUES": [
+          "default",
+          "mail"
+        ],
+        "robots": null
+      }
+    },
+    {
+      "id": "roles/a worker without its required input",
+      "source": "pending/roles.yaml",
+      "requires": [
+        "files",
+        "roles"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "files": {
+          "robots": {
+            "name": "robots",
+            "description": "The robots.txt the web server serves",
+            "required": true,
+            "secret": false,
+            "path": "/etc/shop/robots/robots.txt",
+            "reload": "restart",
+            "roles": [
+              "web"
+            ],
+            "type": "text"
+          }
+        },
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-roles",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "roles": [
+          "web",
+          "worker"
+        ],
+        "vars": {
+          "ALLOWED_ORIGINS": {
+            "name": "ALLOWED_ORIGINS",
+            "description": "Origins the web server accepts",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DOCUCONF_ROLE": {
+            "name": "DOCUCONF_ROLE",
+            "description": "The role this workload runs",
+            "required": true,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "web",
+              "worker"
+            ]
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port the web server listens on",
+            "required": false,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "type": "int",
+            "default": 3000
+          },
+          "QUEUES": {
+            "name": "QUEUES",
+            "description": "Queues the worker takes jobs from",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "worker"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_URL": "db",
+        "DOCUCONF_ROLE": "worker"
+      },
+      "errors": [
+        {
+          "var": "QUEUES",
+          "code": "missing_required"
+        }
+      ]
+    },
+    {
+      "id": "roles/a web workload needs the web inputs and file",
+      "source": "pending/roles.yaml",
+      "requires": [
+        "files",
+        "roles"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "files": {
+          "robots": {
+            "name": "robots",
+            "description": "The robots.txt the web server serves",
+            "required": true,
+            "secret": false,
+            "path": "/etc/shop/robots/robots.txt",
+            "reload": "restart",
+            "roles": [
+              "web"
+            ],
+            "type": "text"
+          }
+        },
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-roles",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "roles": [
+          "web",
+          "worker"
+        ],
+        "vars": {
+          "ALLOWED_ORIGINS": {
+            "name": "ALLOWED_ORIGINS",
+            "description": "Origins the web server accepts",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DOCUCONF_ROLE": {
+            "name": "DOCUCONF_ROLE",
+            "description": "The role this workload runs",
+            "required": true,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "web",
+              "worker"
+            ]
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port the web server listens on",
+            "required": false,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "type": "int",
+            "default": 3000
+          },
+          "QUEUES": {
+            "name": "QUEUES",
+            "description": "Queues the worker takes jobs from",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "worker"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_URL": "db",
+        "DOCUCONF_ROLE": "web"
+      },
+      "errors": [
+        {
+          "var": "ALLOWED_ORIGINS",
+          "code": "missing_required"
+        },
+        {
+          "var": "robots",
+          "code": "file_missing"
+        }
+      ]
+    },
+    {
+      "id": "roles/a web workload with its inputs",
+      "source": "pending/roles.yaml",
+      "requires": [
+        "files",
+        "roles"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "files": {
+          "robots": {
+            "name": "robots",
+            "description": "The robots.txt the web server serves",
+            "required": true,
+            "secret": false,
+            "path": "/etc/shop/robots/robots.txt",
+            "reload": "restart",
+            "roles": [
+              "web"
+            ],
+            "type": "text"
+          }
+        },
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-roles",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "roles": [
+          "web",
+          "worker"
+        ],
+        "vars": {
+          "ALLOWED_ORIGINS": {
+            "name": "ALLOWED_ORIGINS",
+            "description": "Origins the web server accepts",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DOCUCONF_ROLE": {
+            "name": "DOCUCONF_ROLE",
+            "description": "The role this workload runs",
+            "required": true,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "web",
+              "worker"
+            ]
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port the web server listens on",
+            "required": false,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "type": "int",
+            "default": 3000
+          },
+          "QUEUES": {
+            "name": "QUEUES",
+            "description": "Queues the worker takes jobs from",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "worker"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          }
+        }
+      },
+      "env": {
+        "ALLOWED_ORIGINS": "https://shop.example",
+        "DATABASE_URL": "db",
+        "DOCUCONF_ROLE": "web"
+      },
+      "files": {
+        "/etc/shop/robots/robots.txt": {
+          "text": "User-agent: *\n"
+        }
+      },
+      "expect": {
+        "ALLOWED_ORIGINS": [
+          "https://shop.example"
+        ],
+        "DATABASE_URL": "db",
+        "DOCUCONF_ROLE": "web",
+        "PORT": 3000,
+        "QUEUES": null,
+        "robots": "User-agent: *\n"
+      }
+    },
+    {
+      "id": "roles/no role",
+      "source": "pending/roles.yaml",
+      "requires": [
+        "files",
+        "roles"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "files": {
+          "robots": {
+            "name": "robots",
+            "description": "The robots.txt the web server serves",
+            "required": true,
+            "secret": false,
+            "path": "/etc/shop/robots/robots.txt",
+            "reload": "restart",
+            "roles": [
+              "web"
+            ],
+            "type": "text"
+          }
+        },
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-roles",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "roles": [
+          "web",
+          "worker"
+        ],
+        "vars": {
+          "ALLOWED_ORIGINS": {
+            "name": "ALLOWED_ORIGINS",
+            "description": "Origins the web server accepts",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DOCUCONF_ROLE": {
+            "name": "DOCUCONF_ROLE",
+            "description": "The role this workload runs",
+            "required": true,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "web",
+              "worker"
+            ]
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port the web server listens on",
+            "required": false,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "type": "int",
+            "default": 3000
+          },
+          "QUEUES": {
+            "name": "QUEUES",
+            "description": "Queues the worker takes jobs from",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "worker"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_URL": "db",
+        "QUEUES": "default"
+      },
+      "errors": [
+        {
+          "var": "DOCUCONF_ROLE",
+          "code": "missing_required"
+        }
+      ]
+    },
+    {
+      "id": "roles/an unknown role",
+      "source": "pending/roles.yaml",
+      "requires": [
+        "files",
+        "roles"
+      ],
+      "contract": {
+        "apiVersion": "docuconf.dev/v1alpha1",
+        "files": {
+          "robots": {
+            "name": "robots",
+            "description": "The robots.txt the web server serves",
+            "required": true,
+            "secret": false,
+            "path": "/etc/shop/robots/robots.txt",
+            "reload": "restart",
+            "roles": [
+              "web"
+            ],
+            "type": "text"
+          }
+        },
+        "kind": "ConfigContract",
+        "metadata": {
+          "name": "conformance-roles",
+          "generator": {
+            "language": "go",
+            "sdk": "docuconf-conformance",
+            "version": "1"
+          }
+        },
+        "roles": [
+          "web",
+          "worker"
+        ],
+        "vars": {
+          "ALLOWED_ORIGINS": {
+            "name": "ALLOWED_ORIGINS",
+            "description": "Origins the web server accepts",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          },
+          "DATABASE_URL": {
+            "name": "DATABASE_URL",
+            "description": "Database connection string",
+            "required": true,
+            "secret": false,
+            "type": "string"
+          },
+          "DOCUCONF_ROLE": {
+            "name": "DOCUCONF_ROLE",
+            "description": "The role this workload runs",
+            "required": true,
+            "secret": false,
+            "type": "enum",
+            "values": [
+              "web",
+              "worker"
+            ]
+          },
+          "PORT": {
+            "name": "PORT",
+            "description": "Port the web server listens on",
+            "required": false,
+            "secret": false,
+            "roles": [
+              "web"
+            ],
+            "type": "int",
+            "default": 3000
+          },
+          "QUEUES": {
+            "name": "QUEUES",
+            "description": "Queues the worker takes jobs from",
+            "required": true,
+            "secret": false,
+            "roles": [
+              "worker"
+            ],
+            "separator": ",",
+            "type": "list",
+            "items": "string",
+            "encoding": "csv"
+          }
+        }
+      },
+      "env": {
+        "DATABASE_URL": "db",
+        "DOCUCONF_ROLE": "cron"
+      },
+      "errors": [
+        {
+          "var": "DOCUCONF_ROLE",
+          "code": "not_in_enum"
+        }
+      ]
     }
   ],
   "comment": "Generated by docuconf conformance from conformance/pending. DO NOT EDIT.",

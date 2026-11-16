@@ -96,6 +96,19 @@ function waits for it. It asks Crossplane for the Secrets as required
 resources, which Crossplane v2 supplies; with an older one it warns and
 skips the check. `checkSecrets: false` turns it off.
 
+## Roles
+
+For an image that runs several processes (SPEC.md section 4.9), each
+composition sets its workload's role in the values, and the function
+checks and renders only that role's inputs:
+
+```yaml
+values:
+  fromFieldPath: spec.config.values
+  set:
+    DOCUCONF_ROLE: worker
+```
+
 ## Third-party images
 
 For an image no docuconf SDK built, `contract: catalog:postgres:16` takes

@@ -40,7 +40,11 @@ type Change struct {
 
 type obj = map[string]any
 
-type differ struct{ out []Change }
+type differ struct {
+	out []Change
+	// The roles each contract declares (SPEC.md section 4.9).
+	oldRoles, newRoles []string
+}
 
 func (d *differ) add(class, kind, input, field, format string, args ...any) {
 	d.out = append(d.out, Change{Class: class, Kind: kind, Input: input, Field: field, Message: fmt.Sprintf(format, args...)})
@@ -66,7 +70,7 @@ func Contracts(oldJSON, newJSON []byte) ([]Change, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := &differ{}
+	d := &differ{oldRoles: strList(o["roles"]), newRoles: strList(n["roles"])}
 	d.contract(o, n)
 	d.inputs("var", m(o["vars"]), m(n["vars"]), d.variable)
 	d.inputs("file", m(o["files"]), m(n["files"]), d.file)
@@ -116,6 +120,50 @@ func (d *differ) contract(o, n obj) {
 	}
 	if a, b := s(o["apiVersion"]), s(n["apiVersion"]); a != b {
 		d.add(Notable, "contract", "", "apiVersion", "apiVersion changes from %s to %s (docs/VERSIONING.md)", a, b)
+	}
+	// Roles (SPEC.md section 4.9): a workload names its role in
+	// DOCUCONF_ROLE, which stops validating when the role goes.
+	for _, r := range d.oldRoles {
+		if len(d.newRoles) > 0 && !contains(d.newRoles, r) {
+			d.add(Breaking, "contract", "", "roles", "role %s is removed: workloads that run it fail DOCUCONF_ROLE", r)
+		}
+	}
+	for _, r := range d.newRoles {
+		if len(d.oldRoles) > 0 && !contains(d.oldRoles, r) {
+			d.add(Compatible, "contract", "", "roles", "role %s is added", r)
+		}
+	}
+	if len(d.oldRoles) == 0 && len(d.newRoles) > 0 {
+		d.add(Breaking, "contract", "", "roles", "the image now runs as roles %s: every workload must set DOCUCONF_ROLE", strings.Join(d.newRoles, ", "))
+	}
+}
+
+// roleChanges compares the roles an input is used in (SPEC.md section
+// 4.9), where no roles means every role the contract declares.
+func (d *differ) roleChanges(kind, name string, o, n obj) {
+	if len(d.oldRoles) == 0 || len(d.newRoles) == 0 {
+		return
+	}
+	in := func(x obj, all []string) []string {
+		if rs := strList(x["roles"]); len(rs) > 0 {
+			return rs
+		}
+		return all
+	}
+	was, is := in(o, d.oldRoles), in(n, d.newRoles)
+	for _, r := range was {
+		if contains(d.newRoles, r) && !contains(is, r) {
+			d.add(Breaking, kind, name, "roles", "is no longer used by role %s: workloads of that role that set it fail the unknown-input check", r)
+		}
+	}
+	for _, r := range is {
+		if contains(d.oldRoles, r) && !contains(was, r) {
+			if b(n["required"]) {
+				d.add(Breaking, kind, name, "roles", "is now used, and required, in role %s: its workloads must set it", r)
+			} else {
+				d.add(Compatible, kind, name, "roles", "is now used in role %s", r)
+			}
+		}
 	}
 }
 
@@ -174,6 +222,7 @@ func condition(in obj) string {
 
 // common compares what variables and file inputs share.
 func (d *differ) common(kind, name string, o, n obj) {
+	d.roleChanges(kind, name, o, n)
 	oc, nc := condition(o), condition(n)
 	switch {
 	case !b(o["required"]) && b(n["required"]):

@@ -244,8 +244,14 @@ func load(ptr any, opts Options, parse bool) error {
 		return err
 	}
 	warnUndeclared(d, environ, opts.Prefix, logger)
-	res := checkVars(d.allVars(), environ, logger)
+	// A workload runs one role: inputs other roles use are optional in it
+	// (SPEC §4.9).
+	vars, files, outOfRole := forRole(d.roles, d.allVars(), d.files, environ)
+	res := checkVars(vars, environ, logger)
 	viols, flagged, values := res.viols, res.flagged, res.raw
+	for n := range outOfRole {
+		flagged[n] = true // caarlos0/env's own required does not apply there
+	}
 
 	if parse {
 		err := env.ParseWithOptions(ptr, env.Options{Environment: environ, Prefix: opts.Prefix, FuncMap: opts.FuncMap})
@@ -266,7 +272,7 @@ func load(ptr any, opts Options, parse bool) error {
 		root = environ[EnvFileRoot]
 	}
 	elem := rv.Elem()
-	for _, f := range d.files {
+	for _, f := range files {
 		p := f.path
 		if f.pathEnv != "" && environ[f.pathEnv] != "" {
 			p = environ[f.pathEnv]
@@ -279,7 +285,7 @@ func load(ptr any, opts Options, parse bool) error {
 			return fmt.Errorf("docuconf: %s: %w", f.goPath, err)
 		}
 		b := &fileBinding{
-			decl:     f.requiredNow(d.vars, res),
+			decl:     f.requiredNow(vars, res),
 			path:     p,
 			now:      now,
 			interval: interval,

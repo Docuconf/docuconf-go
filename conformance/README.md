@@ -229,7 +229,7 @@ and are generated into `cases.pending.json`. An SDK that has the feature
 runs that file too (the Go SDK runs it in `TestConformancePending`). Once
 every SDK passes them, move the file to `load/` and regenerate.
 
-Pending now: `required_if.yaml` (tag `required-if`).
+Pending now: `required_if.yaml` (tag `required-if`) and `roles.yaml` (tag `roles`).
 
 ## Capability tags
 
@@ -241,6 +241,7 @@ Pending now: `required_if.yaml` (tag `required-if`).
 | `deprecated` | Deprecated inputs (SPEC §4.2): a deprecated variable that is set still loads, in `load/deprecated.yaml`. | Transitional: an SDK that does not read `deprecated` yet. Every SDK MUST support it by `v1beta1`. |
 | `files` | File inputs (SPEC §4.6, §11.2 item 7), in `load/files_config.yaml` (config files in json, yaml and toml), `load/files_tls.yaml` (TLS key pairs, CA bundles, PKCS#12 keystores) and `load/files_text.yaml`. | Transitional: an SDK whose contract-first mode does not load files yet. Every SDK MUST support it by `v1beta1`. |
 | `required-if` | Conditional requirements (SPEC §4.2.1), in `pending/required_if.yaml`: `requiredIf` on variables and file inputs, on the condition variable's environment value, profile default or own default. Its cases also require `profiles` and `files`. | Transitional: an SDK that does not read `requiredIf` yet. Every SDK MUST support it by `v1beta1`. |
+| `roles` | Roles (SPEC §4.9), in `pending/roles.yaml`: `DOCUCONF_ROLE` names the workload's role, and an input with `roles` is required only in those. Its cases also require `files`. | Transitional: an SDK that does not read `roles` yet. |
 | `profiles` | Profiles (SPEC §4.4), in `load/profiles.yaml`: the selector, `profiles.default`, profile defaults under the environment. | Transitional. Every SDK MUST support it in contract-first mode by `v1beta1`, even on a host that has no profile files of its own. |
 | `overlays` | Config-file overlays (SPEC §4.7), in `load/overlays.yaml`: the layer order base, profile, overlay, environment, native values, and bad overlay values. Its cases also require `profiles`. | Transitional, as `profiles`. |
 | `strict-parsing` | The exact parsing rules of SPEC §5, in `load/strict.yaml`: `bool` is only `true` or `false` in any case (never `1`, `t`, `yes`, `on`), `int` only decimal digits with an optional sign (never `0x10`, `1_000`, `1e3`), `float` only decimal (never hex, `inf`, `.5`), durations only their encoding's grammar, and nothing is trimmed, including `csv` items. | Transitional: an SDK whose host library is still more lenient than the spec. Every SDK MUST support it by `v1beta1`. |
