@@ -273,3 +273,53 @@ func TestBootDropsOverlayReload(t *testing.T) {
 		t.Fatalf("got  %s\nwant %s", out, want)
 	}
 }
+
+// shop is a contract with roles, a requiredIf and an included fragment
+// (SPEC §4.2.1, §4.8, §4.9). The CLI pins the SDK by version, so this also
+// fails when the pin predates those features, outside the go.work run too.
+const shop = "testdata/exec/shop.json"
+
+func shopEnv(t *testing.T, env map[string]string) {
+	t.Helper()
+	root := t.TempDir()
+	t.Setenv("DOCUCONF_FILE_ROOT", root)
+	t.Setenv("DOCUCONF_TERMINATION_LOG", filepath.Join(root, "termination-log"))
+	for _, k := range []string{"DOCUCONF_ROLE", "DATABASE_URL", "PORT", "ALLOWED_ORIGINS", "QUEUES", "LOG_FORMAT", "LOG_SCHEMA_URL", "WEBHOOKS_ENABLED", "OTEL_EXPORTER_OTLP_PROTOCOL"} {
+		t.Setenv(k, "")
+		os.Unsetenv(k)
+	}
+	t.Setenv("DATABASE_URL", "postgres://shop@db:5432/shop")
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+}
+
+func TestCheckRolesConditionsAndFragments(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		env  map[string]string
+		want string // the problem line, or "" for a valid environment
+	}{
+		{"web", map[string]string{"DOCUCONF_ROLE": "web", "ALLOWED_ORIGINS": "https://shop.example"}, ""},
+		{"worker without the web inputs", map[string]string{"DOCUCONF_ROLE": "worker", "QUEUES": "default,mail"}, ""},
+		{"web without its input", map[string]string{"DOCUCONF_ROLE": "web"}, "ALLOWED_ORIGINS: is required but not set (missing_required)"},
+		{"no role", map[string]string{"QUEUES": "default"}, "DOCUCONF_ROLE: is required but not set (missing_required)"},
+		{"condition holds", map[string]string{"DOCUCONF_ROLE": "worker", "QUEUES": "default", "LOG_FORMAT": "json"}, `LOG_SCHEMA_URL: is required when LOG_FORMAT is "json" but not set (missing_required)`},
+		{"condition on another role's file", map[string]string{"DOCUCONF_ROLE": "web", "ALLOWED_ORIGINS": "https://shop.example", "WEBHOOKS_ENABLED": "true"}, ""},
+		{"fragment variable", map[string]string{"DOCUCONF_ROLE": "web", "ALLOWED_ORIGINS": "https://shop.example", "OTEL_EXPORTER_OTLP_PROTOCOL": "carrier-pigeon"}, `OTEL_EXPORTER_OTLP_PROTOCOL: "carrier-pigeon" is not one of grpc, http/protobuf, http/json (not_in_enum)`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			shopEnv(t, c.env)
+			out, errOut, code := docuconf(t, "check", "-contract", shop)
+			if c.want == "" {
+				if code != 0 || out != "shop: ok\n" {
+					t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+				}
+				return
+			}
+			if code != 1 || !strings.Contains(errOut, "1 configuration problem:\n  "+c.want+"\n") {
+				t.Fatalf("exit %d, want 1 and %q\nstdout:\n%s\nstderr:\n%s", code, c.want, out, errOut)
+			}
+		})
+	}
+}
